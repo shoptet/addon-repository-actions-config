@@ -5,10 +5,14 @@ on:
     secrets: 
       ftp_password:
         required: true
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
-  ftp-deploy:
-    name: 🚀 Deploy Dev 🚀
+  build:
+    name: 🚀 Build Dev 🚀
     runs-on: ubuntu-latest
     steps:
     - name: 🚚 Get latest code
