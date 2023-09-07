@@ -25,11 +25,14 @@ jobs:
           npm i minify -g
           minify src/header/*.js > dist/scripts.header.min.js
           minify src/header/*.css > dist/styles.header.min.css
+          minify src/header/*.html > dist/markups.header.html
           minify src/footer/*.js > dist/scripts.footer.min.js
           minify src/footer/*.css > dist/styles.footer.min.css
+          minify src/footer/*.html > dist/markups.footer.html
           minify src/orderFinale/*.js > dist/scripts.orderFinale.min.js
           minify src/orderFinale/*.css > dist/styles.orderFinale.min.css
-          
+          minify src/orderFinale/*.html > dist/markups.orderFinale.html
+
     - name: Cleanup dist folder
       run: |
           cd dist
