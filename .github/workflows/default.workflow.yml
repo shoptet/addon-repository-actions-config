@@ -15,7 +15,7 @@ jobs:
     - name: 🚚 Get latest code
       uses: actions/checkout@v3
 
-    - name: Minify styles and scripts
+    - name: Minify styles, scripts and markups
       run: |
           rm -rf dist
           mkdir dist
@@ -34,6 +34,10 @@ jobs:
       run: |
           cd dist
           find . -type f -empty -print -delete
+
+    - name: Copy asset files
+      run: |
+          cp -r src/assets dist/assets
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v3
