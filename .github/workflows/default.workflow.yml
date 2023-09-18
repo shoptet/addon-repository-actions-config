@@ -34,6 +34,11 @@ jobs:
       run: |
           cd dist
           find . -type f -empty -print -delete
+          
+    - name: Copy assets files
+      run: |
+          mkdir dist/assets
+          cp -r assets dist
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v3
@@ -41,5 +46,4 @@ jobs:
         name: dist-build
         path: |
             dist
-            assets
         if-no-files-found: error
