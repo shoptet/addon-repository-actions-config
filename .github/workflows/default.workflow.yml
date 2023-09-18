@@ -37,6 +37,7 @@ jobs:
 
     - name: Copy asset files
       run: |
+          mkdir dist/assets
           cp -r src/assets dist/assets
 
     - name: Save production artifacts
