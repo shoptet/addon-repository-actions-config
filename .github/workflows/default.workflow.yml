@@ -38,9 +38,11 @@ jobs:
     - name: Copy assets files
       run: |
           ls -l
-          cd..
-          mkdir dist/assets
-          cp -r assets dist
+          if [ -d "assets" ]; then
+            mkdir dist/assets
+            cp -r assets dist
+          fi
+
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v3
