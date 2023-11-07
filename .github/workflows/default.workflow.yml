@@ -37,6 +37,8 @@ jobs:
           
     - name: Copy assets files
       run: |
+          ls -l
+          cd..
           mkdir dist/assets
           cp -r assets dist
 
