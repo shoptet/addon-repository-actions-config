@@ -54,11 +54,11 @@ jobs:
           
     - name: Copy assets files
       run: |
-          ls -l
           if [ -d "assets" ]; then
             mkdir dist/assets
             cp -r assets dist
           fi
+          ls dist
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v3
