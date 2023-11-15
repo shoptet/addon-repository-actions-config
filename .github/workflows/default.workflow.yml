@@ -19,15 +19,17 @@ jobs:
       run: |
           rm -rf dist
           mkdir dist
-          cat src/header/*.js > dist/scripts.header.min.js
-          cat src/header/*.css > dist/styles.header.min.css
-          cat src/header/*.html > dist/markups.header.html
-          cat src/footer/*.js > dist/scripts.footer.min.js
-          cat src/footer/*.css > dist/styles.footer.min.css
-          cat src/footer/*.html > dist/markups.footer.html
-          cat src/orderFinale/*.js > dist/scripts.orderFinale.min.js
-          cat src/orderFinale/*.css > dist/styles.orderFinale.min.css
-          cat src/orderFinale/*.html > dist/markups.orderFinale.html
+          npm i minify -g
+          echo '{"js": {"mangleClassNames": false, "removeUnusedVariables": false, "removeUselessSpread": false}}' > .minify.json
+          minify src/header/*.js > dist/scripts.header.min.js
+          minify src/header/*.css > dist/styles.header.min.css
+          minify src/header/*.html > dist/markups.header.html
+          minify src/footer/*.js > dist/scripts.footer.min.js
+          minify src/footer/*.css > dist/styles.footer.min.css
+          minify src/footer/*.html > dist/markups.footer.html
+          minify src/orderFinale/*.js > dist/scripts.orderFinale.min.js
+          minify src/orderFinale/*.css > dist/styles.orderFinale.min.css
+          minify src/orderFinale/*.html > dist/markups.orderFinale.html
 
     - name: Cleanup dist folder
       run: |
