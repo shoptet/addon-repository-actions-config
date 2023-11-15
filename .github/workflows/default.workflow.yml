@@ -15,21 +15,37 @@ jobs:
     - name: 🚚 Get latest code
       uses: actions/checkout@v3
 
-    - name: Minify styles, scripts and markups
+    - name: Concatenate styles, scripts and markups
       run: |
           rm -rf dist
           mkdir dist
-          npm i minify -g
-          echo '{"js": {"mangleClassNames": false, "removeUnusedVariables": false, "removeUselessSpread": false}}' > .minify.json
-          minify src/header/*.js > dist/scripts.header.min.js
-          minify src/header/*.css > dist/styles.header.min.css
-          minify src/header/*.html > dist/markups.header.html
-          minify src/footer/*.js > dist/scripts.footer.min.js
-          minify src/footer/*.css > dist/styles.footer.min.css
-          minify src/footer/*.html > dist/markups.footer.html
-          minify src/orderFinale/*.js > dist/scripts.orderFinale.min.js
-          minify src/orderFinale/*.css > dist/styles.orderFinale.min.css
-          minify src/orderFinale/*.html > dist/markups.orderFinale.html
+          if ls src/header/*.js 1> /dev/null 2>&1; then
+            cat src/header/*.js > dist/scripts.header.js
+          fi
+          if ls src/header/*.css 1> /dev/null 2>&1; then
+            cat src/header/*.css > dist/styles.header.css
+          fi
+          if ls src/header/*.html 1> /dev/null 2>&1; then
+            cat src/header/*.html > dist/markups.header.html
+          fi
+          if ls src/footer/*.js 1> /dev/null 2>&1; then
+            cat src/footer/*.js > dist/scripts.footer.js
+          fi
+          if ls src/footer/*.css 1> /dev/null 2>&1; then
+            cat src/footer/*.css > dist/styles.footer.css
+          fi
+          if ls src/footer/*.html 1> /dev/null 2>&1; then
+            cat src/footer/*.html > dist/markups.footer.html
+          fi
+          if ls src/orderFinale/*.js 1> /dev/null 2>&1; then
+            cat src/orderFinale/*.js > dist/scripts.orderFinale.js
+          fi
+          if ls src/orderFinale/*.css 1> /dev/null 2>&1; then
+            cat src/orderFinale/*.css > dist/styles.orderFinale.css
+          fi
+          if ls src/orderFinale/*.html 1> /dev/null 2>&1; then
+            cat src/orderFinale/*.html > dist/markups.orderFinale.html
+          fi
 
     - name: Cleanup dist folder
       run: |
@@ -43,7 +59,6 @@ jobs:
             mkdir dist/assets
             cp -r assets dist
           fi
-
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v3
