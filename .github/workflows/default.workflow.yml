@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: 🚚 Get latest code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Setup project and build
-      uses: actions/setup-node@v2
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'yarn'
@@ -27,7 +27,7 @@ jobs:
           yarn build
 
     - name: Save production artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist-build
         path: |
