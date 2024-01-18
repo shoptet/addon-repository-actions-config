@@ -25,11 +25,12 @@ jobs:
       run: |
           yarn
           yarn build
+          ls -la dist
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: dist-build
+        name: build
         path: |
-            dist
+            dist/
         if-no-files-found: error
