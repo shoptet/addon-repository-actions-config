@@ -30,7 +30,7 @@ jobs:
     - name: Save production artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build-${{ github.sha }}-${{ github.ref }}
+        name: build-${{ github.sha }}-${{ github.run_number }}
         path: |
             dist/
         if-no-files-found: error
