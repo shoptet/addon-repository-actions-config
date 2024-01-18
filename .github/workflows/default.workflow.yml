@@ -34,3 +34,6 @@ jobs:
         path: |
             dist/
         if-no-files-found: error
+        compression-level: 1
+        retention-days: 1
+
