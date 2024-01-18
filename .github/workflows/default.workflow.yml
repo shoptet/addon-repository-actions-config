@@ -23,16 +23,14 @@ jobs:
 
     - name: Install dependencies and build
       run: |
-          if [ -d "assets" ]; then
-            mkdir dist/assets
-            cp -r assets dist
-          fi
-          ls dist
+          yarn
+          yarn build
+          ls -la dist
 
     - name: Save production artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: dist-build
+        name: build
         path: |
-            dist
+            dist/
         if-no-files-found: error
