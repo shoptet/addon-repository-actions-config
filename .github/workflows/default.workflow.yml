@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies and build
       run: |
           yarn
-          yarn build --mode=production
+          yarn build --env production
           ls -la dist
 
     - name: Save production artifacts
