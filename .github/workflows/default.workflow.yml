@@ -2,10 +2,6 @@ name: 🚀 Shoptet addon deploy workflow
 
 on:
   workflow_call:
-  push:
-    branches:
-      - main
-      - master
 
 jobs:
   build:
@@ -13,57 +9,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: 🚚 Get latest code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+    
+    - name: Setup project and build
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'yarn'
 
-    - name: Concatenate styles, scripts and markups
+    - name: Install dependencies and build
       run: |
-          rm -rf dist
-          mkdir dist
-          if ls src/header/*.js 1> /dev/null 2>&1; then
-            cat src/header/*.js > dist/scripts.header.min.js
-          fi
-          if ls src/header/*.css 1> /dev/null 2>&1; then
-            cat src/header/*.css > dist/styles.header.min.css
-          fi
-          if ls src/header/*.html 1> /dev/null 2>&1; then
-            cat src/header/*.html > dist/markups.header.min.html
-          fi
-          if ls src/footer/*.js 1> /dev/null 2>&1; then
-            cat src/footer/*.js > dist/scripts.footer.min.js
-          fi
-          if ls src/footer/*.css 1> /dev/null 2>&1; then
-            cat src/footer/*.css > dist/styles.footer.min.css
-          fi
-          if ls src/footer/*.html 1> /dev/null 2>&1; then
-            cat src/footer/*.html > dist/markups.footer.min.html
-          fi
-          if ls src/orderFinale/*.js 1> /dev/null 2>&1; then
-            cat src/orderFinale/*.js > dist/scripts.orderFinale.min.js
-          fi
-          if ls src/orderFinale/*.css 1> /dev/null 2>&1; then
-            cat src/orderFinale/*.css > dist/styles.orderFinale.min.css
-          fi
-          if ls src/orderFinale/*.html 1> /dev/null 2>&1; then
-            cat src/orderFinale/*.html > dist/markups.orderFinale.min.html
-          fi
-
-    - name: Cleanup dist folder
-      run: |
-          cd dist
-          find . -type f -empty -print -delete
-          
-    - name: Copy assets files
-      run: |
-          if [ -d "assets" ]; then
-            mkdir dist/assets
-            cp -r assets dist
-          fi
-          ls dist
+          yarn
+          yarn build --env production
+          ls -la dist
 
     - name: Save production artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: dist-build
+        name: build-${{ github.sha }}-${{ github.run_number }}
         path: |
-            dist
+            dist/
         if-no-files-found: error
+        compression-level: 1
+        retention-days: 1
+
