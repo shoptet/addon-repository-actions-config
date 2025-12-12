@@ -24,7 +24,7 @@ jobs:
           ls -la dist
 
     - name: Save production artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v5
       with:
         name: build-${{ github.sha }}-${{ github.run_number }}
         path: |
