@@ -23,7 +23,7 @@ jobs:
       
       - name: 📥 Install review tool dependencies
         working-directory: review_tool
-        run: npm ci
+        run: yarn
       
       - name: 🔍 Run code review
         working-directory: review_tool
