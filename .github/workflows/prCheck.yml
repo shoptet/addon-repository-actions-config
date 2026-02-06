@@ -13,8 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 🚚 Checkout code
+      - name: 🚚 Checkout addon code
         uses: actions/checkout@v6
+        with:
+          path: addon
+      
+      - name: 🚚 Checkout review tool
+        uses: actions/checkout@v6
+        with:
+          repository: shoptet/addon-repository-actions-config
+          path: review-config
       
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v6
@@ -22,9 +30,9 @@ jobs:
           node-version: '22'
       
       - name: 📥 Install review tool dependencies
-        working-directory: review_tool
+        working-directory: review-config/review_tool
         run: yarn
       
       - name: 🔍 Run code review
-        working-directory: review_tool
-        run: node scripts/review-helper.js ../src --format=github-actions
+        working-directory: review-config/review_tool
+        run: node scripts/review-helper.js ../../addon/src --format=github-actions
