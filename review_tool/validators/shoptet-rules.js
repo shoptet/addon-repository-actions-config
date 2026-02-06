@@ -50,7 +50,7 @@ function validateShoptetCache(code) {
               violations.push({
                 line: node.loc.start.line,
                 column: node.loc.start.column,
-                message: 'Chybí /cache/ v XHR volání na Shoptet server'
+                message: 'Missing /cache/ in XHR call to Shoptet server'
               });
             }
           }
@@ -68,7 +68,7 @@ function validateShoptetCache(code) {
               violations.push({
                 line: node.loc.start.line,
                 column: node.loc.start.column,
-                message: 'Chybí /cache/ v jQuery AJAX volání na Shoptet server'
+                message: 'Missing /cache/ in jQuery AJAX call to Shoptet server'
               });
             }
           }
@@ -81,7 +81,7 @@ function validateShoptetCache(code) {
         violations.push({
           line: node.loc.start.line,
           column: node.loc.start.column,
-          message: 'XMLHttpRequest detekován - zkontrolovat, zda používá /cache/ pro Shoptet API'
+          message: 'XMLHttpRequest detected - verify it uses /cache/ for Shoptet API calls'
         });
       }
     }

@@ -114,8 +114,6 @@ async function main() {
     outputGitHubActions(allFindings);
   } else {
     outputConsole(blockers, recommends, blockerCount, recommendCount);
-    await generateCopilotContext(files, allFindings, blockerCount, recommendCount);
-    console.log(`\n📄 LLM review context saved to .copilot-review-context.md`);
   }
   
   if (format !== 'github-actions') {
@@ -123,15 +121,6 @@ async function main() {
   }
   
   process.exit(blockerCount > 0 ? 1 : 0);
-}
-
-function translateMessage(message) {
-  const translations = {
-    'Chybí /cache/ v XHR volání na Shoptet server': 'Missing /cache/ in XHR call to Shoptet server',
-    'Chybí /cache/ v jQuery AJAX volání na Shoptet server': 'Missing /cache/ in jQuery AJAX call to Shoptet server',
-    'XMLHttpRequest detekován - zkontrolovat, zda používá /cache/ pro Shoptet API': 'XMLHttpRequest detected - verify it uses /cache/ for Shoptet API calls'
-  };
-  return translations[message] || message;
 }
 
 function getRuleTitle(finding) {
@@ -149,7 +138,7 @@ function outputGitHubActions(findings) {
     const relativePath = path.relative(process.cwd(), finding.file);
     const level = finding.severity === 'blocker' ? 'error' : 'warning';
     const title = getRuleTitle(finding);
-    const message = translateMessage(finding.message);
+    const message = finding.message.replace(/\r?\n/g, ' ');
     const col = finding.column || 1;
     
     console.log(`::${level} file=${relativePath},line=${finding.line},col=${col},title=${title}::${message}`);
@@ -191,88 +180,6 @@ function outputConsole(blockers, recommends, blockerCount, recommendCount) {
   if (blockers.length === 0 && recommends.length === 0) {
     console.log(`\n✅ No issues found! Code looks good.\n`);
   }
-}
-
-async function generateCopilotContext(files, findings, blockerCount, recommendCount) {
-  let context = `# Code Review Context\n\n`;
-  context += `**Generated**: ${new Date().toISOString()}\n\n`;
-  context += `## Summary\n\n`;
-  context += `- **Files reviewed**: ${files.length}\n`;
-  context += `- **Blockers found**: ${blockerCount}\n`;
-  context += `- **Recommendations**: ${recommendCount}\n\n`;
-  context += `---\n\n`;
-  
-  if (findings.length === 0) {
-    context += `## ✅ No Issues Found\n\nAll files passed automated checks.\n`;
-  } else {
-    context += `## ❌ Findings\n\n`;
-    
-    const blockers = findings.filter(f => f.severity === 'blocker');
-    const recommends = findings.filter(f => f.severity === 'recommend');
-    
-    if (blockers.length > 0) {
-      context += `### Blockers (${blockers.length})\n\n`;
-      for (const finding of blockers) {
-        const relativePath = path.relative(process.cwd(), finding.file);
-        context += `- **${relativePath}:${finding.line}** – ${finding.message}\n`;
-      }
-      context += `\n`;
-    }
-    
-    if (recommends.length > 0) {
-      context += `### Recommendations (${recommends.length})\n\n`;
-      for (const finding of recommends) {
-        const relativePath = path.relative(process.cwd(), finding.file);
-        context += `- **${relativePath}:${finding.line}** – ${finding.message}\n`;
-      }
-      context += `\n`;
-    }
-    
-    context += `---\n\n`;
-    context += `## 📝 Code Context\n\n`;
-    
-    for (const file of files) {
-      const fileFindings = findings.filter(f => f.file === file);
-      if (fileFindings.length > 0) {
-        const relativePath = path.relative(process.cwd(), file);
-        context += `### ${relativePath}\n\n`;
-        
-        try {
-          const code = fs.readFileSync(file, 'utf8');
-          const lines = code.split('\n');
-          
-          if (lines.length > 1000) {
-            context += `*File too large (${lines.length} lines), showing first 1000 lines*\n\n`;
-          }
-          
-          context += '```javascript\n';
-          context += lines.slice(0, 1000).join('\n');
-          context += '\n```\n\n';
-          
-          context += `**Issues in this file:**\n\n`;
-          for (const finding of fileFindings) {
-            context += `- Line ${finding.line}: ${finding.message}\n`;
-          }
-          context += `\n`;
-        } catch (error) {
-          context += `*Could not read file: ${error.message}*\n\n`;
-        }
-      }
-    }
-  }
-  
-  context += `---\n\n`;
-  context += `## 🤖 Instructions for LLM Review\n\n`;
-  context += `Please review the code above against Shoptet addon guidelines:\n\n`;
-  context += `1. Verify all automated findings are accurate\n`;
-  context += `2. Look for additional issues that automated checks might have missed\n`;
-  context += `3. Provide Czech-formatted comments for any additional concerns\n`;
-  context += `4. Focus on code quality, maintainability, and Shoptet best practices\n\n`;
-  context += `Use the format:\n`;
-  context += `❌ BLOCKER: \`file:line\` – Explanation\n`;
-  context += `😊 RECOMMEND: \`file:line\` – Suggestion\n`;
-  
-  fs.writeFileSync('.copilot-review-context.md', context, 'utf8');
 }
 
 main().catch(error => {

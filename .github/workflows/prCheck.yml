@@ -15,15 +15,13 @@ jobs:
     steps:
       - name: 🚚 Checkout addon code
         uses: actions/checkout@v6
-        with:
-          path: addon
       
       - name: 🚚 Checkout review tool
         uses: actions/checkout@v6
         with:
           repository: shoptet/addon-repository-actions-config
-          ref: main
-          path: review-config
+          ref: review_tool
+          path: review-tool
           token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: 📦 Setup Node.js
@@ -31,10 +29,12 @@ jobs:
         with:
           node-version: '22'
       
+      - name: List files for debugging
+        run: ls -R ./
       - name: 📥 Install review tool dependencies
-        working-directory: review-config/review_tool
+        working-directory: review-tool/review_tool
         run: yarn
       
       - name: 🔍 Run code review
-        working-directory: review-config/review_tool
-        run: node scripts/review-helper.js ../../addon/src --format=github-actions
+        working-directory: ./
+        run: node review-tool/review_tool/scripts/review-helper.js src --format=github-actions
