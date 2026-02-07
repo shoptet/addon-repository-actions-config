@@ -1,0 +1,200 @@
+name: Pull Request Checks
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+env:
+  REQUIRED_REVIEWER: shoptet-addon-reviewer
+  PROTECTED_FILES: .github/workflows/shoptetAddon.workflow.yml
+
+jobs:
+  review:
+    name: Review Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout addon code
+        uses: actions/checkout@v6
+      
+      - name: Checkout review tool
+        uses: actions/checkout@v6
+        with:
+          repository: shoptet/addon-repository-actions-config
+          ref: review_tool
+          path: review-tool
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      
+      - name: List files for debugging
+        run: ls -R ./
+      
+      - name: Install review tool dependencies
+        working-directory: review-tool/review_tool
+        run: yarn
+      
+      - name: Run code review
+        working-directory: ./
+        run: node review-tool/review_tool/scripts/review-helper.js src --format=github-actions
+
+  merge-check:
+    name: Merge Pull Request alert
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR author
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            core.setOutput('author', pr.user.login);
+            return pr.user.login;
+
+      - name: Check merge authorization
+        id: check
+        run: |
+          ALLOWED_REVIEWERS='["shoptet-addon-reviewer"]'
+          AUTHOR="${{ steps.pr-info.outputs.author }}"
+          
+          if echo "$ALLOWED_REVIEWERS" | jq -e --arg author "$AUTHOR" '. | index($author)' > /dev/null; then
+            echo "conclusion=success" >> $GITHUB_OUTPUT
+            echo "User $AUTHOR is authorized to merge"
+          else
+            echo "conclusion=failure" >> $GITHUB_OUTPUT
+            echo "User $AUTHOR is NOT authorized to merge - only Shoptet reviewers can merge"
+          fi
+
+      - name: Create check run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Merge Pull Request alert',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: '${{ steps.check.outputs.conclusion }}',
+              output: {
+                title: 'Do not merge this PR',
+                summary: 'This PR cannot be merged by the Partner.'
+              }
+            });
+
+  files-check:
+    name: Key files changed
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Get changed files
+        id: files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const protectedFiles = ['.github/workflows/shoptetAddon.workflow.yml'];
+            
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            
+            const changedProtectedFiles = files.filter(file => 
+              protectedFiles.includes(file.filename)
+            );
+            
+            if (changedProtectedFiles.length > 0) {
+              core.setOutput('conclusion', 'failure');
+              core.setOutput('changed_files', changedProtectedFiles.map(f => f.filename).join(', '));
+              console.log('Protected files changed:', changedProtectedFiles.map(f => f.filename));
+            } else {
+              core.setOutput('conclusion', 'success');
+              console.log('No protected files changed');
+            }
+
+      - name: Create check run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Key files changed',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: '${{ steps.files.outputs.conclusion }}',
+              output: {
+                title: 'Key files changed',
+                summary: 'This PR cannot be merged because it changes key files.'
+              }
+            });
+
+  collaborators-check:
+    name: Collaborators check
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Get PR reviewers
+        id: reviewers
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const requiredReviewers = ['shoptet-addon-reviewer'];
+            
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            
+            const requestedReviewers = pr.requested_reviewers.map(reviewer => reviewer.login);
+            const requestedTeams = pr.requested_teams?.map(team => team.slug) || [];
+            const allRequestedReviewers = [...requestedReviewers, ...requestedTeams];
+            
+            console.log('Required reviewers:', requiredReviewers);
+            console.log('Requested reviewers:', allRequestedReviewers);
+            
+            const missingReviewers = requiredReviewers.filter(
+              reviewer => !allRequestedReviewers.includes(reviewer)
+            );
+            
+            if (missingReviewers.length > 0) {
+              core.setOutput('conclusion', 'failure');
+              core.setOutput('missing', missingReviewers.join(', '));
+              console.log('Missing required reviewers:', missingReviewers);
+            } else {
+              core.setOutput('conclusion', 'success');
+              console.log('All required reviewers assigned');
+            }
+
+      - name: Create check run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Collaborators check',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: '${{ steps.reviewers.outputs.conclusion }}',
+              output: {
+                title: 'Collaborators check',
+                summary: 'This PR needs to have a collaborator assigned.'
+              }
+            });

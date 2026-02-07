@@ -27,6 +27,8 @@ module.exports = {
     'no-empty': 'off',
     'max-depth': ['error', 5],
 
+    'no-eval': 'error',
+
     'no-global-assign': 'warn',
     'no-native-reassign': 'warn',
     'no-extend-native': 'warn',
