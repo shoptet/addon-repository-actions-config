@@ -122,27 +122,27 @@ jobs:
                       if (changedProtectedFiles.length > 0) {
                         conclusion = 'failure';
                         summary = `Protected files changed: ${changedProtectedFiles.map(f => f.filename).join(', ')}`;
-                        console.log('Protected files changed:', changedProtectedFiles.map(f => f.filename));
+                        console.error('Protected files changed:', changedProtectedFiles.map(f => f.filename));
                       } else {
                         conclusion = 'success';
                         summary = 'No protected files changed';
                         console.log('No protected files changed');
                       }
-                      await github.rest.checks.create({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        name: 'Key files changed',
-                        head_sha: context.payload.pull_request.head.sha,
-                        status: 'completed',
-                        conclusion: conclusion,
-                        output: {
-                          title: 'Key files changed',
-                          summary: summary
-                        }
-                      });
+                        github.rest.checks.create({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            name: 'Key files check',
+                            head_sha: context.payload.pull_request.head.sha,
+                            status: 'completed',
+                            conclusion: conclusion,
+                            output: {
+                            title: 'Key files check',
+                            summary: summary
+                            }
+                        });
 
     collaborators-check:
-        name: Collaborators check
+        name: Required reviewers assigned
         runs-on: ubuntu-latest
         permissions:
             checks: write
@@ -176,22 +176,10 @@ jobs:
 
                       if (missingReviewers.length > 0) {
                         conclusion = 'failure';
-                        console.log('Missing required reviewers:', missingReviewers);
-                        summary = `Missing required reviewers: ${missingReviewers.join(', ')}`;
+                        console.error('Missing required reviewers:', missingReviewers);
+                        process.exit(1);
                       } else {
                         conclusion = 'success';
                         console.log('All required reviewers assigned');
-                        summary = 'All required reviewers are assigned';
                       }
-                      await github.rest.checks.create({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        name: 'Collaborators check',
-                        head_sha: context.payload.pull_request.head.sha,
-                        status: 'completed',
-                        conclusion: conclusion,
-                        output: {
-                          title: 'Collaborators check',
-                          summary: summary
-                        }
-                      });
+
