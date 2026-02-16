@@ -1,0 +1,35 @@
+name: 🚀 Shoptet addon deploy workflow
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: 🚀 Build Dev 🚀
+    runs-on: ubuntu-latest
+    steps:
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v6
+    
+    - name: Setup project and build
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: 'yarn'
+
+    - name: Install dependencies and build
+      run: |
+          yarn
+          yarn build --env production
+          ls -la dist
+
+    - name: Save production artifacts
+      uses: actions/upload-artifact@v5
+      with:
+        name: build-${{ github.sha }}-${{ github.run_number }}
+        path: |
+            dist/
+        if-no-files-found: error
+        compression-level: 1
+        retention-days: 1
+
