@@ -39,7 +39,8 @@ async function main() {
   
   // Initialize ESLint with local plugin
   const eslint = new ESLint({
-    useEslintrc: true,
+    useEslintrc: false,
+    overrideConfigFile: path.join(__dirname, '.eslintrc.js'),
     cwd: __dirname,
     resolvePluginsRelativeTo: __dirname,
     plugins: {
