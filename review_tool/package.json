@@ -1,16 +1,15 @@
 {
   "name": "shoptet-addon-review-system",
-  "version": "1.0.0",
-  "description": "MVP review system for Shoptet addons - combines ESLint and AST validators",
+  "version": "2.0.0",
+  "description": "Automated code review system for Shoptet addons using ESLint with custom rules",
   "scripts": {
-    "review": "node scripts/review-helper.js"
+    "review": "node review.js src"
   },
-  "keywords": ["shoptet", "addon", "review", "eslint", "ast"],
+  "keywords": ["shoptet", "addon", "review", "eslint"],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "eslint": "^8.57.0",
-    "@babel/parser": "^7.23.0",
     "glob": "^10.3.0"
   }
 }

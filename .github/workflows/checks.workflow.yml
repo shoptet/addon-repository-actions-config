@@ -42,7 +42,7 @@ jobs:
 
             - name: Run code review
               working-directory: ./
-              run: node review-tool/review_tool/scripts/review-helper.js src --format=github-actions
+              run: node review-tool/review_tool/review.js src
 
     merge-check:
         name: Merge Pull Request alert

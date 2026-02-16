@@ -8,12 +8,15 @@ module.exports = {
     ecmaVersion: 'latest',
     sourceType: 'module',
   },
+  plugins: ['shoptet'],
   rules: {
+    // Custom Shoptet rules
+    'shoptet/require-cache-path': 'error',
+    
+    // Code quality rules
     'no-console': 'error',
-
     'no-var': 'warn',
     'prefer-const': 'warn',
-
     'no-unused-vars': [
       'error',
       {
@@ -26,9 +29,7 @@ module.exports = {
     'no-unused-expressions': 'error',
     'no-empty': 'off',
     'max-depth': ['error', 5],
-
     'no-eval': 'error',
-
     'no-global-assign': 'warn',
     'no-native-reassign': 'warn',
     'no-extend-native': 'warn',
