@@ -5,15 +5,24 @@ const {ESLint} = require('eslint');
 
 async function main() {
   // Get target path from command line or default to 'src'
-  const targetPath = process.argv[2] || 'src';
+  const targetPathArg = process.argv[2] || 'src';
+  const targetPath = path.resolve(process.cwd(), targetPathArg);
   
   // Find all JavaScript files
   let files = [];
   try {
-    if (fs.statSync(targetPath).isDirectory()) {
-      files = await glob(`${targetPath}/**/*.js`, {nodir: true});
+    const stats = fs.statSync(targetPath);
+    
+    if (stats.isDirectory()) {
+      files = await glob('**/*.js', {
+        nodir: true,
+        cwd: targetPath,
+        absolute: true
+      });
+      console.log(`🔍 Reviewing ${files.length} file(s) in directory: ${targetPath}`);
     } else if (targetPath.endsWith('.js')) {
       files = [targetPath];
+      console.log(`🔍 Reviewing single file: ${targetPath}`);
     } else {
       console.error(`::error::${targetPath} is not a JavaScript file or directory`);
       process.exit(1);
