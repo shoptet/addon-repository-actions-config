@@ -13,7 +13,7 @@ permissions:
 
 env:
     REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
-    PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml'
+    PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
 
 jobs:
     review:
