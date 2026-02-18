@@ -1,4 +1,4 @@
-name: 🚀 Shoptet addon deploy workflow
+name: Shoptet addon deploy workflow
 
 on:
   workflow_call:

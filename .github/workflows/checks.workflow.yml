@@ -3,7 +3,7 @@ on:
     workflow_call:
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    group: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
     cancel-in-progress: true
 
 permissions:
@@ -16,6 +16,13 @@ env:
     PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
 
 jobs:
+    debug:
+        name: Debug Info
+        runs-on: ubuntu-latest
+        steps:
+            - name: Print environment variables
+              run: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+              
     review:
         name: Review Code
         runs-on: ubuntu-latest
