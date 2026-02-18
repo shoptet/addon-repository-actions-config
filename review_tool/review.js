@@ -59,6 +59,7 @@ async function main() {
   
   // Collect findings
   const findings = [];
+  const seenFindings = new Set();
   let blockerCount = 0;
   let recommendCount = 0;
   
@@ -73,6 +74,20 @@ async function main() {
         severity: message.severity === 2 ? 'blocker' : 'recommend',
       };
       
+      const findingKey = [
+        finding.file,
+        finding.line,
+        finding.column,
+        finding.ruleId,
+        finding.message,
+        finding.severity,
+      ].join('|');
+
+      if (seenFindings.has(findingKey)) {
+        continue;
+      }
+
+      seenFindings.add(findingKey);
       findings.push(finding);
       
       if (finding.severity === 'blocker') {
