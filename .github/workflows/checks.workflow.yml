@@ -1,0 +1,133 @@
+name: Pull Request Checks
+on:
+    workflow_call:
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+    checks: write
+    pull-requests: write
+
+env:
+    REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
+    PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
+
+jobs:
+    review:
+        name: Review Code
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout addon code
+              uses: actions/checkout@v6
+
+            - name: Checkout review tool
+              uses: actions/checkout@v6
+              with:
+                  repository: shoptet/addon-repository-actions-config
+                  ref: review_tool
+                  path: review-tool
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: "22"
+
+            - name: Install review tool dependencies
+              working-directory: review-tool/review_tool
+              run: yarn
+
+            - name: Run code review
+              working-directory: ./
+              run: node review-tool/review_tool/review.js src
+
+    merge-check:
+        name: Merge Pull Request alert
+        runs-on: ubuntu-latest
+        steps:
+            - name: Get PR author
+              id: pr-info
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const { data: pr } = await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.payload.pull_request.number
+                      });
+                      core.setOutput('author', pr.user.login);
+                      if (process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim()).includes(pr.user.login)) {
+                        console.log(`User ${pr.user.login} is authorized to merge`);
+                      } else {
+                        console.error(`User ${pr.user.login} is NOT authorized to merge - only Shoptet reviewers can merge`);
+                        process.exit(1);
+                      }
+
+    files-check:
+        name: File Protection Check
+        runs-on: ubuntu-latest
+        permissions:
+            checks: write
+            pull-requests: read
+        steps:
+            - name: Check protected files
+              id: files
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const files = await github.paginate(github.rest.pulls.listFiles, {
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.payload.pull_request.number
+                      });
+
+                      const changedProtectedFiles = files.filter(file => 
+                        process.env.PROTECTED_FILES.split(',').map(f => f.trim()).includes(file.filename)
+                      );
+
+                      if (changedProtectedFiles.length > 0) {
+                        console.error('Protected files changed:', changedProtectedFiles.map(f => f.filename));
+                        process.exit(1);
+                      } else {
+                        console.log('No protected files changed');
+                      }
+
+    collaborators-check:
+        name: Shoptet reviewers assigned
+        runs-on: ubuntu-latest
+        permissions:
+            checks: write
+            pull-requests: read
+        steps:
+            - name: Check required reviewers
+              id: reviewers
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const { data: pr } = await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.payload.pull_request.number
+                      });
+
+                      const requestedReviewers = pr.requested_reviewers.map(reviewer => reviewer.login);
+                      const requestedTeams = pr.requested_teams?.map(team => team.slug) || [];
+                      const allRequestedReviewers = [...requestedReviewers, ...requestedTeams];
+
+                      console.log('Required reviewers:', process.env.REQUIRED_REVIEWER);
+                      console.log('Requested reviewers:', allRequestedReviewers);
+
+                        const missingReviewers = process.env.REQUIRED_REVIEWER.split(',').filter(reviewer => 
+                            !allRequestedReviewers.includes(reviewer.trim())
+                        );
+
+                      if (missingReviewers.length > 0) {
+                        console.error('Missing required reviewers:', missingReviewers);
+                        process.exit(1);
+                      } else {
+                        console.log('All required reviewers assigned');
+                      }
