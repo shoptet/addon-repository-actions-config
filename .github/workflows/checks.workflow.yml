@@ -22,17 +22,8 @@ env:
   PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
 
 jobs:
-  debug:
-    name: Debug Info
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'reopened' || inputs.run_on_reopened }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Print environment variables
-        run: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
-
   review:
     name: Review Code
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'reopened' || inputs.run_on_reopened }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout addon code
@@ -61,7 +52,6 @@ jobs:
 
   merge-check:
     name: Merge Pull Request alert
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'reopened' || inputs.run_on_reopened }}
     runs-on: ubuntu-latest
     steps:
       - name: Get PR author
@@ -84,7 +74,6 @@ jobs:
 
   files-check:
     name: File Protection Check
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'reopened' || inputs.run_on_reopened }}
     runs-on: ubuntu-latest
     permissions:
       checks: write
@@ -114,7 +103,6 @@ jobs:
 
   collaborators-check:
     name: Shoptet reviewers assigned
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'reopened' || inputs.run_on_reopened }}
     runs-on: ubuntu-latest
     permissions:
       checks: write
