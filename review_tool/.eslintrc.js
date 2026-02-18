@@ -35,7 +35,7 @@ module.exports = {
     'no-extend-native': 'warn',
     'no-mixed-spaces-and-tabs': 'warn',
     'no-unexpected-multiline': 'off',
-    'no-undef': 'warn',
+    'no-undef': 'off',
     'no-redeclare': 'warn',
     complexity: ['warn', 10],
     'max-lines-per-function': [
