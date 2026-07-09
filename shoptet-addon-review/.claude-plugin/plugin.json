@@ -1,0 +1,5 @@
+{
+  "name": "shoptet-addon-review",
+  "description": "Front-end code review vizuálních Shoptet doplňků podle katalogu pravidel — review v Claude Code nad naklonovaným addon repem (skill st-addon-review).",
+  "version": "0.1.0"
+}
