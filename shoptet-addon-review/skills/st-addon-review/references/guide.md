@@ -69,4 +69,4 @@ Review se snaží držet konzistentní a kvalitní kód pro Shoptet vizuální d
 - [ ] Komentáře i identifikátory anglicky; překlady v samostatném souboru
 - [ ] Přístupnost: sémantické tagy, `sr-only`, `aria-label`, pause u autoplay
 - [ ] `===`, `const`/`let`, template literals, `fetch`+`try/catch`
-- [ ] Inicializace v `ShoptetDOMContentLoaded`, žádné `setTimeout` hacky
+- [ ] Init: `DOMContentLoaded` (první load) + `ShoptetDOMContentLoaded` (AJAX, idempotentně); žádné `setTimeout` hacky

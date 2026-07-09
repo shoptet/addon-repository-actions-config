@@ -144,9 +144,14 @@ Pokud partner píše vlastní implementaci něčeho z tabulky, je to nález B6 (
 Doplněk se má napojit na životní cyklus přes Shoptet eventy (`document.addEventListener('…', …)`), ne přes `setTimeout` polling. (Dokumentace: developers.shoptet.com.)
 
 **Inicializace doplňku (B5):**
-- `ShoptetDOMContentLoaded` — **obecný event; spustí se při prvním načtení i pokaždé, když se část DOM donačte AJAXem.** Doplněk inicializuj tady, aby se aplikoval i na později donačtený obsah. Vždy se pojí s konkrétním update eventem (např. `ShoptetDOMCartContentLoaded`).
-- `ShoptetDOMPageContentLoaded` — **specifický**: nový obsah stránky po **stránkování nebo filtrech** (ne primární init).
-- Registry dostupných eventů: `shoptet.scripts.availableDOMLoadEvents`, `shoptet.scripts.availableDOMUpdateEvents`.
+- **První (ne-AJAX) načtení stránky:** použij nativní `DOMContentLoaded` (footer bundle běží po jádru, §5, takže globály i core jsou připravené). Na `ShoptetDOMContentLoaded` se u prvotního loadu **nespoléhej** — oficiální docs ho popisují jako **AJAX** event a jeho vznik při prvním načtení negarantují ani nedoporučují k on-load initu.
+- **Obsah donačtený AJAXem:** `ShoptetDOMContentLoaded` — obecný event; spustí se **pokaždé, když se část DOM donačte AJAXem** (vždy se pojí s konkrétním update eventem, např. `ShoptetDOMCartContentLoaded`). Sem patří kód, který se má aplikovat i na později donačtený obsah.
+- **Pokrytí obojího:** navázat init na `DOMContentLoaded` (první načtení) **i** `ShoptetDOMContentLoaded` (AJAX re-render) je **správný, očekávaný vzor**, ne anti-pattern. Důsledek pro review: co běží z `ShoptetDOMContentLoaded`, se spustí **při každém AJAX update znovu** → **musí to být idempotentní** (guard „už jsem běžela?", žádné opakované `addEventListener` na týž prvek, žádné duplicitní vkládání elementů).
+- **Reálný B5/E6 nález = neidempotentní re-run** (hromadění listenerů/elementů po AJAX akcích), **NE** „dvojí spuštění při prvním načtení" — to neplatí, protože `ShoptetDOMContentLoaded` při prvotním loadu nevzniká.
+- `ShoptetDOMPageContentLoaded` — specifický: obsah po stránkování/filtrech (ne primární init).
+- Registry: `shoptet.scripts.availableDOMLoadEvents`, `...availableDOMUpdateEvents`.
+
+> **Oprava (2026-07-09):** dřívější znění tvrdilo, že `ShoptetDOMContentLoaded` „se spustí při prvním načtení i při AJAXu". Nepřesné — dle developers.shoptet.com je to AJAX event; pro prvotní load ho docs neuvádějí. Zdroj chyby: chybná paralela s nativním `DOMContentLoaded`.
 
 **Konkrétní AJAX update eventy:**
 - `ShoptetDOMCartContentLoaded` — obsah košíku

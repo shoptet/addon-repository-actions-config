@@ -141,10 +141,10 @@
 - **Severity:** ❌/⚠️ podmíněné (viz Gate)
 - **Vlastník:** AI
 - **Nástroj:** —
-- **Gate:** ❌ když kód reálně závisí na `setTimeout` hacku nebo způsobuje chyby ze souběhu / dvojí spuštění; ⚠️ jinak (preventivní úklid bez prokázaného dopadu).
-- **Problém:** Inicializace obchází životní cyklus přes `setTimeout(fn, 0)`, kód běží dřív, než je jádro připravené; míchané listenery na `DOMContentLoaded` a `ShoptetDOMContentLoaded`.
-- **Proč:** Náhodné chyby ze souběhu, dvojí spuštění.
-- **Řešení:** Inicializuj v `ShoptetDOMContentLoaded` (obecný event — spustí se i pro obsah donačtený AJAXem), ne přes `setTimeout`/polling. Specifické varianty: `ShoptetDOMPageContentLoaded` (stránkování/filtry), `ShoptetDOMCartContentLoaded` (košík) — viz `shoptet-reference.md` §4.
+- **Gate:** ❌ když kód reálně závisí na `setTimeout` hacku nebo způsobuje chyby ze souběhu / neidempotentní re-run při AJAX update; ⚠️ jinak (preventivní úklid bez prokázaného dopadu).
+- **Problém:** Inicializace obchází životní cyklus přes `setTimeout(fn, 0)`, kód běží dřív, než je jádro připravené; nebo kód navázaný na `ShoptetDOMContentLoaded` **není idempotentní** (při každém AJAX update se spustí znovu → hromadí listenery/elementy). Samotná kombinace listenerů na `DOMContentLoaded` + `ShoptetDOMContentLoaded` je **správný vzor, ne nález** — viz `shoptet-reference.md` §4.
+- **Proč:** Náhodné chyby ze souběhu; hromadění listenerů a duplicitních elementů po AJAX akcích.
+- **Řešení:** První načtení inicializuj v nativním `DOMContentLoaded`; pro obsah donačtený AJAXem navíc `ShoptetDOMContentLoaded` — **idempotentně**. Ne `setTimeout`/polling. Specifické varianty: `ShoptetDOMPageContentLoaded` (stránkování/filtry), `ShoptetDOMCartContentLoaded` (košík) — viz `shoptet-reference.md` §4.
 - **Pozn. (falešná domněnka — NENÍ nález):** „Globál/core může být `undefined`, protože nedoběhl Shoptet skript nebo jsou skripty špatně řazené" **není nález.** Shoptet garantuje, že v době běhu doplňku jsou globály i core připravené (`shoptet`, `shoptet.*`, `getShoptetDataLayer`, `dataLayer`, `$`/`jQuery` — reference §2; footer bundle běží po jádru — §5). Nenavrhuj guardy proti undefined ani nevaruj o pořadí skriptů. Rozliš *globál je připravený* (garantováno → domněnka, mlč) od *DOM/obsah ještě není* (reálné → B5). **Reálné B5 zavádí sám kód doplňku:** `setTimeout(fn,0)` hack, init v parse-time místo v lifecycle eventu, dvojí bind, a čtení **obsahu/DOMu, který je až po AJAX update eventu** (košík/filtry/stránkování — §4). Pozor i na sousední (ne-B5) případ: **dataLayer klíče vázané na typ stránky** (`product` jen na `productDetail`) čtené jinde jsou reálný problém — ale to je **B1** (dostupnost dat), ne „globál undefined".
 
 ### B6 — Nepřepisovat / využít Shoptet core
