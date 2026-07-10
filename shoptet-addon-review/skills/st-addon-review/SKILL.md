@@ -18,6 +18,30 @@ co nejvíc rutinních nálezů, aby člověk řešil už jen doménové otázky 
 většinou nejsou silní programátoři — píšou velké monolitické skripty, často s jQuery.
 Tomu přizpůsob tón: konkrétně, slušně, s návrhem opravy, ne přednáškou.
 
+## Invarianty (absolutní, bezvýjimečné)
+
+Sedm zákazů, které platí **vždy a ve všech režimech**. Nikde dál v souboru se neopakují celé —
+na místech použití je jen krátký odkaz „(invariant N)". Poruší-li se kterýkoli, je výstup vadný
+bez ohledu na zbytek.
+
+1. **Nikdy `REQUEST_CHANGES` / „changes requested".** Skill sám nikdy nepřevádí PR do blokujícího
+   stavu; posílá jen `event: COMMENT`. Blokující nález znamená „tohle je potřeba opravit", ne
+   „blokuju merge" — finální rozhodnutí dělá člověk.
+2. **Žádná interní metadata do viditelného partnerského textu.** `rule_id`, čísla/ID pravidel
+   („A1", „C3", „viz F2") **ani slovo „katalog"/„mimo katalog"** se nikdy neobjeví v `title`,
+   `explanation`, `suggestion`, v inline komentáři ani v souhrnu. Žijí jen v JSON a ve skrytém
+   markeru (HTML komentář — renderovaně neviditelný, proto výjimka). Partner katalog nevidí.
+3. **`judgment` nález nikdy `blocking`** (strop `recommended`). Blokovat smí jen nález mapovaný na
+   pravidlo katalogu — gate pohání výhradně katalog.
+4. **Needituj katalog pravidel ani kód addonu.** Jsi reviewer, ne fixer: opravy jen navrhuj
+   (`suggestion`), opakovaný `judgment` jen označ `rule_candidate: true`. Katalog i kód mění člověk.
+5. **Žádné štítky ani gate v žádném režimu; v `pending` nesubmituj.** Draft vytvoř a odeslání
+   nech na člověku. Gate je zvlášť řešená CI vrstva mimo tenhle skill.
+6. **Nemaž ani nerecreate živý pending draft** (kvůli experimentu „co API unese"). Když recreate
+   selže, člověk zůstane bez draftu.
+7. **„Vyřešeno" jen při faktické změně kódu** v místě nálezu (git diff se ho dotkl) — **nikdy**
+   z toho, že re-run nález „nenašel". U nedeterministické AI by nenalezení vyrábělo tiché misy.
+
 ## Jak přemýšlet o své roli
 
 Existují tři druhy nálezů a každý má jiného vlastníka:
@@ -97,9 +121,8 @@ aby doplněk rozbil e-shop). **Nevytvářej vkusové ani spekulativní připomí
 
 Proto má každý nález pole `source`:
 - `catalog` — mapuje se na pravidlo z katalogu. Může být až `blocking`.
-- `judgment` — vlastní úsudek mimo katalog. **Nikdy `blocking`** (strop `recommended`);
-  v souhrnu jde do odděleného bloku „AI navíc upozorňuje (nezávazné)" — v **partnerském textu
-  ale slovo „katalog" nepoužívej** (partner o žádném katalogu nemá vědět, viz *Výstupní kontrakt*).
+- `judgment` — vlastní úsudek mimo katalog. Nikdy `blocking` (invariant 3); v souhrnu jde do
+  odděleného bloku „AI navíc upozorňuje (nezávazné)" — bez zmínky katalogu (invariant 2).
 
 Když se `judgment` nález opakuje napříč review, **nepřidávej pravidlo do katalogu sám** —
 katalog je kurátorský a upravuje ho jen člověk. Místo toho na to **výrazně upozorni**:
@@ -124,6 +147,9 @@ pravidlo. Rozhodnutí (formulace, závažnost, Gate, vlastník) je na člověku.
   pro pravidla **B1** (povrch dataLayer), **B4** (vždy dostupné globály) a **B6** (co je
   Shoptet core — nereimplementovat). Bez něj jsou tahle tři pravidla systematicky slabá;
   u B1/B4/B6 ho vždy konzultuj.
+- **GitHub API poznámky** — `references/github-api-notes.md`. Endpointy a ověřené gotchas pro
+  zápis review (pending vs. submit, neviditelný pending body, 422 na file-level komentář, SHA
+  a mapování řádků při re-runu). Čti až v kroku 6, když review reálně zapisuješ.
 - **Namespace prefix** — čti z `package.json` (pole, které scaffolduje boilerplate; jeden
   zdroj pravdy pro ESLint i pro tebe). Použij ho při kontrole globálů a `localStorage` klíčů.
   <!-- TODO: doplnit konkrétní název pole, až ho kolega zavede do boilerplate (zatím neexistuje).
@@ -207,8 +233,8 @@ Drž značky z příručky:
 z API…`. Partner tak vidí závažnost hned na začátku, bez čtení celého komentáře. (Do textu ale
 nepiš `rule_id` — viz *Výstupní kontrakt*.)
 
-**Nikdy** sám nepřeváděj PR do stavu "changes requested". Blokující nález znamená "tohle
-je potřeba opravit", ne "blokuju ti merge" — finální rozhodnutí dělá člověk.
+Blokující nález znamená „tohle je potřeba opravit", ne „blokuju ti merge" — nikdy PR nepřeváděj
+do „changes requested" (invariant 1).
 
 ## Výstupní kontrakt
 
@@ -232,6 +258,20 @@ Vrať JSON v tomto tvaru:
       "explanation": "Data z API se vkládají přes innerHTML bez ošetření — útočník může vložit skript.",
       "suggestion": "element.textContent = data;",
       "confidence": "high"
+    },
+    {
+      "rule_id": "A2",
+      "source": "catalog",
+      "status": "new",
+      "severity": "blocking",
+      "owner": "ai",
+      "file": "src/footer/gallery.js",
+      "line": 88,
+      "title": "Neošetřený výsledek .match() přeruší inicializaci doplňku",
+      "explanation": "url.match(re)[1] spadne na null, když URL nesedí — pád přeruší zbytek initu.",
+      "gate_check": "A2: přeruší neošetřená hodnota init doplňku? ANO → blocking",
+      "suggestion": "",
+      "confidence": "high"
     }
   ]
 }
@@ -240,23 +280,27 @@ Vrať JSON v tomto tvaru:
 Pravidla pro pole:
 - `catalog_version` — opiš doslova hodnotu `catalog_version` z hlavičky `references/rules-catalog.md`. Slouží k tomu, aby u srovnávaných běhů a v CI gate bylo dohledatelné, proti které verzi pravidel nález vznikl. Je to **strojová metadata** (jako `rule_id`) — do partnerského textu ani souhrnu nepatří.
 - `source` (`catalog` / `judgment`) — viz sekce *Scope*. `judgment` nález nesmí mít
-  `severity: blocking` (strop `recommended`) a musí být **konkrétní, vysoce jistý bug/riziko**
-  — ne vkus ani spekulace.
+  `severity: blocking` (invariant 3) a musí být **konkrétní, vysoce jistý bug/riziko** — ne vkus
+  ani spekulace.
 - `status` (`new` / `persisting` / `resolved`) — na prvním běhu je vše `new`; na re-runu se
   odvodí z git srovnání minulého a aktuálního commitu (viz *Re-run*). Řídí zápis (nový inline /
   žádný / obecné potvrzení v souhrnu) i gate.
+- `gate_check` — **povinné u každého nálezu na podmíněné pravidlo** (`❌/⚠️`: A2, B1, B5, B6, C1,
+  C3, F3, F5, I2, I4, J1, J2). Ne volný komentář — **binárně zodpovězená Gate otázka daného
+  pravidla ve tvaru** `ID: <citace Gate otázky>? ANO/NE → <severity>`, např.
+  `A2: přeruší pád init doplňku? ANO → blocking`. Severita nálezu **musí** odpovídat téhle
+  odpovědi. Smysl je donutit tě gate skutečně provést, ne ji odhadnout: binární otázka „přeruší
+  init? ANO/NE" nemá kam vpustit slevu za nízkou pravděpodobnost — ta patří do `confidence`, ne
+  do severity (viz Gate u A2). U nepodmíněných pravidel a u `judgment` nálezů pole vynech.
 - `rule_id` u `judgment` nálezu nech prázdné (na žádné pravidlo se nemapuje).
 - `suggestion` vyplň jen tam, kde umíš dát přesnou náhradu (půjde z ní GitHub
   `suggestion` blok na jedno kliknutí). Jin. nech prázdné.
 - `confidence` (`high` / `medium` / `low`) — v degradovaném režimu dávej `linter`-typovým
   nálezům nejvýš `medium`.
-- **Interní vs. partnerský text.** `rule_id` (a obecně jakýkoli odkaz na katalog — ID/číslo
-  pravidla jako „A1", „C3", „viz F2", **ale i samotné slovo „katalog" / „mimo katalog"**) je
-  **strojová metadata**: zůstává v JSON a v skrytém markeru komentáře (pohání gate a re-run
-  dedup — viz *Re-run*), ale **nikdy se nesmí objevit ve viditelném textu určeném partnerovi**
-  — ani v `title`, `explanation`, `suggestion`, ani v souhrnu. Partner katalog nevidí, ID mu nic
-  neřekne. Každý nález piš tak, aby byl srozumitelný sám o sobě, bez odkazu na pravidlo.
-  (Skrytý marker je HTML komentář — renderovaně neviditelný, tenhle zákaz neporušuje.)
+- **Interní vs. partnerský text (invariant 2).** `rule_id` a čísla pravidel žijí v JSON a ve
+  skrytém markeru (pohání gate a re-run dedup — viz *Re-run*), **nikdy** ve viditelném textu
+  (`title`, `explanation`, `suggestion`, souhrn). Každý nález piš tak, aby byl srozumitelný sám
+  o sobě, bez odkazu na pravidlo.
 
 ## Souhrnná zpráva (česká šablona)
 
@@ -307,52 +351,37 @@ AI navíc upozorňuje (nezávazné): {stručně, obecně — „u řádků v kó
 
 Když je přepínač **`off`:** skonči po vypsání JSON + zprávy, na GitHub nesahej vůbec.
 
-Když je přepínač **`pending`**, vytvoř draft review takto:
+Když je přepínač **`pending`**, vytvoř draft review takto (přesné endpointy a ověřené API-gotchas
+jsou v `references/github-api-notes.md` — čti je při zápisu):
 
-- **Jeden review, ne desítky komentářů.** Založ jeden review se všemi inline komentáři
-  najednou. Přes `gh`/API to znamená vytvořit review **bez pole `event`** — tím zůstane ve
-  stavu `PENDING` (draft): `gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews` s polem
-  `comments[]` (`path` + `line` + `body`) a **bez `event`**. Souhrn dej jako `body` review.
-  **Tělo každého komentáře začni značkou závažnosti** (`❌`/`⚠️`/`💡`/`❓`, viz *Mapování*)
-  a **na poslední řádek připoj skrytý marker** `st-review:…` (viz *Re-run* — nese `rule_id`/`fp`
-  pro dedup na dalším běhu). Vždy zároveň vypiš JSON + zprávu i do chatu.
-- **Souhrn není v pending viditelný v GitHubu** — tělo draftu se nezobrazí v timeline ani se
-  nenačte do submit boxu (vidět jsou jen inline komentáře v „Files changed"). Ke kontrole čti
-  souhrn **z výstupu běhu** (chat), ne z GitHubu; do GitHubu se dostane až submitem.
-- **Pod tvým vlastním `gh` loginem, ne pod servisní identitou.** Pending draft vidí **jen účet,
-  který ho založil** — aby sis ho mohl projít a submitnout, musí vzniknout pod tebou. (Oddělená
-  identita `shoptet-ai-reviewer` je s pending-pro-lidskou-kontrolu nekompatibilní; patří až
+- **Jeden review, ne desítky komentářů.** Založ jeden pending (draft) review se všemi inline
+  komentáři a souhrnem jako `body`. **Tělo každého komentáře začni značkou závažnosti**
+  (`❌`/`⚠️`/`💡`/`❓`, viz *Mapování*) a **na poslední řádek připoj skrytý marker** `st-review:…`
+  (viz *Re-run*). Vždy zároveň vypiš JSON + zprávu i do chatu.
+- **Souhrn čti z výstupu běhu (chat), ne z GitHubu** — `body` pending draftu je do submitu
+  neviditelný (viz notes).
+- **Zakládej pod svým vlastním `gh` loginem, ne pod servisní identitou** — draft vidí jen jeho
+  tvůrce, musíš si ho projít a submitnout ty. (Servisní identita `shoptet-ai-reviewer` patří až
   k `submit` módu.)
 - **Kde máš `suggestion`, použij GitHub ` ```suggestion ` blok** (oprava na jedno kliknutí).
-- **Nález na souboru bez řádku v diffu musí zůstat viditelný.** Prázdný (0 bajtů) soubor,
-  smazaný soubor nebo soubor mimo diff nemá řádek, na který jde zakotvit inline komentář —
-  a **do pending draftu nejde vložit komentář „na celý soubor"**: `DraftPullRequestReviewComment`
-  vyžaduje `position` v diffu a **nemá `subject_type: "file"`** (ověřeno, API vrací 422); file-level
-  komentář jde jen samostatným endpointem, který ale **rovnou publikuje** = notifikuje partnera →
-  proti pending režimu. Takový nález proto **nenechávej jen v (neviditelném) souhrnu** — zakotvi
-  řádkový komentář na **nejbližší související diffovaný soubor** (např. prázdný `yarn.lock` →
-  `package.json`/`pnpm-workspace.yaml`) s textem odkazujícím na ten skutečný soubor.
-- **Jde-li o re-run** (na PR už visí tvé minulé review s markery), řiď se sekcí *Re-run*: guard
-  na pending kolizi, git srovnání starého a nového commitu, tri-state klasifikace (nový =
-  inline; trvající = obvykle žádný nový inline + zmínka v souhrnu; vyřešený = jen obecně v souhrnu).
-  Nespoléhej na `line` jako identitu — ta se posouvá; identita nálezu je `rule_id` + `fp` z markeru.
+- **Nález na souboru bez řádku v diffu musí zůstat viditelný.** Prázdný/smazaný soubor nebo soubor
+  mimo diff nemá kam zakotvit inline komentář a komentář „na celý soubor" do pending draftu nejde
+  (viz notes — 422). Proto ho **nenechávej jen v neviditelném souhrnu**: zakotvi řádkový komentář
+  na **nejbližší související diffovaný soubor** (např. prázdný `yarn.lock` → `package.json`)
+  s textem odkazujícím na ten skutečný soubor.
+- **Jde-li o re-run** (na PR už visí tvé minulé review s markery), řiď se sekcí *Re-run*.
 - Po vytvoření **skonči a řekni člověku:** „vytvořen pending review na PR #…, N inline
   komentářů, odkaz — projdi a submitni ručně". Nesubmituj, needituj štítky.
 
 Když je přepínač **`submit`** (cílový stav, bez lidské kontroly):
 
-- Odešli **jeden** review rovnou: `gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews`
-  s `comments[]`, `body` (= souhrn) a **`event: COMMENT`**. Souhrn se objeví jako horní
-  komentář review, inline nálezy u řádků (v `submit` se souhrn strandování netýká). Vždy
-  zároveň vypiš i do chatu. **Marker i re-run platí stejně jako v `pending`:** ke každému inline
-  komentáři připoj skrytý `st-review:…` marker a na re-runu se řiď sekcí *Re-run* (git srovnání +
-  tri-state). Guard na pending kolizi: submitnutý review kolizi netvoří, ale pokud na PR visí tvůj
-  neprojitý `PENDING` draft z minula, vyřeš ho podle *Re-run*, ne přepisem.
-- **Event vždy `COMMENT`, NIKDY `REQUEST_CHANGES`** — ten vytvoří stav "changes requested",
-  který umí zrušit jen reviewer; partner by v něm bez člověka za tím uvízl natrvalo.
+- Odešli **jeden** review rovnou s `event: COMMENT` (endpoint viz notes). Souhrn se objeví jako
+  horní komentář, inline nálezy u řádků (v `submit` se strandování 0-řádkových nálezů netýká).
+  Vždy zároveň vypiš i do chatu. **Marker i re-run platí stejně jako v `pending`** — připoj skrytý
+  `st-review:…` marker ke každému komentáři a na re-runu se řiď sekcí *Re-run*.
+- **Event vždy `COMMENT`, NIKDY `REQUEST_CHANGES`** (invariant 1).
 - Pozor: `submit` **publikuje okamžitě a notifikuje** — žádný záchytný bod. Jediná pojistka
   je kvalita výstupu; zapínej ho, až pending výstup opakovaně obstojí beze změny.
-- Štítky ani gate skill nedělá ani tady.
 
 **Gate (samostatný required check) tímhle NEzapínáme** — zůstává jako zvlášť řešená CI vrstva
 (z nálezů se odvodí signál pro pipeline: dokud je nevyřešený bloker, gate červený; po opravě
@@ -396,14 +425,14 @@ teprve zakládají). Nějaké → **re-run**, pokračuj níže.
 uživatele a PR**. Zjisti deterministicky, jestli na PR visí tvůj review se `state: PENDING`. Pokud
 ano: review **normálně proveď a vypiš do chatu** (běh nezahazuj), ale **na GitHub nezapisuj nic**
 a skonči zprávou „na PR visí neprojitý draft z minula — projdi/submitni ho, pak spusť re-run".
-Cizí draft neobcházej přes GraphQL a **nemaž ho** (viz *Co NEDĚLAT*). Submitnutý review kolizi netvoří.
+Cizí draft neobcházej přes GraphQL a **nemaž ho** (invariant 6). Submitnutý review kolizi netvoří.
 
-**Git srovnání — jádro re-runu.** Minulé komentáře nesou SHA commitu (`commit_id` /
-`original_commit_id`).
-1. Z markerů + komentářů rekonstruuj minulé nálezy (`rule_id`, `fp`, `file`, řádek).
-2. Vezmi SHA minulého běhu (`old_sha`) a aktuální (`new_sha`) a udělej `git diff <old_sha>..<new_sha>`.
-   Řádky mapuj přes hunky — GitHub to zčásti dělá sám (outdated komentář má `position: null`).
-   Po force-pushi, kdy `old_sha` není lokálně, dojeď `git fetch origin <old_sha>`.
+**Git srovnání — jádro re-runu** (API detaily — kde je SHA, `position: null`, force-push fetch —
+v `references/github-api-notes.md`).
+1. Z markerů + komentářů rekonstruuj minulé nálezy (`rule_id`, `fp`, `file`, řádek) a vezmi SHA
+   minulého běhu (`old_sha`).
+2. `git diff <old_sha>..<new_sha>`; řádky mapuj přes hunky (GitHub to zčásti dělá sám — outdated
+   komentář má `position: null`).
 3. **Scope průchodu:** plný sémantický průchod (kroky 3–4) stačí nad **změněnými úseky** diffu
    a jejich kontextem; **repo-wide pravidla (C3 duplicita, D1/D4 kolize, F2 mrtvý kód, B6
    reimplementace core) přesto projeď přes celé repo** — změna jinde je může spustit. Re-run tím
@@ -419,8 +448,7 @@ Dotklo se místo nálezu diffu old_sha..new_sha?
     └─ problém trvá   → TRVAJÍCÍ (reanchored)
 ```
 
-**„Vyřešeno" smí padnout jen když se kód v místě nálezu fakticky změnil — nikdy z pouhého „nový
-běh to nenašel".** AI je nedeterministická; „nenašel jsem" by vyrábělo tiché misy strojově. Když
+**Větev VYŘEŠENO smí padnout jen z faktické změny kódu, nikdy z nenalezení (invariant 7).** Když
 se diff místa nálezu nedotkl, nález **je** dál platný, i kdybys ho podruhé neviděl.
 
 Chování podle stavu (→ JSON pole `status`):
@@ -443,20 +471,11 @@ lokálně. Hlavní cesta vždy preferuje skutečný ESLint; tohle je jen záchra
 
 ## Co NEDĚLAT
 
+Absolutní zákazy jsou **Invarianty** nahoře (REQUEST_CHANGES, interní metadata partnerovi,
+judgment blocking, editace katalogu/kódu, štítky/submit v pending, mazání draftu, „vyřešeno" bez
+změny kódu). Tady zbytek — praktiky, kde záleží na úsudku:
+
 - Nepřezkoumávej mechanické věci, když je ESLint k dispozici.
-- **Needituj katalog pravidel.** Opakovaný `judgment` nález jen označ `rule_candidate: true`
-  a upozorni v souhrnu — přidání pravidla je na člověku.
-- **Needituj kód addonu.** Jsi reviewer, ne fixer — opravy jen navrhuj (`suggestion`).
-- Neblokuj merge přes `REQUEST_CHANGES` — gate řeší samostatný check.
-- V `pending` módu review sám nesubmituj a neměň štítky — draft vytvoř, odeslání nech na člověku.
-  V `submit` módu odesílej vždy jen `event: COMMENT`, **nikdy `REQUEST_CHANGES`**; štítky ani gate
-  nedělej v žádném módu.
-- **Nemaž a znovu-nevytvářej živý pending draft kvůli experimentu** (co API unese apod.) — když
-  recreate selže, člověk zůstane bez draftu. Ověřené API-fakty jsou v sekci *Vracení do GitHubu*;
-  drž se jich, netestuj to mazáním živého draftu.
-- **Neoznačuj nález jako vyřešený jen proto, že ho re-run nenašel.** „Vyřešeno" smí padnout jen
-  když se kód v místě nálezu **fakticky změnil** (git diff se ho dotkl) — jinak nález trvá.
-  „Nenašel jsem to podruhé" u nedeterministické AI = tichý miss strojově (viz *Re-run*).
 - **Nehlas soubory mimo PR.** Než něco (i úklid) nahlásíš, ověř, že je součástí diffu / změněných
   souborů PR — nevymýšlej nálezy o souborech, které v PR nejsou.
 - **Nedávej `blocking` na doménové tvrzení „X neexistuje / vždy je Y", které jsi neověřil.**
@@ -466,9 +485,6 @@ lokálně. Hlavní cesta vždy preferuje skutečný ESLint; tohle je jen záchra
 - Nehádej záměr — když nevíš, ptej se (`❓`).
 - Neuzavírej judgment ani behaviorální stopu tiše jen proto, že nemá pravidlo — buď ji dojeď,
   nebo z ní udělej `❓`.
-- **Neuváděj partnerovi ID ani čísla katalogových pravidel** (A1, C3, F2…) **ani slovo „katalog" /
-  „mimo katalog"** — partner o žádném katalogu nemá vědět; `rule_id` patří jen do JSON, ne do
-  komentáře ani souhrnu.
 - Neměň tón na přednáškový; partner má z review odejít s jasným "co a jak opravit".
 
 ## Katalog pravidel
@@ -478,7 +494,9 @@ záznamu (`ID`, `Severity`, `Vlastník`, `Nástroj`, volitelně `Gate`, `Problé
 `Řešení`, `Náhrada kódu`, `Pozn.`). Při review se řiď tímhle:
 - `Vlastník` (`Linter` / `AI` / `Oba`) odpovídá `owner` ve výstupu (`linter` / `ai` / `both`).
 - `Gate` u podmíněných pravidel (`❌/⚠️`) je závazné kritérium, kdy nález blokuje a kdy je
-  jen doporučení — drž se ho, ať se stejný nález nehodnotí pokaždé jinak.
+  jen doporučení — drž se ho, ať se stejný nález nehodnotí pokaždé jinak. **Každý nález na
+  podmíněné pravidlo musí gate zodpovědět v poli `gate_check`** (viz *Výstupní kontrakt*) — to
+  není formalita, je to nástroj, jak si severitu vypočítat z Gate, ne odhadnout.
 - `Náhrada kódu` (fenced blok) = konkrétní oprava → použij ji jako `suggestion`.
 
 Katalog je zdroj pravdy a vyvíjí se nezávisle na tomto procesu. Pravidlo do něj **nepřidávej
