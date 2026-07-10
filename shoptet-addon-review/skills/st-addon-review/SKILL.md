@@ -126,15 +126,21 @@ pravidlo. Rozhodnutí (formulace, závažnost, Gate, vlastník) je na člověku.
   u B1/B4/B6 ho vždy konzultuj.
 - **Namespace prefix** — čti z `package.json` (pole, které scaffolduje boilerplate; jeden
   zdroj pravdy pro ESLint i pro tebe). Použij ho při kontrole globálů a `localStorage` klíčů.
+  <!-- TODO: doplnit konkrétní název pole, až ho kolega zavede do boilerplate (zatím neexistuje).
+       Do té doby prefix neurčuj naslepo — když pole v package.json chybí, kontrolu globálů/klíčů
+       vázanou na prefix přeskoč, nehádej (např. z `name`). -->
 
 ## Postup review
 
 0. **Zjisti rozsah a připrav si kontext.** Vytáhni diff PR — `gh pr diff <číslo>` nebo
    `git diff <base>...<head>` (u mergnutého PR merge commit, viz *Poznámky*). Ber ho jako
    **seznam změn**, ne jako jediný zdroj. Pak si otevři **celé dotčené soubory a jejich okolí**
-   z checkoutu, ať máš kontext celého addonu.
+   z checkoutu, ať máš kontext celého addonu. Zjisti i to, jestli jde o **re-run** (na PR už
+   visí tvé minulé review s markery `st-review:`) — pokud ano, řiď se sekcí *Re-run*, která mění
+   scope průchodu (kroky 3–4) i zápis (krok 6).
 1. **Načti rubriku.** Přečti `references/rules-catalog.md` a `references/shoptet-reference.md`.
-   Zjisti prefix addonu z `package.json`.
+   Zjisti prefix addonu z `package.json` (viz *Namespace prefix* výše — TODO: pole zatím
+   neexistuje, dodá kolega; když chybí, prefix nehádej).
 2. **Spusť ESLint.** Pokud je v repu nakonfigurovaný, převezmi jeho nálezy pro `linter`
    pravidla. Pokud dostupný není (chybí config, build padá), pokračuj v degradovaném režimu
    — viz níže.
@@ -211,11 +217,13 @@ Vrať JSON v tomto tvaru:
 ```json
 {
   "summary": "Česká souhrnná zpráva ve formátu šablony níže.",
+  "catalog_version": "2026-07-10",
   "linter_available": true,
   "findings": [
     {
       "rule_id": "A1",
       "source": "catalog",
+      "status": "new",
       "severity": "blocking",
       "owner": "ai",
       "file": "src/js/video.js",
@@ -230,9 +238,13 @@ Vrať JSON v tomto tvaru:
 ```
 
 Pravidla pro pole:
+- `catalog_version` — opiš doslova hodnotu `catalog_version` z hlavičky `references/rules-catalog.md`. Slouží k tomu, aby u srovnávaných běhů a v CI gate bylo dohledatelné, proti které verzi pravidel nález vznikl. Je to **strojová metadata** (jako `rule_id`) — do partnerského textu ani souhrnu nepatří.
 - `source` (`catalog` / `judgment`) — viz sekce *Scope*. `judgment` nález nesmí mít
   `severity: blocking` (strop `recommended`) a musí být **konkrétní, vysoce jistý bug/riziko**
   — ne vkus ani spekulace.
+- `status` (`new` / `persisting` / `resolved`) — na prvním běhu je vše `new`; na re-runu se
+  odvodí z git srovnání minulého a aktuálního commitu (viz *Re-run*). Řídí zápis (nový inline /
+  žádný / obecné potvrzení v souhrnu) i gate.
 - `rule_id` u `judgment` nálezu nech prázdné (na žádné pravidlo se nemapuje).
 - `suggestion` vyplň jen tam, kde umíš dát přesnou náhradu (půjde z ní GitHub
   `suggestion` blok na jedno kliknutí). Jin. nech prázdné.
@@ -240,10 +252,11 @@ Pravidla pro pole:
   nálezům nejvýš `medium`.
 - **Interní vs. partnerský text.** `rule_id` (a obecně jakýkoli odkaz na katalog — ID/číslo
   pravidla jako „A1", „C3", „viz F2", **ale i samotné slovo „katalog" / „mimo katalog"**) je
-  **strojová metadata**: zůstává v JSON, protože pohání
-  gate a re-run dedup, ale **nikdy se nesmí objevit v textu určeném partnerovi** — ani v
-  `title`, `explanation`, `suggestion`, ani v souhrnu. Partner katalog nevidí, ID mu nic
+  **strojová metadata**: zůstává v JSON a v skrytém markeru komentáře (pohání gate a re-run
+  dedup — viz *Re-run*), ale **nikdy se nesmí objevit ve viditelném textu určeném partnerovi**
+  — ani v `title`, `explanation`, `suggestion`, ani v souhrnu. Partner katalog nevidí, ID mu nic
   neřekne. Každý nález piš tak, aby byl srozumitelný sám o sobě, bez odkazu na pravidlo.
+  (Skrytý marker je HTML komentář — renderovaně neviditelný, tenhle zákaz neporušuje.)
 
 ## Souhrnná zpráva (česká šablona)
 
@@ -300,8 +313,9 @@ Když je přepínač **`pending`**, vytvoř draft review takto:
   najednou. Přes `gh`/API to znamená vytvořit review **bez pole `event`** — tím zůstane ve
   stavu `PENDING` (draft): `gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews` s polem
   `comments[]` (`path` + `line` + `body`) a **bez `event`**. Souhrn dej jako `body` review.
-  **Tělo každého komentáře začni značkou závažnosti** (`❌`/`⚠️`/`💡`/`❓`, viz *Mapování*).
-  Vždy zároveň vypiš JSON + zprávu i do chatu.
+  **Tělo každého komentáře začni značkou závažnosti** (`❌`/`⚠️`/`💡`/`❓`, viz *Mapování*)
+  a **na poslední řádek připoj skrytý marker** `st-review:…` (viz *Re-run* — nese `rule_id`/`fp`
+  pro dedup na dalším běhu). Vždy zároveň vypiš JSON + zprávu i do chatu.
 - **Souhrn není v pending viditelný v GitHubu** — tělo draftu se nezobrazí v timeline ani se
   nenačte do submit boxu (vidět jsou jen inline komentáře v „Files changed"). Ke kontrole čti
   souhrn **z výstupu běhu** (chat), ne z GitHubu; do GitHubu se dostane až submitem.
@@ -318,7 +332,10 @@ Když je přepínač **`pending`**, vytvoř draft review takto:
   proti pending režimu. Takový nález proto **nenechávej jen v (neviditelném) souhrnu** — zakotvi
   řádkový komentář na **nejbližší související diffovaný soubor** (např. prázdný `yarn.lock` →
   `package.json`/`pnpm-workspace.yaml`) s textem odkazujícím na ten skutečný soubor.
-- **Při re-runu neposílej znovu už vyřešené nálezy** — porovnávej podle `rule_id` + `file` + `line`.
+- **Jde-li o re-run** (na PR už visí tvé minulé review s markery), řiď se sekcí *Re-run*: guard
+  na pending kolizi, git srovnání starého a nového commitu, tri-state klasifikace (nový =
+  inline; trvající = obvykle žádný nový inline + zmínka v souhrnu; vyřešený = jen obecně v souhrnu).
+  Nespoléhej na `line` jako identitu — ta se posouvá; identita nálezu je `rule_id` + `fp` z markeru.
 - Po vytvoření **skonči a řekni člověku:** „vytvořen pending review na PR #…, N inline
   komentářů, odkaz — projdi a submitni ručně". Nesubmituj, needituj štítky.
 
@@ -327,7 +344,10 @@ Když je přepínač **`submit`** (cílový stav, bez lidské kontroly):
 - Odešli **jeden** review rovnou: `gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews`
   s `comments[]`, `body` (= souhrn) a **`event: COMMENT`**. Souhrn se objeví jako horní
   komentář review, inline nálezy u řádků (v `submit` se souhrn strandování netýká). Vždy
-  zároveň vypiš i do chatu.
+  zároveň vypiš i do chatu. **Marker i re-run platí stejně jako v `pending`:** ke každému inline
+  komentáři připoj skrytý `st-review:…` marker a na re-runu se řiď sekcí *Re-run* (git srovnání +
+  tri-state). Guard na pending kolizi: submitnutý review kolizi netvoří, ale pokud na PR visí tvůj
+  neprojitý `PENDING` draft z minula, vyřeš ho podle *Re-run*, ne přepisem.
 - **Event vždy `COMMENT`, NIKDY `REQUEST_CHANGES`** — ten vytvoří stav "changes requested",
   který umí zrušit jen reviewer; partner by v něm bez člověka za tím uvízl natrvalo.
 - Pozor: `submit` **publikuje okamžitě a notifikuje** — žádný záchytný bod. Jediná pojistka
@@ -337,6 +357,83 @@ Když je přepínač **`submit`** (cílový stav, bez lidské kontroly):
 **Gate (samostatný required check) tímhle NEzapínáme** — zůstává jako zvlášť řešená CI vrstva
 (z nálezů se odvodí signál pro pipeline: dokud je nevyřešený bloker, gate červený; po opravě
 na push nebo štítku `human-review` zelený). Není součástí zápisu do GitHubu.
+
+## Re-run (opakovaný běh na témže PR)
+
+Životní cyklus PR není jeden průchod: zreviewuješ → partner pushne opravy → běžíš znovu. Re-run
+musí spolehlivě rozlišit nález **nový / trvající / vyřešený**. Když to neumí, partner buď dostane
+týž komentář dvakrát (šum, ztráta důvěry), nebo se nový nález mylně spáruje se starým a **tiše
+zmizí** — podle filozofie skillu ten horší případ (mizí beze stopy). Platí jen pro `pending`
+a `submit`; v `off` na GitHubu nic nezůstává, re-run se ho netýká.
+
+**Skrytý marker — identita nálezu napříč běhy.** Ke každému inline komentáři (v `pending`
+i `submit`, tedy i na prvním běhu) připoj na **poslední řádek** těla HTML komentář — renderovaně
+neviditelný, přes API čitelný (standardní praxe botů: Dependabot, danger-js):
+
+```
+<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-07-10"} -->
+```
+
+- `rule_id` — u `judgment` nálezu nech prázdné.
+- `fp` — otisk *místa* nálezu: vezmi kód, o který jde (kotevní řádek, u víceřádkového nálezu jeho
+  minimální rozsah), **normalizuj** (ořízni okraje, víc bílých znaků sraz na jednu mezeru) a
+  zahashuj (`… | shasum`), do markeru dej prvních 6 znaků. Cíl: otisk přežije **posun řádků
+  i reindentaci**, takže identifikuje nález nezávisle na `line`. **Kolize:** když týž hash vyjde
+  pro víc výskytů téhož pravidla v témže souboru (dva identické řádky), rozliš je pořadovým číslem
+  výskytu — `a3f9c2#2` pro druhý výskyt.
+- `file` — **skutečný** soubor nálezu (ne ten, na který je komentář kvůli 0-řádkovému souboru
+  jen zakotvený — viz pravidlo o zakotvení výše).
+- Marker je jediný perzistentní nosič `rule_id`/`fp`. **Značka (`❌…`) zůstává prvním *viditelným*
+  znakem** těla; marker je až úplně za textem, takže se nebijí. Viditelné `rule_id` se nezavádí
+  (drobný známý únik: „quote reply" cituje raw markdown včetně markeru — unikne jen ID a hash,
+  kosmetika).
+
+**Detekce re-runu (na začátku běhu).** Přes `gh api` načti existující review komentáře na PR od
+svého loginu a hledej markery `st-review:`. Žádné → **první běh** (vše `status: "new"`, markery se
+teprve zakládají). Nějaké → **re-run**, pokračuj níže.
+
+**Guard na pending kolizi (dřív než cokoli zapíšeš).** GitHub dovolí **jeden pending review na
+uživatele a PR**. Zjisti deterministicky, jestli na PR visí tvůj review se `state: PENDING`. Pokud
+ano: review **normálně proveď a vypiš do chatu** (běh nezahazuj), ale **na GitHub nezapisuj nic**
+a skonči zprávou „na PR visí neprojitý draft z minula — projdi/submitni ho, pak spusť re-run".
+Cizí draft neobcházej přes GraphQL a **nemaž ho** (viz *Co NEDĚLAT*). Submitnutý review kolizi netvoří.
+
+**Git srovnání — jádro re-runu.** Minulé komentáře nesou SHA commitu (`commit_id` /
+`original_commit_id`).
+1. Z markerů + komentářů rekonstruuj minulé nálezy (`rule_id`, `fp`, `file`, řádek).
+2. Vezmi SHA minulého běhu (`old_sha`) a aktuální (`new_sha`) a udělej `git diff <old_sha>..<new_sha>`.
+   Řádky mapuj přes hunky — GitHub to zčásti dělá sám (outdated komentář má `position: null`).
+   Po force-pushi, kdy `old_sha` není lokálně, dojeď `git fetch origin <old_sha>`.
+3. **Scope průchodu:** plný sémantický průchod (kroky 3–4) stačí nad **změněnými úseky** diffu
+   a jejich kontextem; **repo-wide pravidla (C3 duplicita, D1/D4 kolize, F2 mrtvý kód, B6
+   reimplementace core) přesto projeď přes celé repo** — změna jinde je může spustit. Re-run tím
+   zlevní, ale **pokrytí se nesnižuje**.
+
+**Tri-state klasifikace.** Dva stavy padnou z gitu deterministicky, AI posuzuje jen jednu větev:
+
+```
+Dotklo se místo nálezu diffu old_sha..new_sha?
+├─ NE  → TRVAJÍCÍ (kód identický → nález platí dál, deterministicky)
+└─ ANO → AI posoudí nové znění:
+    ├─ problém zmizel → VYŘEŠENO
+    └─ problém trvá   → TRVAJÍCÍ (reanchored)
+```
+
+**„Vyřešeno" smí padnout jen když se kód v místě nálezu fakticky změnil — nikdy z pouhého „nový
+běh to nenašel".** AI je nedeterministická; „nenašel jsem" by vyrábělo tiché misy strojově. Když
+se diff místa nálezu nedotkl, nález **je** dál platný, i kdybys ho podruhé neviděl.
+
+Chování podle stavu (→ JSON pole `status`):
+- **`new`** — inline komentář s markerem.
+- **`persisting`** — nález trvá:
+  - *nedotčený* (větev NE): starý komentář žije na GitHubu na svém řádku → **nevkládej nový
+    inline** (byla by duplicita).
+  - *reanchored* (větev ANO, problém trvá): starý komentář je teď outdated (posunutý řádek) →
+    vlož **nový** inline na nový řádek se **stejným `fp`** v markeru.
+  - blokující `persisting` **znovu jmenuj v souhrnu** („trvá z minulého kola"); gate drží červenou.
+- **`resolved`** — **žádný inline**, jen **obecné potvrzení v souhrnu** (bez čísel, např. „část
+  připomínek z minulého kola je opravená"); uvolňuje gate.
+- Dřív vyřešený nález, který se vrátí (`fp` znovu sedí na nový problém) → ber jako **`new`**.
 
 ## Degradovaný režim (ESLint nedostupný)
 
@@ -357,6 +454,9 @@ lokálně. Hlavní cesta vždy preferuje skutečný ESLint; tohle je jen záchra
 - **Nemaž a znovu-nevytvářej živý pending draft kvůli experimentu** (co API unese apod.) — když
   recreate selže, člověk zůstane bez draftu. Ověřené API-fakty jsou v sekci *Vracení do GitHubu*;
   drž se jich, netestuj to mazáním živého draftu.
+- **Neoznačuj nález jako vyřešený jen proto, že ho re-run nenašel.** „Vyřešeno" smí padnout jen
+  když se kód v místě nálezu **fakticky změnil** (git diff se ho dotkl) — jinak nález trvá.
+  „Nenašel jsem to podruhé" u nedeterministické AI = tichý miss strojově (viz *Re-run*).
 - **Nehlas soubory mimo PR.** Než něco (i úklid) nahlásíš, ověř, že je součástí diffu / změněných
   souborů PR — nevymýšlej nálezy o souborech, které v PR nejsou.
 - **Nedávej `blocking` na doménové tvrzení „X neexistuje / vždy je Y", které jsi neověřil.**

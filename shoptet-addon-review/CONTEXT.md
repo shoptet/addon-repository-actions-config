@@ -1,7 +1,12 @@
-# CONTEXT — AI reviewer Shoptet doplňků (handoff)
+# CONTEXT — AI reviewer Shoptet doplňků
 
-> Kontext pro Claude Code. Shrnuje, co stavíme, proč, jaká rozhodnutí padla a v jakém režimu
-> teď běžíme. Není to skill — samotný review řídí `st-addon-review/SKILL.md`. Tohle je mapa okolo.
+> Kontext pro Claude Code a **jediný zdroj pravdy pro „co platí teď"**: co stavíme, proč, jaká
+> rozhodnutí padla, co je vědomě odloženo, jaké mantinely neodlaďovat zpátky a v jakém režimu
+> běžíme. Není to skill — samotný review řídí `st-addon-review/SKILL.md`. Tohle je mapa okolo.
+>
+> **Dělba s `HANDOFF.md`:** CONTEXT = **stav** (trvalá pravda, edituje se, když se rozhodnutí
+> změní). HANDOFF = **cesta** (datovaný append-only žurnál běhů; co se kdy stalo, nepřepisuje se).
+> Trvalé rozhodnutí patří sem, ne do datovaného zápisu — tím se soubory nerozjíždějí.
 
 ## Co stavíme a proč
 
@@ -30,10 +35,10 @@ Nálezy se dělí podle toho, který nástroj je nejlevnější, co je chytí:
 - **Katalog pohání gate.** Blokovat (`blocking`) smí **jen** nález mapovaný na pravidlo
   z katalogu — gate musí být férový a obhajitelný.
 - **Vlastní úsudek (`judgment`) je ZAPNUTÝ** (od tohoto běhu). Je **advisory, nikdy blokující**
-  (strop `recommended`), vždy `source: judgment`, do odděleného bloku „AI navíc upozorňuje
-  (mimo katalog)". Smí pokrýt jen **konkrétní bug / bezpečnostní / funkční riziko s vysokou
-  jistotou** — žádný vkus ani spekulace. Opakovaný úsudkový nález → `rule_candidate: true`
-  (kandidát na nové pravidlo; katalog edituje jen člověk, ne agent).
+  (strop `recommended`), vždy `source: judgment`. Smí pokrýt jen **konkrétní bug / bezpečnostní /
+  funkční riziko s vysokou jistotou** — žádný vkus ani spekulace. Opakovaný úsudkový nález →
+  `rule_candidate: true` (kandidát na nové pravidlo; katalog edituje jen člověk, ne agent).
+  Jak se judgment prezentuje partnerovi → *Záměrná rozhodnutí › Partnerský výstup* níže.
 - **Přesnost před úplností.** Falešný nález stojí důvěru partnera víc než minutí. Když si AI
   není jistá záměrem → dotaz (`❓`), ne tvrzení.
 - **Cílové prostředí = review v Claude Code** nad naklonovaným repem (ne CI). Agent si diff
@@ -71,12 +76,96 @@ katalogové nálezy, nízké false-positives, funkční zdrženlivost (B1 potla�
 - **A1↔E1** křížový odkaz — `+`-skládání HTML s daty z API je **A1 (XSS, blokující)**, ne jen
   stylové E1.
 
+## Jak se skill ladí
+
+Nejsilnější nástroj je **dvojí běh: `st-addon-review` vs. „obyčejné" Claude Code review** na
+**už zreviewovaném** PR (kde znáš i lidské komentáře jako gold standard). Důvod: nejnebezpečnější
+chyby skillu jsou **tiché miss** — věc, kterou skill viděl a spolkl, nebo vůbec nezkusil.
+False-positive je vidět; tichý miss nezanechá stopu a odhalí ho jen porovnání s druhým reviewem.
+Bez toho srovnání „vypadá to dobře" nic neznamená. Každá úprava se ověřuje na dalším PR, ideálně
+re-runem na tom samém, co dřív selhal. Chronologie jednotlivých běhů je v `HANDOFF.md`.
+
+## Záměrná rozhodnutí (NEODLAĎOVAT zpátky)
+
+Instrukce v SKILL.md, které vypadají „divně", **nejsou samoúčelné** — každá je záplata na reálně
+pozorovanou chybu z běhů. Než něco z toho odladíš zpátky, přečti proč to tam je.
+
+**Tři opravené kalibrační chyby (z prvních běhů):**
+1. **Špatný nástroj** (prázdné soubory) → u F5 apod. používej správný nástroj/ověření.
+2. **Tiše zahozený ověřitelný lead** (mrtvý kód v `ShkProject` — „možná F2… radši ne", zahodil)
+   → *„Přesnost ≠ mlčení"* + *ověř `grep`em přes celé repo* (F2/C3/B6/D1/D4). `grep` na symbol =
+   0 čtení → potvrzený F2. Levné ověření místo zahození.
+3. **Předčasně uzavřený řádek** (jazykový fallback minut, protože řádek prověřen jen optikou
+   A1/XSS a odškrtnut) → *„jeden řádek spouští víc pravidel"* (po A1 projdi A2/I2/J2) + *„traceuj
+   negativní větev"* u `map[key]` / indexace / parametru bez defaultu / `JSON.parse`.
+
+Meta-vzorec těch chyb: skill zůstával **lokální**, když měl jít **napříč repem / napříč pravidly**,
+a **uzavíral nález o jednu otázku dřív**.
+
+**Kalibrace potvrzená napříč běhy:**
+- **Kontrola úplnosti = dvouosá:** šířka (matice soubor × A–J) + hloubka (model chování;
+  „reportuju z ověřeného, nebo z ‚myslím, že jsem to protraceoval'?"). **Matice měří šířku, ne
+  hloubku** — velký soubor odškrtnutý přes pár sekcí = falešné razítko → `❓ mělce prošlé`.
+- **A2 Gate:** výjimka, co přeruší init doplňku = **❌** (patří na čelo blokujících), ne ⚠️.
+  A **podmíněnost pádu závažnost nesnižuje** — „*jen když* shop nevloží config" je nízká
+  pravděpodobnost → patří do `confidence`, **ne** do severity. (Model si podmíněnost 2× přeložil
+  na slevu ❌→⚠️; próza je slabá páka, míří proto přímo na ten mechanismus záměny.)
+- **Úzká control-flow osa:** u funkce, co mění DOM / váže handlery, `grep` místa volání + ověř
+  idempotenci. **Neidempotentní funkce volaná z víc lifecycle hooků** je bug z *počtu volání*,
+  není vidět v těle ani v jednom místě volání (E6/B5). Jediná ze zvažovaných mechanických záplat,
+  co se zapsala — protože se vrátila napříč běhy (2/3 monolity).
+- **Doménové „co NENÍ nález":** B5 (globál/core undefined z řazení skriptů) a B1 (class selektor
+  k cílení prvků). U obou drž hranici reálných nálezů — mají mirror v `shoptet-reference.md`.
+- **Partnerský výstup:** `rule_id`, čísla pravidel **i slovo „katalog"/„mimo katalog"** = interní,
+  nikdy do komentáře/souhrnu. Judgment nálezy jdou v souhrnu do odděleného bloku
+  **„AI navíc upozorňuje (nezávazné)"** (partnerský název; „mimo katalog" je interní). Každý inline
+  komentář začíná značkou (`❌/⚠️/💡/❓`). Souhrn = rozcestník: jen blokující jmenovat,
+  doporučení/tipy **obecně BEZ ČÍSEL** + max 3 témata.
+
+## Co je vědomě ODLOŽENÉ (ne opomenuté)
+
+- **Judgment je zatím spíš opatrný.** Cross-file logické bugy chytne, jen když jsou dost jisté;
+  jemnější rizika může minout. Vědomé — neřešit rozvolnění prahu z jednoho PR, hrozí šum.
+- **Mechanické heuristiky (sink heuristika, seznam DOM lookupů, „degenerate-construct" judgment)**
+  vědomě NEZAPSÁNY — generická hloubková osa je nese. Nepřidávej zpětně z jednoho miss; ohrozí to
+  ~0 FP přesnost, což je nejsilnější aktivum. Zvaž teprve u opakovaně se vracejícího vzoru.
+- **Robustnost napříč populací pořád není „hotová."** Otestováno na dvou monolitech + dvou
+  modulárních PR — pár běhů nejsou statistika. Pokračovat v dual-runech.
+- **SCSS do hloubky** skill jen skimuje; z velké části **stylelint-owned** → spadne pod linter
+  vrstvu. Reálná AI-mezera je jen užší zbytek.
+- **Linter vrstva (ESLint/stylelint/depcheck) není hotová** → všechny běhy jely v degradovaném
+  režimu. Staví ji kolega; patří do boilerplate. Sem míří i sweep-typové věci (zakomentovaný
+  mrtvý kód napříč soubory, lockfily, prázdné soubory).
+- **Perzistovaný findings JSON** — pro re-run dedup není potřeba (identitu nesou skryté markery +
+  git srovnání, viz `SKILL.md` › *Re-run*); zůstává jako budoucí kanonický záznam běhu pro CI gate
+  a polotovar eval sady. Zavést až s CI vrstvou / eval sadou.
+- **Plně automatický `submit` (bez člověka) je NAPSANÝ, ale NEZVOLENÝ.** Default `pending`.
+  Zapnout až bude pending výstup opakovaně takový, že bys ho submitnul beze změny. Servisní
+  identita (`shoptet-ai-reviewer`) patří až sem, ne k pending.
+- **Backlog pravidel** (A6–A11, P1 GDPR, sekce J accessibility = runtime) — parkováno.
+
+## Pasti, do kterých nespadnout
+
+- **„Regular review našel víc → přidejme to do katalogu."** Ne. Rozliš *skill to minul* (patřilo
+  do scope, oprav) od *skill to správně neřešil* (TS přesnost, doménové race conditiony, build
+  tooling, kosmetika — mimo scope, patří člověku/jinému nástroji). Zaostřenost je záměr.
+- **„Judgment našel něco mimo katalog!"** Nejdřív ověř, že to není existující pravidlo, které se
+  jen neaktivovalo (XSS-přes-konkatenaci = A1; rozbitý import z prázdného souboru = F5/F2).
+- **Věřit jednomu běhu.** Každá úprava se ověřuje na dalším PR, ideálně re-runem na tom, co selhal.
+- **„Generická osa to na jednom PR nechytila → přidejme mechanickou heuristiku."** Ne — ohrozí
+  ~0 FP přesnost. Heuristiku zvaž až u opakovaně se vracejícího vzoru.
+- **Zapnout `submit` předčasně.** Je připravený schválně; brzdí ho jen **důvěra ve výstup**
+  (opakovaně čistý pending), ne technika. Přepnutí je jeden znak — ta laťka je celý smysl.
+- **Řešit neviditelný pending souhrn tím, že ho zveřejníš.** Souhrn se během pending čte z výstupu
+  běhu; publikace navíc = ztráta lidské kontroly, přesně to, čemu pending brání.
+
 ## Soubory (skill balík)
 
 ```
 shoptet-addon-review/
 ├── .claude-plugin/plugin.json
-├── CONTEXT.md                             # tento soubor
+├── CONTEXT.md                             # tento soubor — stav, rozhodnutí, režim
+├── HANDOFF.md                             # cesta — poznatky z běhů, proč jsou instrukce takové, co je odloženo
 ├── INSTALL.md                             # instalace + kickoff prompt
 └── skills/st-addon-review/
     ├── SKILL.md                           # proces review (řídí agenta)

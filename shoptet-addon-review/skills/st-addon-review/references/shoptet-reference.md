@@ -2,7 +2,14 @@
 
 > **Companion k `rules-catalog.md`.** Review agent ho dostane spolu s katalogem. Bez něj jsou B1 (dataLayer), B4 (vždy dostupné globály) a B6 (nepřepisovat core) systematicky slabé — agent by poznal jen to, co je jmenované v příkladu pravidla.
 >
-> **Zdroj a platnost:** snapshot z `github.com/shoptet/templates-assets@master` (`00/js/main-3g.js` import manifest, `00/js/modules`, `00/js/libs`, `shared/js/libs`, `dataLayerHelper.js`, `globalFunctions.js`) + dev dokumentace dataLayer, staženo 2026-06-30. **Inventář modulů/funkcionality (§3) je díky manifestu `main-3g.js` kompletní pro šablonu `00`.** Naopak **member-level `shoptet.*` API (§2) je stále jen částečné** — přesné názvy metod jednotlivých namespaces nejsou všechny ověřené. **Když konkrétní metoda v seznamu není, neznamená to, že neexistuje** — ověř v repu a na developers.shoptet.com. Verze šablon (`00`, `07`, `09`, `10`, `11`, `12`, `13`, `14`) odpovídají `shoptet.abilities.about.id`; `00` je společný základ.
+> **Zdroj a platnost (provenance):**
+> - **Repo:** `github.com/shoptet/templates-assets`
+> - **Pin (commit):** `TODO` — snapshot k 2026-06-30 byl pořízen z `@master` **bez zaznamenání hashe**; při první regeneraci pinni na konkrétní commit a hash sem zapiš (viz *§6 Údržba a regenerace* na konci souboru). Dokud tu je `TODO`, ber datum níže jako jediné vodítko o stáří.
+> - **Snapshot k datu:** 2026-06-30
+> - **Rozsah odběru:** `00/js/main-3g.js` (import manifest), `00/js/modules`, `00/js/libs`, `shared/js/libs`, `dataLayerHelper.js`, `globalFunctions.js` + dev dokumentace dataLayer.
+> - **Šablony:** `00`, `07`, `09`, `10`, `11`, `12`, `13`, `14` odpovídají `shoptet.abilities.about.id`; `00` je společný základ.
+>
+> **Úplnost:** Inventář modulů/funkcionality (§3) je díky manifestu `main-3g.js` **kompletní pro šablonu `00`**. Naopak member-level `shoptet.*` API (§2) je **stále jen částečné** — přesné názvy metod jednotlivých namespaces nejsou všechny ověřené. **Když konkrétní metoda v seznamu není, neznamená to, že neexistuje** — ověř v repu a na developers.shoptet.com (a pozor: i oficiální docs se pletou — viz případ `product.code`, proto se ověřuje proti repu, ne jen proti docs).
 
 ---
 
@@ -180,3 +187,29 @@ Doplněk se má napojit na životní cyklus přes Shoptet eventy (`document.addE
 - **Konfigurace specifická pro e-shop:** vkládat jako **inline JSON do `header`** (přes API pro HTML kódy), v `footer` kódu jen číst (B3).
 - **`$asset`** = servírování assetů doplňku ze Shoptet úložiště — používej místo absolutní cizí CDN URL (G5).
 - **Produkční build je minifikovaný**; `dist`/dev buildy nepatří do PR (G1/F5); dev nástroje za ENV (`production` vs `dev`, viz F3).
+
+---
+
+## 6. Údržba a regenerace (jen pro údržbáře skillu — agent u review přeskoč)
+
+> **Proč to tu je:** na téhle referenci stojí blokovatelná pravidla **B1/B4/B6** a celé sekce „co NENÍ nález". `@master` snapshot tiše stárne vůči pohyblivému cíli. Že to není hypotetické: **2026-07-09** se faktická chyba (`ShoptetDOMContentLoaded` prý běží i při prvním načtení) propsala **do tří souborů najednou** (tahle reference §4, pravidlo B5 v katalogu, checklist v guide). Postup níže má takovou chybu chytit **systematicky, ne náhodou**.
+
+**Kdy regenerovat:** při větší změně `templates-assets`, při podezření na zastaralý fakt (falešný B1/B6 bloker), nebo periodicky (á 6 měsíců).
+
+**Postup:**
+1. **Pinni commit.** Zjisti aktuální hash `master` v `github.com/shoptet/templates-assets` a od začátku pracuj proti **němu**, ne proti pohyblivému `@master`:
+   ```sh
+   git clone --depth 1 https://github.com/shoptet/templates-assets
+   git -C templates-assets rev-parse HEAD   # → tenhle hash zapiš do hlavičky (Pin)
+   ```
+2. **Přetáhni odběr** (rozsah viz hlavička): `00/js/main-3g.js` (import manifest — z něj je §3 kompletní pro šablonu `00`), `00/js/modules`, `00/js/libs`, `shared/js/libs`, `dataLayerHelper.js`, `globalFunctions.js`.
+3. **Ověř proti repu, ne jen proti docs.** developers.shoptet.com se pletou (případ `product.code`). Když si fakt a docs odporují, vyhrává repo; rozpor poznamenej.
+4. **Aktualizuj hlavičku:** nový `Pin` (hash) + `Snapshot k datu`. Bez zapsaného hashe je regenerace neúplná.
+5. **KŘÍŽOVÁ KONTROLA ZÁVISLÝCH PRAVIDEL (nevynechat — tady vznikla chyba 07-09).** Každý změněný/opravený fakt projdi napříč soubory, které z něj žijí:
+   - `rules-catalog.md` — pravidla **B1, B4, B6** (a jejich Gate / „co NENÍ nález") + cokoli, co cituje konkrétní klíč/metodu/event z reference.
+   - `guide.md` — partnerský checklist (např. řádek o init eventech).
+   - jinde v `shoptet-reference.md` — sekce „co NENÍ nález" a poznámky, které fakt opakují.
+
+   Pravidlo: **fakt v referenci se nikdy nemění osamoceně** — buď se změní i závislá pravidla, nebo se ověří, že se jich netýká. Opravu datuj poznámkou u dotčeného místa (jako blok „Oprava (2026-07-09)" v §4).
+
+**Ideál (zatím TODO):** kroky 1–2 skriptovat (clone na pin + extrakce odběru do diffovatelné podoby), ať je regenerace jedním příkazem a změny oproti minulému snapshotu jsou vidět mechanicky.

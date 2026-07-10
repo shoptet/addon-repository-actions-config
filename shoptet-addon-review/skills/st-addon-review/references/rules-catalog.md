@@ -1,5 +1,7 @@
 # Katalog pravidel — Shoptet doplňky
 
+**`catalog_version: 2026-07-10`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u srovnávaných běhů a v CI gate bylo jasné, proti kterým pravidlům nález vznikl.
+
 > Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J)**. Lidská část (proces, „typická struktura review", checklist) je v `GUIDE.md`.
 >
 > **Pravidla B1 / B4 / B6 vyžadují znalost Shoptet prostředí** (dataLayer klíče, vždy dostupné globály, seznam core funkcí). Tu agent dostane z companion souboru **`shoptet-reference.md`**, který se předává spolu s tímto katalogem. Bez něj jsou B1/B4/B6 systematicky slabé.
