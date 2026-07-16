@@ -6,6 +6,7 @@ const { lintJavaScript } = require('./linters/eslint-linter');
 const { lintStyles } = require('./linters/stylelint-linter');
 const { lintHtml } = require('./linters/html-linter');
 const { lintCrossFile } = require('./linters/crossfile-linter');
+const { isReliable } = require('./profiles');
 
 const PATTERNS = {
   js: '**/*.js',
@@ -56,6 +57,8 @@ async function main() {
   const args = process.argv.slice(2);
   // rdjson mode emits reviewdog Diagnostic JSON on stdout (for PR comments).
   const rdjson = args.includes('--rdjson');
+  // strict = only reliable rules (CI/PR gate); full (default) = everything.
+  const strict = args.includes('--strict');
   const targetPathArg = args.find((arg) => !arg.startsWith('--')) || 'src';
   const targetPath = path.resolve(process.cwd(), targetPathArg);
 
@@ -80,7 +83,8 @@ async function main() {
   const info = rdjson ? console.error : console.log;
   info(
     `🔍 Reviewing ${total} file(s) in: ${targetPath} ` +
-      `(js: ${files.js.length}, styles: ${files.styles.length}, html: ${files.html.length})`
+      `(js: ${files.js.length}, styles: ${files.styles.length}, html: ${files.html.length}) ` +
+      `[profile: ${strict ? 'strict' : 'full'}]`
   );
 
   const rawFindings = [];
@@ -96,7 +100,9 @@ async function main() {
     fail(rdjson, `Review execution failed: ${error.message}`);
   }
 
-  const findings = dedupe(rawFindings);
+  const deduped = dedupe(rawFindings);
+  // strict profile keeps only reliable (near-zero-false-positive) rules.
+  const findings = strict ? deduped.filter((f) => isReliable(f.ruleId)) : deduped;
 
   if (rdjson) {
     // Let reviewdog decide pass/fail via -fail-level, so exit 0 here.

@@ -134,3 +134,36 @@ Vyžaduje kontext, který v kódu není:
   finální posouzení patří člověku (proto nejsou blokující).
 - **Kategorie C** je důvod, proč tool **nenahrazuje** lidský review, ale odbaví
   za něj rutinu (~59 % blokujících bodů z příručky má aspoň nějakou detekci).
+
+---
+
+## Profily běhu: `strict` vs `full`
+
+Rozdělení A/B se promítá do dvou profilů (jediný zdroj pravdy = `profiles.js`):
+
+| Profil | Co běží | Kde |
+|--------|---------|-----|
+| **`strict`** | jen **kategorie A** (spolehlivé — pozitivní nález je téměř vždy reálný) | CI/CD na PR (blokující gate) |
+| **`full`** (default) | **A + B** (vše včetně heuristik) | lokálně / osobní kontrola |
+
+**Spuštění:**
+
+```bash
+yarn review          # full — vše (default)
+yarn review:strict   # strict — jen spolehlivá pravidla
+# přímo: node review.js <cesta> [--strict]
+```
+
+CI (`checks.workflow.yml`) volá `review.js src --strict --rdjson` → PR blokují jen
+spolehlivá pravidla, minimum falešných poplachů. Heuristiky (kategorie B) partner
+uvidí lokálně přes `yarn review`, ale **neblokují** merge.
+
+**Filozofie strict profilu:** nulová tolerance k false-positivům, false-negativy
+jsou OK. Pravidlo je ve strict jen tehdy, když je jeho **pozitivní nález
+důvěryhodný** (i když občas něco mine — to dožene `full` běh / člověk).
+
+> ⚠️ **Bezpečnostní pozn.:** `shoptet/no-xss` (a další A1 heuristiky) jsou kvůli
+> chybějící taint-analýze **false-positive-prone**, proto jsou jen ve `full`,
+> **ne** ve strict/CI gate. Důsledek: XSS PR **neblokuje** automaticky — spoléhá
+> se na `full` běh a lidský review. Pokud chceš XSS v gate i za cenu občasných
+> planých poplachů, přidej `'shoptet/no-xss'` do `RELIABLE_RULES` v `profiles.js`.

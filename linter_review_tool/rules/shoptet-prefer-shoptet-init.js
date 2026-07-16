@@ -1,34 +1,37 @@
 /**
- * B5. Initialize via ShoptetDOMContentLoaded
+ * B5. Lifecycle / race conditions — no setTimeout "wait for the page/core" hack
  *
- * Addons should hook into the Shoptet lifecycle event ShoptetDOMContentLoaded
- * rather than:
- *   - the raw DOMContentLoaded event,
- *   - jQuery's $(document).ready,
- *   - a setTimeout with a small fixed delay used to "wait" for the page/core.
+ * Corrected per shoptet-reference.md §4 (Oprava 2026-07-09):
+ *   - Native `DOMContentLoaded` is the CORRECT hook for the first (non-AJAX)
+ *     load — it is NOT flagged.
+ *   - `$(document).ready` ≈ DOMContentLoaded for the first load — NOT flagged.
+ *   - Combining DOMContentLoaded + ShoptetDOMContentLoaded is the recommended
+ *     pattern, not an anti-pattern — NOT flagged.
  *
- * (A zero-delay setTimeout hack is a hard blocker handled by
- * shoptet/no-settimeout-hack.)
+ * The real, statically detectable B5 smell is faking the lifecycle with a
+ * setTimeout delay to "wait" for the page/core. Use the proper Shoptet
+ * lifecycle event instead (and make AJAX-rerun handlers idempotent).
+ *
+ * Out of scope here:
+ *   - setTimeout(fn, 0) — hard blocker handled by shoptet/no-settimeout-hack.
+ *   - non-idempotent re-runs on ShoptetDOMContentLoaded — needs runtime/semantic
+ *     analysis, not statically detectable.
  */
 
-// Small fixed delays are almost always "wait for the page to be ready" hacks.
+// Small fixed delays are almost always a "wait for the page to be ready" hack.
 const LIFECYCLE_DELAY_THRESHOLD = 100;
 
 module.exports = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: 'Prefer ShoptetDOMContentLoaded over DOMContentLoaded / ready / setTimeout delays',
+      description: 'Disallow setTimeout delays used to wait for the page/core lifecycle',
       category: 'Shoptet',
       recommended: true,
     },
     messages: {
-      domContentLoaded:
-        'Use the ShoptetDOMContentLoaded event instead of DOMContentLoaded — the core may not be ready yet.',
-      jqueryReady:
-        'Use the ShoptetDOMContentLoaded event instead of $(document).ready — the core may not be ready yet.',
       setTimeoutDelay:
-        'setTimeout({{delay}}ms) looks like a "wait for the page/core" hack. Initialize in ShoptetDOMContentLoaded instead (B5).',
+        'setTimeout({{delay}}ms) looks like a "wait for the page/core" hack. Hook the proper Shoptet lifecycle event instead (DOMContentLoaded for first load, ShoptetDOMContentLoaded — idempotently — for AJAX content), not polling (B5).',
     },
     schema: [],
   },
@@ -37,47 +40,21 @@ module.exports = {
     return {
       CallExpression(node) {
         const { callee } = node;
+        if (callee.type !== 'Identifier' || callee.name !== 'setTimeout') return;
 
-        // setTimeout(fn, <small positive delay>)
-        if (callee.type === 'Identifier' && callee.name === 'setTimeout') {
-          const delay = node.arguments[1];
-          if (
-            delay &&
-            delay.type === 'Literal' &&
-            typeof delay.value === 'number' &&
-            delay.value > 0 &&
-            delay.value <= LIFECYCLE_DELAY_THRESHOLD
-          ) {
-            context.report({
-              node,
-              messageId: 'setTimeoutDelay',
-              data: { delay: delay.value },
-            });
-          }
-          return;
-        }
-
-        if (callee.type !== 'MemberExpression' || !callee.property) return;
-
-        // addEventListener('DOMContentLoaded', ...)
+        const delay = node.arguments[1];
         if (
-          callee.property.name === 'addEventListener' &&
-          node.arguments.length &&
-          node.arguments[0].type === 'Literal' &&
-          node.arguments[0].value === 'DOMContentLoaded'
+          delay &&
+          delay.type === 'Literal' &&
+          typeof delay.value === 'number' &&
+          delay.value > 0 &&
+          delay.value <= LIFECYCLE_DELAY_THRESHOLD
         ) {
-          context.report({ node: node.arguments[0], messageId: 'domContentLoaded' });
-          return;
-        }
-
-        // $(document).ready(...) or $(...).ready(...)
-        if (
-          callee.property.name === 'ready' &&
-          callee.object.type === 'CallExpression' &&
-          callee.object.callee.type === 'Identifier' &&
-          (callee.object.callee.name === '$' || callee.object.callee.name === 'jQuery')
-        ) {
-          context.report({ node, messageId: 'jqueryReady' });
+          context.report({
+            node,
+            messageId: 'setTimeoutDelay',
+            data: { delay: delay.value },
+          });
         }
       },
     };

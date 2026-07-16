@@ -2,8 +2,10 @@
  * B5. Lifecycle / race conditions — no setTimeout(fn, 0) hacks
  *
  * Initialization must not bypass the Shoptet lifecycle via setTimeout with a
- * zero (or missing) delay. Such hacks run before the core is ready and cause
- * race conditions. Initialize in ShoptetDOMContentLoaded instead.
+ * zero (or missing) delay. Such hacks run before the DOM/content is ready and
+ * cause race conditions. Hook the proper lifecycle event instead:
+ * DOMContentLoaded for the first load, ShoptetDOMContentLoaded (idempotently)
+ * for AJAX-loaded content. See shoptet-reference.md §4.
  */
 
 module.exports = {
@@ -16,7 +18,7 @@ module.exports = {
     },
     messages: {
       zeroTimeout:
-        'Avoid setTimeout(fn, 0) lifecycle hacks. Initialize in ShoptetDOMContentLoaded to avoid race conditions.',
+        'Avoid setTimeout(fn, 0) lifecycle hacks. Hook the proper lifecycle event instead — DOMContentLoaded for first load, ShoptetDOMContentLoaded (idempotently) for AJAX content (B5).',
     },
     schema: [],
   },
