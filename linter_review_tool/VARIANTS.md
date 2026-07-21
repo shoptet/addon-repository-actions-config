@@ -7,7 +7,7 @@ ortogonální k CI; **Var. 2 a 3** jsou dvě vzájemně se vylučující CI stra
 | # | Varianta | Kdy běží | Profil | Výstup | Blokuje? |
 |---|----------|----------|--------|--------|----------|
 | 1 | **pre-commit** | lokálně před commitem | strict | exit kód (fail commitu) | ano (lokálně, obejitelné) |
-| 2 | **blockery na PR** | CI na PR | strict | inline komentáře + REQUEST_CHANGES | ano (gate) |
+| 2 | **blockery na PR** | CI na PR | strict | reconciliované inline komentáře + REQUEST_CHANGES | ano (fail check) |
 | 3 | **pending po PR** | CI na PR | full | PENDING draft review pro reviewera | ne (reviewer kurátoruje) |
 
 ---
@@ -31,10 +31,34 @@ jobs:
 ```
 
 - Běží `review.js src --strict --rdjson`.
-- **reviewdog** (`github-pr-review`) přidá inline komentáře jen na řádky diffu.
-- Krok **Set review verdict** založí `REQUEST_CHANGES` při blockeru a automaticky
-  ho **dismissne**, jakmile jsou blockery pryč.
+- Krok **Review — reconcile comments & verdict** (github-script, `GITHUB_TOKEN`,
+  bez třetí strany):
+  - přidá inline komentáře jen na **řádky diffu**,
+  - **dedup napříč pushi** — každý komentář nese skrytý fingerprint marker
+    (`<!-- shoptet-review-fp:… -->`); co už je okomentované, znovu neposílá,
+  - **maže komentáře vyřešených nálezů** (fingerprint zmizel z aktuálního běhu),
+  - založí/zruší **jednu** `REQUEST_CHANGES` review dle blockerů,
+  - **fail jobu = jediný gate check** (blockery na změněných řádcích shodí job;
+    doporučení ne).
 - Autor komentářů = `github-actions[bot]`, token = `GITHUB_TOKEN` (nic navíc).
+
+### Nutné triggery (nastavuje volající workflow)
+Reusable workflow se spouští přes `workflow_call`, takže eventy určuje **volající**.
+Aby review běželo automaticky (a reconcile fungoval na dalších pushích), volající
+musí mít:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+jobs:
+  checks:
+    uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@main
+```
+
+`synchronize` = každý push do PR → reconcile smaže/doplní komentáře podle
+aktuálního stavu. `concurrency` s `cancel-in-progress` (už ve workflow) ruší
+rozběhnuté starší běhy při rychlém pushování.
 
 ## Varianta 3 — pending komentáře po PR
 
