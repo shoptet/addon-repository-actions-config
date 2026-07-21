@@ -13,6 +13,10 @@ jobs:
   build:
     name: 🚀 Build Dev 🚀
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # explicit bash turns on pipefail, matching how tests/ run these scripts
+        shell: bash
     steps:
     - name: 🚚 Get latest code
       uses: actions/checkout@v6
@@ -94,7 +98,8 @@ jobs:
               version="${pinned#pnpm@}"
               version="${version%%+*}"
             else
-              # match the pnpm major version to the committed lockfile format
+              # Match the pnpm major version to the committed lockfile format.
+              # When a new pnpm major introduces a new lockfileVersion, add a line here.
               lockfile_version=$(grep -m1 -oE "^lockfileVersion: *['\"]?[0-9.]+" pnpm-lock.yaml | grep -oE '[0-9.]+$' || true)
               case "$lockfile_version" in
                 5*) version="7" ;;
@@ -106,33 +111,37 @@ jobs:
             pnpm --version
             ;;
           yarn)
-            case "${pinned#yarn@}" in
-              ''|1|1.*)
-                # classic Yarn preinstalled on the runner
-                ;;
-              *)
-                # Yarn Berry — activate the pinned version through corepack
-                echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
-                export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-                corepack enable yarn
-                ;;
-            esac
-            ;;
-          npm)
             if [ -n "$pinned" ]; then
-              version="${pinned#npm@}"
-              version="${version%%+*}"
-              npm install -g "npm@$version"
+              # activate the exact pinned Yarn version (classic or Berry) through corepack
+              echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
+              export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+              corepack enable yarn
             fi
-            npm --version
+            # without a pin, the classic Yarn preinstalled on the runner is used
             ;;
         esac
+        # npm pins are handled after setup-node — see the "Setup npm version" step
 
     - name: Setup project and build
       uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: ${{ steps.package-manager.outputs.pm }}
+
+    - name: Setup npm version
+      if: steps.package-manager.outputs.pm == 'npm'
+      run: |
+        pinned=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
+        case "$pinned" in
+          npm@*)
+            # must run after setup-node: the Node toolchain dir prepended to PATH
+            # ships its own npm, which would shadow a pin installed any earlier
+            version="${pinned#npm@}"
+            version="${version%%+*}"
+            npm install -g "npm@$version"
+            ;;
+        esac
+        npm --version
 
     - name: Install dependencies and build
       env:
@@ -149,6 +158,11 @@ jobs:
               ;;
             yarn)
               yarn
+              # classic Yarn does not fail on a drifted lockfile — it silently
+              # regenerates it; surface that so the partner can fix the repo
+              if ! git diff --quiet -- yarn.lock; then
+                echo "::warning::yarn install updated yarn.lock — the committed lockfile was out of sync with package.json, so this build did not use a fully locked dependency tree. Run 'yarn install' locally and commit the updated yarn.lock."
+              fi
               yarn build --env production
               ;;
             *)

@@ -13,9 +13,11 @@ The build workflow supports **npm, Yarn and pnpm**. The package manager is resol
 2. `packageManager` field in `package.json` (e.g. `"packageManager": "pnpm@10.4.1"`)
 3. Committed lockfile: `pnpm-lock.yaml` → pnpm, `yarn.lock` → Yarn, `package-lock.json` → npm
 
-Whichever way the package manager is resolved, **its lockfile must be committed** — production builds are always installed from the lockfile (`npm ci` / `pnpm install --frozen-lockfile`) and the build fails with a clear error when the lockfile is missing. If more than one lockfile is committed, the first match in the order above wins and a warning is emitted (the build still passes) — remove the extra lockfile or set the `package_manager` input explicitly.
+Whichever way the package manager is resolved, **its lockfile must be committed** — the build fails with a clear error when the lockfile is missing. npm installs with `npm ci` and pnpm with `pnpm install --frozen-lockfile`, so a lockfile out of sync with `package.json` fails the build. Classic Yarn (1.x) is the deliberate exception: it does not enforce a frozen install — when `yarn.lock` drifts from `package.json`, Yarn regenerates it and the build continues with a warning, so existing partner repositories keep building. Keep your `yarn.lock` in sync anyway; a future version of this workflow may enforce it.
 
-A version pinned in the `packageManager` field is honored: pnpm and npm are installed at the pinned version, and Yarn Berry (2+) is activated through corepack. Without a pin, pnpm's major version is chosen to match the `lockfileVersion` of the committed `pnpm-lock.yaml`, and Yarn defaults to classic (1.x).
+If more than one lockfile is committed, the first match in the order above wins and a warning is emitted (the build still passes) — remove the extra lockfile or set the `package_manager` input explicitly.
+
+A version pinned in the `packageManager` field is honored: pnpm and npm are installed at the pinned version, and any pinned Yarn (classic or Berry) is activated through corepack. Without a pin, pnpm's major version is chosen to match the `lockfileVersion` of the committed `pnpm-lock.yaml`, Yarn defaults to the classic (1.x) preinstalled on the runner, and npm defaults to the version bundled with Node.
 
 To override auto-detection, pass the optional `package_manager` input when calling the workflow:
 
