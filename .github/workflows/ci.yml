@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   actionlint:
     name: Lint workflows
@@ -20,7 +24,8 @@ jobs:
           ACTIONLINT_COMMIT: 914e7df21a07ef503a81201c76d2b11c789d3fca
           ACTIONLINT_VERSION: 1.7.12
         run: |
-          bash <(curl -sSf "https://raw.githubusercontent.com/rhysd/actionlint/${ACTIONLINT_COMMIT}/scripts/download-actionlint.bash") "$ACTIONLINT_VERSION"
+          curl -sSfL -o download-actionlint.bash "https://raw.githubusercontent.com/rhysd/actionlint/${ACTIONLINT_COMMIT}/scripts/download-actionlint.bash"
+          bash download-actionlint.bash "$ACTIONLINT_VERSION"
           ./actionlint -color
 
   workflow-script-tests:

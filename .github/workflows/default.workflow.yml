@@ -28,6 +28,7 @@ jobs:
       run: |
         pm=""
         source=""
+        pm_field=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
         if [ -n "$PM_OVERRIDE" ]; then
           case "$PM_OVERRIDE" in
             npm|yarn|pnpm)
@@ -40,7 +41,6 @@ jobs:
               ;;
           esac
         else
-          pm_field=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
           if [ -n "$pm_field" ]; then
             case "${pm_field%%@*}" in
               npm|yarn|pnpm)
@@ -65,7 +65,7 @@ jobs:
             pm="${lockfiles%% *}"
             source="the committed lockfile"
             if [ "$lockfiles" != "$pm" ]; then
-              echo "::warning::Multiple lockfiles are committed ($lockfiles). The build uses $pm and works fine — to silence this warning, remove the lockfile(s) that do not belong to $pm, or pass the package_manager input."
+              echo "::warning::Multiple lockfiles are committed ($lockfiles). The build uses $pm — remove the lockfile(s) that do not belong to $pm, or pass the package_manager input, to make the choice explicit."
             fi
           fi
         fi
@@ -80,23 +80,33 @@ jobs:
           echo "::error::Package manager $pm was selected via $source, but $lockfile is not committed. Commit $lockfile so the production build is reproducible."
           exit 1
         fi
-        echo "Using package manager: $pm (from $source)"
+        # Extract the version pin for the resolved manager from the packageManager
+        # field — the single place pins are parsed; later steps only consume it.
+        # Honored also when the manager itself came from the input or a lockfile.
+        pin=""
+        case "$pm_field" in
+          "$pm@"?*)
+            pin="${pm_field#*@}"
+            pin="${pin%%+*}"
+            ;;
+        esac
+        if [ -n "$pin" ]; then
+          echo "Using package manager: $pm@$pin (from $source; version pinned via the packageManager field)"
+        else
+          echo "Using package manager: $pm (from $source)"
+        fi
         echo "pm=$pm" >> "$GITHUB_OUTPUT"
+        echo "pin=$pin" >> "$GITHUB_OUTPUT"
 
     - name: Setup package manager version
       env:
         PM: ${{ steps.package-manager.outputs.pm }}
+        PIN: ${{ steps.package-manager.outputs.pin }}
       run: |
-        pinned=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
-        case "$pinned" in
-          "$PM@"*) ;;          # honor the pin only when it matches the resolved manager
-          *) pinned="" ;;
-        esac
         case "$PM" in
           pnpm)
-            if [ -n "$pinned" ]; then
-              version="${pinned#pnpm@}"
-              version="${version%%+*}"
+            if [ -n "$PIN" ]; then
+              version="$PIN"
             else
               # Match the pnpm major version to the committed lockfile format.
               # When a new pnpm major introduces a new lockfileVersion, add a line here.
@@ -104,17 +114,24 @@ jobs:
               case "$lockfile_version" in
                 5*) version="7" ;;
                 6*) version="8" ;;
-                *)  version="10" ;;
+                9*) version="10" ;;
+                *)
+                  echo "::error::Unrecognized lockfileVersion '$lockfile_version' in pnpm-lock.yaml — this workflow does not know which pnpm version it needs. Pin your pnpm version via the packageManager field in package.json, or report this so the workflow's version mapping gets extended."
+                  exit 1
+                  ;;
               esac
             fi
             npm install -g "pnpm@$version"
             pnpm --version
             ;;
           yarn)
-            if [ -n "$pinned" ]; then
+            if [ -n "$PIN" ]; then
               # activate the exact pinned Yarn version (classic or Berry) through corepack
               echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
               export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+              # corepack ships with Node 22/24 but was dropped from Node 25 —
+              # install it if the runner's default Node no longer bundles it
+              command -v corepack >/dev/null 2>&1 || npm install -g corepack
               corepack enable yarn
             fi
             # without a pin, the classic Yarn preinstalled on the runner is used
@@ -130,17 +147,14 @@ jobs:
 
     - name: Setup npm version
       if: steps.package-manager.outputs.pm == 'npm'
+      env:
+        PIN: ${{ steps.package-manager.outputs.pin }}
       run: |
-        pinned=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
-        case "$pinned" in
-          npm@*)
-            # must run after setup-node: the Node toolchain dir prepended to PATH
-            # ships its own npm, which would shadow a pin installed any earlier
-            version="${pinned#npm@}"
-            version="${version%%+*}"
-            npm install -g "npm@$version"
-            ;;
-        esac
+        if [ -n "$PIN" ]; then
+          # must run after setup-node: the Node toolchain dir prepended to PATH
+          # ships its own npm, which would shadow a pin installed any earlier
+          npm install -g "npm@$PIN"
+        fi
         npm --version
 
     - name: Install dependencies and build

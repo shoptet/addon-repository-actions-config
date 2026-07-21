@@ -3,6 +3,11 @@ name: Shoptet addon deploy workflow
 # Thin wrapper kept for repositories that call deploy.workflow.yml directly.
 # All build logic lives in default.workflow.yml — change it there only, and
 # keep the inputs below in sync with the inputs of default.workflow.yml.
+#
+# Note: nesting renames the check run to "<caller job> / build / 🚀 Build Dev 🚀".
+# A 2026-07 census found no repository calling this file directly (all callers
+# use default.workflow.yml); if you rely on the old check name, either update
+# the required status check or switch to calling default.workflow.yml.
 on:
   workflow_call:
     inputs:
@@ -17,4 +22,6 @@ jobs:
     uses: ./.github/workflows/default.workflow.yml
     with:
       package_manager: ${{ inputs.package_manager }}
+    # no-op today (default.workflow.yml declares no secrets) — kept so callers'
+    # secrets keep flowing if the build workflow ever starts needing them
     secrets: inherit
