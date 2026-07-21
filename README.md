@@ -13,7 +13,9 @@ The build workflow supports **npm, Yarn and pnpm**. The package manager is resol
 2. `packageManager` field in `package.json` (e.g. `"packageManager": "pnpm@10.4.1"`)
 3. Committed lockfile: `pnpm-lock.yaml` → pnpm, `yarn.lock` → Yarn, `package-lock.json` → npm
 
-If more than one lockfile is committed, the first match in the order above wins and a warning is emitted — commit only one lockfile or set the `package_manager` input explicitly. If no lockfile is found and no input is given, the build fails with an error.
+Whichever way the package manager is resolved, **its lockfile must be committed** — production builds are always installed from the lockfile (`npm ci` / `pnpm install --frozen-lockfile`) and the build fails with a clear error when the lockfile is missing. If more than one lockfile is committed, the first match in the order above wins and a warning is emitted (the build still passes) — remove the extra lockfile or set the `package_manager` input explicitly.
+
+A version pinned in the `packageManager` field is honored: pnpm and npm are installed at the pinned version, and Yarn Berry (2+) is activated through corepack. Without a pin, pnpm's major version is chosen to match the `lockfileVersion` of the committed `pnpm-lock.yaml`, and Yarn defaults to classic (1.x).
 
 To override auto-detection, pass the optional `package_manager` input when calling the workflow:
 

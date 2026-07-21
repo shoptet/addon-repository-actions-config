@@ -1,5 +1,7 @@
 name: Shoptet addon deploy workflow
 
+# Thin wrapper kept for repositories that call deploy.workflow.yml directly.
+# All build logic lives in default.workflow.yml — change it there only.
 on:
   workflow_call:
     inputs:
@@ -11,110 +13,6 @@ on:
 
 jobs:
   build:
-    name: 🚀 Build Dev 🚀
-    runs-on: ubuntu-latest
-    steps:
-    - name: 🚚 Get latest code
-      uses: actions/checkout@v6
-
-    - name: Detect package manager
-      id: package-manager
-      env:
-        PM_OVERRIDE: ${{ inputs.package_manager }}
-      run: |
-        pm=""
-        if [ -n "$PM_OVERRIDE" ]; then
-          case "$PM_OVERRIDE" in
-            npm|yarn|pnpm)
-              pm="$PM_OVERRIDE"
-              echo "Using package manager from the package_manager workflow input: $pm"
-              ;;
-            *)
-              echo "::error::Unsupported package_manager input '$PM_OVERRIDE'. Supported values: npm, yarn, pnpm."
-              exit 1
-              ;;
-          esac
-        else
-          pkg_pm=$(node -p "((require('./package.json').packageManager || '').match(/^(npm|yarn|pnpm)(?=@)/) || [''])[0]" 2>/dev/null || true)
-          if [ -n "$pkg_pm" ]; then
-            pm="$pkg_pm"
-            echo "Using package manager from the packageManager field in package.json: $pm"
-          else
-            lockfiles=""
-            if [ -f pnpm-lock.yaml ]; then lockfiles="$lockfiles pnpm"; fi
-            if [ -f yarn.lock ]; then lockfiles="$lockfiles yarn"; fi
-            if [ -f package-lock.json ]; then lockfiles="$lockfiles npm"; fi
-            lockfiles="${lockfiles# }"
-            if [ -z "$lockfiles" ]; then
-              echo "::error::No supported lockfile found (pnpm-lock.yaml, yarn.lock or package-lock.json). Commit a lockfile or pass the package_manager input (npm, yarn or pnpm) when calling this workflow."
-              exit 1
-            fi
-            pm="${lockfiles%% *}"
-            if [ "$lockfiles" != "$pm" ]; then
-              echo "::warning::Multiple lockfiles found ($lockfiles), using $pm. Commit only one lockfile or pass the package_manager input to avoid ambiguity."
-            fi
-            echo "Detected package manager from lockfile: $pm"
-          fi
-        fi
-        cache=""
-        case "$pm" in
-          npm)  if [ -f package-lock.json ]; then cache="npm"; fi ;;
-          yarn) if [ -f yarn.lock ]; then cache="yarn"; fi ;;
-          pnpm) if [ -f pnpm-lock.yaml ]; then cache="pnpm"; fi ;;
-        esac
-        if [ -z "$cache" ]; then
-          echo "No $pm lockfile found, dependency caching is disabled."
-        fi
-        echo "pm=$pm" >> "$GITHUB_OUTPUT"
-        echo "cache=$cache" >> "$GITHUB_OUTPUT"
-
-    - name: Setup pnpm
-      if: steps.package-manager.outputs.pm == 'pnpm'
-      run: |
-        pnpm_version=$(node -p "(((require('./package.json').packageManager || '').match(/^pnpm@([^+]+)/) || [])[1] || 'latest')" 2>/dev/null || echo latest)
-        npm install -g "pnpm@${pnpm_version}"
-        pnpm --version
-
-    - name: Setup project and build
-      uses: actions/setup-node@v6
-      with:
-        node-version: '22'
-        cache: ${{ steps.package-manager.outputs.cache }}
-
-    - name: Install dependencies and build
-      env:
-        PM: ${{ steps.package-manager.outputs.pm }}
-      run: |
-          case "$PM" in
-            npm)
-              if [ -f package-lock.json ]; then
-                npm ci
-              else
-                npm install
-              fi
-              npm run build -- --env production
-              ;;
-            pnpm)
-              if [ -f pnpm-lock.yaml ]; then
-                pnpm install --frozen-lockfile
-              else
-                pnpm install --no-frozen-lockfile
-              fi
-              pnpm run build --env production
-              ;;
-            *)
-              yarn
-              yarn build --env production
-              ;;
-          esac
-          ls -la dist
-
-    - name: Save production artifacts
-      uses: actions/upload-artifact@v5
-      with:
-        name: build-${{ github.sha }}-${{ github.run_number }}
-        path: |
-            dist/
-        if-no-files-found: error
-        compression-level: 1
-        retention-days: 1
+    uses: ./.github/workflows/default.workflow.yml
+    with:
+      package_manager: ${{ inputs.package_manager }}

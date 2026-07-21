@@ -23,11 +23,12 @@ jobs:
         PM_OVERRIDE: ${{ inputs.package_manager }}
       run: |
         pm=""
+        source=""
         if [ -n "$PM_OVERRIDE" ]; then
           case "$PM_OVERRIDE" in
             npm|yarn|pnpm)
               pm="$PM_OVERRIDE"
-              echo "Using package manager from the package_manager workflow input: $pm"
+              source="the package_manager workflow input"
               ;;
             *)
               echo "::error::Unsupported package_manager input '$PM_OVERRIDE'. Supported values: npm, yarn, pnpm."
@@ -35,10 +36,18 @@ jobs:
               ;;
           esac
         else
-          pkg_pm=$(node -p "((require('./package.json').packageManager || '').match(/^(npm|yarn|pnpm)(?=@)/) || [''])[0]" 2>/dev/null || true)
-          if [ -n "$pkg_pm" ]; then
-            pm="$pkg_pm"
-            echo "Using package manager from the packageManager field in package.json: $pm"
+          pm_field=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
+          if [ -n "$pm_field" ]; then
+            case "${pm_field%%@*}" in
+              npm|yarn|pnpm)
+                pm="${pm_field%%@*}"
+                source="the packageManager field in package.json ($pm_field)"
+                ;;
+              *)
+                echo "::error::Unsupported package manager '$pm_field' in the packageManager field of package.json. Supported: npm, yarn, pnpm."
+                exit 1
+                ;;
+            esac
           else
             lockfiles=""
             if [ -f pnpm-lock.yaml ]; then lockfiles="$lockfiles pnpm"; fi
@@ -50,36 +59,80 @@ jobs:
               exit 1
             fi
             pm="${lockfiles%% *}"
+            source="the committed lockfile"
             if [ "$lockfiles" != "$pm" ]; then
-              echo "::warning::Multiple lockfiles found ($lockfiles), using $pm. Commit only one lockfile or pass the package_manager input to avoid ambiguity."
+              echo "::warning::Multiple lockfiles are committed ($lockfiles). The build uses $pm and works fine — to silence this warning, remove the lockfile(s) that do not belong to $pm, or pass the package_manager input."
             fi
-            echo "Detected package manager from lockfile: $pm"
           fi
         fi
-        cache=""
+        # A production build must be reproducible: the resolved package manager
+        # must have its lockfile committed, no matter how it was resolved.
         case "$pm" in
-          npm)  if [ -f package-lock.json ]; then cache="npm"; fi ;;
-          yarn) if [ -f yarn.lock ]; then cache="yarn"; fi ;;
-          pnpm) if [ -f pnpm-lock.yaml ]; then cache="pnpm"; fi ;;
+          npm)  lockfile="package-lock.json" ;;
+          yarn) lockfile="yarn.lock" ;;
+          pnpm) lockfile="pnpm-lock.yaml" ;;
         esac
-        if [ -z "$cache" ]; then
-          echo "No $pm lockfile found, dependency caching is disabled."
+        if [ ! -f "$lockfile" ]; then
+          echo "::error::Package manager $pm was selected via $source, but $lockfile is not committed. Commit $lockfile so the production build is reproducible."
+          exit 1
         fi
+        echo "Using package manager: $pm (from $source)"
         echo "pm=$pm" >> "$GITHUB_OUTPUT"
-        echo "cache=$cache" >> "$GITHUB_OUTPUT"
 
-    - name: Setup pnpm
-      if: steps.package-manager.outputs.pm == 'pnpm'
+    - name: Setup package manager version
+      env:
+        PM: ${{ steps.package-manager.outputs.pm }}
       run: |
-        pnpm_version=$(node -p "(((require('./package.json').packageManager || '').match(/^pnpm@([^+]+)/) || [])[1] || 'latest')" 2>/dev/null || echo latest)
-        npm install -g "pnpm@${pnpm_version}"
-        pnpm --version
+        pinned=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null || true)
+        case "$pinned" in
+          "$PM@"*) ;;          # honor the pin only when it matches the resolved manager
+          *) pinned="" ;;
+        esac
+        case "$PM" in
+          pnpm)
+            if [ -n "$pinned" ]; then
+              version="${pinned#pnpm@}"
+              version="${version%%+*}"
+            else
+              # match the pnpm major version to the committed lockfile format
+              lockfile_version=$(grep -m1 -oE "^lockfileVersion: *['\"]?[0-9.]+" pnpm-lock.yaml | grep -oE '[0-9.]+$' || true)
+              case "$lockfile_version" in
+                5*) version="7" ;;
+                6*) version="8" ;;
+                *)  version="10" ;;
+              esac
+            fi
+            npm install -g "pnpm@$version"
+            pnpm --version
+            ;;
+          yarn)
+            case "${pinned#yarn@}" in
+              ''|1|1.*)
+                # classic Yarn preinstalled on the runner
+                ;;
+              *)
+                # Yarn Berry — activate the pinned version through corepack
+                echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
+                export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+                corepack enable yarn
+                ;;
+            esac
+            ;;
+          npm)
+            if [ -n "$pinned" ]; then
+              version="${pinned#npm@}"
+              version="${version%%+*}"
+              npm install -g "npm@$version"
+            fi
+            npm --version
+            ;;
+        esac
 
     - name: Setup project and build
       uses: actions/setup-node@v6
       with:
         node-version: '22'
-        cache: ${{ steps.package-manager.outputs.cache }}
+        cache: ${{ steps.package-manager.outputs.pm }}
 
     - name: Install dependencies and build
       env:
@@ -87,24 +140,20 @@ jobs:
       run: |
           case "$PM" in
             npm)
-              if [ -f package-lock.json ]; then
-                npm ci
-              else
-                npm install
-              fi
+              npm ci
               npm run build -- --env production
               ;;
             pnpm)
-              if [ -f pnpm-lock.yaml ]; then
-                pnpm install --frozen-lockfile
-              else
-                pnpm install --no-frozen-lockfile
-              fi
+              pnpm install --frozen-lockfile
               pnpm run build --env production
               ;;
-            *)
+            yarn)
               yarn
               yarn build --env production
+              ;;
+            *)
+              echo "::error::Unknown package manager '$PM' resolved by the detection step."
+              exit 1
               ;;
           esac
           ls -la dist
