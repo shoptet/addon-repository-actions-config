@@ -316,12 +316,15 @@ run_setup() { # dir pm pin stub_version yarn_path -> prints stub log
 }
 
 d=$(fixture setup-pnpm-pinned)
-check "pnpm pin installed as-is" "npm install -g pnpm@9.12.3
+check "pnpm pin activated through corepack" "corepack enable pnpm
 pnpm --version" "$(run_setup "$d" pnpm 9.12.3 9.12.3)"
+grep -q 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0' "$d/.github.env" \
+  && { PASS=$((PASS+1)); echo "PASS: pnpm pin exports COREPACK_ENABLE_DOWNLOAD_PROMPT"; } \
+  || { FAIL=$((FAIL+1)); echo "FAIL: pnpm pin exports COREPACK_ENABLE_DOWNLOAD_PROMPT"; }
 
 d=$(fixture setup-pnpm-pin-mismatch)
-check "pnpm pin vs installed mismatch -> hard error" "SETUP_FAILED
-npm install -g pnpm@9.12.3
+check "pnpm pin vs activated mismatch -> hard error" "SETUP_FAILED
+corepack enable pnpm
 pnpm --version" "$(run_setup "$d" pnpm 9.12.3 9.99.9)"
 expect_log "pnpm mismatch error names both versions" "$d" '::error::Expected pnpm@9.12.3' .setup.log
 
@@ -404,6 +407,7 @@ expect_not_log "vendored matching pin does not warn" "$d" '::warning::' .setup.l
 STUB2="$TMP/stub-bin-nocorepack"
 mkdir -p "$STUB2"
 cp "$STUB/yarn" "$STUB2/yarn"
+cp "$STUB/pnpm" "$STUB2/pnpm"
 cat > "$STUB2/npm" <<EOF
 #!/bin/bash
 echo "npm \$*" >> "\$STUB_LOG"
@@ -419,6 +423,15 @@ log="$d/.stub.log"; : > "$log"
 check "missing corepack -> pinned install then activation" "npm install -g corepack@0.35.0
 corepack enable yarn
 yarn --version" "$(cat "$log")" "$d/.setup.log"
+
+d=$(fixture setup-corepack-fallback-pnpm)
+rm -f "$STUB2/corepack"
+log="$d/.stub.log"; : > "$log"
+( cd "$d" && PATH="$STUB2:/usr/bin:/bin" STUB_LOG="$log" PM=pnpm PIN=9.12.3 STUB_VERSION=9.12.3 GITHUB_ENV="$d/.github.env" \
+  bash --noprofile --norc -e -o pipefail "$SETUP" ) > "$d/.setup.log" 2>&1 || echo "SETUP_FAILED"
+check "missing corepack for pnpm pin -> pinned install then activation" "npm install -g corepack@0.35.0
+corepack enable pnpm
+pnpm --version" "$(cat "$log")" "$d/.setup.log"
 
 d=$(fixture setup-npm-noop)
 check "npm handled later -> no install before setup-node" "" "$(run_setup "$d" npm 10.9.2)"

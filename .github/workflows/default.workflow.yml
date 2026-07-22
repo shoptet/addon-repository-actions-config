@@ -189,7 +189,13 @@ jobs:
         case "$PM" in
           pnpm)
             if [ -n "$PIN" ]; then
-              version="$PIN"
+              # activate the exact pinned pnpm through corepack — unlike a plain
+              # npm registry install, corepack also verifies a +sha… integrity
+              # suffix from the packageManager field
+              echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
+              export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+              command -v corepack >/dev/null 2>&1 || npm install -g corepack@0.35.0
+              corepack enable pnpm
             else
               # Match the pnpm major version to the committed lockfile format.
               # When a new pnpm major introduces a new lockfileVersion, add a line here.
@@ -209,8 +215,8 @@ jobs:
                   exit 1
                   ;;
               esac
+              npm install -g "pnpm@$version"
             fi
-            npm install -g "pnpm@$version"
             installed=$(pnpm --version)
             echo "pnpm $installed"
             if [ -n "$PIN" ]; then

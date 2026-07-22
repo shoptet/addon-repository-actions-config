@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Bumps the SHA-pinned actions (checkout/setup-node/upload-artifact/
+  # github-script) across all workflows; Dependabot keeps the `# vX` comments
+  # in sync with the new SHAs. The corepack@0.35.0 fallback pin and the
+  # actionlint version+sha256 in ci.yml are not covered — bump those manually.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
