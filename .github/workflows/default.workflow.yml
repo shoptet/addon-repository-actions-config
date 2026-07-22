@@ -174,9 +174,11 @@ jobs:
         else
           echo "Using package manager: $pm (from $source)"
         fi
-        echo "pm=$pm" >> "$GITHUB_OUTPUT"
-        echo "pin=$pin" >> "$GITHUB_OUTPUT"
-        echo "yarn_path=$yarn_path" >> "$GITHUB_OUTPUT"
+        {
+          echo "pm=$pm"
+          echo "pin=$pin"
+          echo "yarn_path=$yarn_path"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Setup package manager version
       env:
