@@ -145,7 +145,7 @@ jobs:
         if [ "$pm" = "yarn" ] && grep -q '^__metadata:' yarn.lock; then
           case "$pin" in
             ''|1.*)
-              if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
+              if [ -n "$yarn_path" ]; then
                 echo "Yarn Berry lockfile with a vendored release (yarnPath in .yarnrc.yml) — classic Yarn delegates to it."
               else
                 echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Berry-capable Yarn version (found: ${pin:-no pin}) and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json — or, if Yarn is not the package manager you actually use, remove yarn.lock instead."
@@ -176,11 +176,13 @@ jobs:
         fi
         echo "pm=$pm" >> "$GITHUB_OUTPUT"
         echo "pin=$pin" >> "$GITHUB_OUTPUT"
+        echo "yarn_path=$yarn_path" >> "$GITHUB_OUTPUT"
 
     - name: Setup package manager version
       env:
         PM: ${{ steps.package-manager.outputs.pm }}
         PIN: ${{ steps.package-manager.outputs.pin }}
+        YARN_PATH: ${{ steps.package-manager.outputs.yarn_path }}
       run: |
         case "$PM" in
           pnpm)
@@ -225,11 +227,12 @@ jobs:
             fi
             ;;
           yarn)
-            if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
+            if [ -n "$YARN_PATH" ]; then
               # A vendored release always wins at runtime: every yarn binary
               # (classic or corepack-activated) delegates to yarnPath, so
               # activating a pin through corepack here would assert against
-              # a version the build will never use.
+              # a version the build will never use. The value comes validated
+              # from the detect step — the single source of truth for yarnPath.
               installed=$(yarn --version)
               echo "yarn $installed (vendored release via yarnPath in .yarnrc.yml)"
               if [ -n "$PIN" ] && [ "$installed" != "$PIN" ]; then

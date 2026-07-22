@@ -211,8 +211,9 @@ d=$(fixture output-integrity pnpm-lock.yaml)
 echo '{"packageManager": "pnpm@10.4.1"}' > "$d/package.json"
 out=$(mktemp)
 ( cd "$d" && PM_OVERRIDE="" GITHUB_OUTPUT="$out" bash --noprofile --norc -e -o pipefail "$DETECT" ) > "$d/.log" 2>&1
-check "GITHUB_OUTPUT contains exactly the pm and pin lines" "pm=pnpm
-pin=10.4.1" "$(cat "$out")" "$d/.log"
+check "GITHUB_OUTPUT contains exactly the pm, pin and yarn_path lines" "pm=pnpm
+pin=10.4.1
+yarn_path=" "$(cat "$out")" "$d/.log"
 rm -f "$out"
 
 ### Detection: Yarn Berry lockfile requires a pin or a vendored release
@@ -265,6 +266,12 @@ mkdir -p "$d/.yarn/releases"; touch "$d/.yarn/releases/yarn-4.6.0.cjs"
 printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\r\n' > "$d/.yarnrc.yml"
 check "CRLF .yarnrc.yml does not false-positive on committed file" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
 
+d=$(fixture yarnpath-empty-value)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+printf 'yarnPath:\n' > "$d/.yarnrc.yml"
+check "empty yarnPath value does not count as vendored (berry guard fires)" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+expect_log "empty yarnPath berry error" "$d" '::error::yarn.lock is in Yarn Berry'
+
 d=$(fixture yarnpath-inline-comment yarn.lock)
 mkdir -p "$d/.yarn/releases"; touch "$d/.yarn/releases/yarn-4.6.0.cjs"
 printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs # vendored release\n' > "$d/.yarnrc.yml"
@@ -301,9 +308,9 @@ run_detect "$d" 'yarn' > /dev/null
 expect_not_log "override matching field does not warn" "$d" '::warning::The package_manager workflow input'
 
 ### Version setup (before setup-node): what would be installed/activated
-run_setup() { # dir pm pin stub_version -> prints stub log
+run_setup() { # dir pm pin stub_version yarn_path -> prints stub log
   local log="$1/.stub.log"; : > "$log"
-  ( cd "$1" && PATH="$STUB:$PATH" STUB_LOG="$log" PM="$2" PIN="$3" STUB_VERSION="${4:-0.0.0}" GITHUB_ENV="$1/.github.env" \
+  ( cd "$1" && PATH="$STUB:$PATH" STUB_LOG="$log" PM="$2" PIN="$3" STUB_VERSION="${4:-0.0.0}" YARN_PATH="${5:-}" GITHUB_ENV="$1/.github.env" \
     bash --noprofile --norc -e -o pipefail "$SETUP" ) > "$1/.setup.log" 2>&1 || echo "SETUP_FAILED"
   cat "$log"
 }
@@ -381,18 +388,15 @@ d=$(fixture setup-yarn-unpinned yarn.lock)
 check "yarn without pin -> preinstalled yarn, nothing to set up" "" "$(run_setup "$d" yarn '')"
 
 d=$(fixture setup-yarn-vendored)
-printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
-check "vendored yarnPath -> no corepack, delegation logs version" "yarn --version" "$(run_setup "$d" yarn '' 4.6.0)"
+check "vendored yarnPath -> no corepack, delegation logs version" "yarn --version" "$(run_setup "$d" yarn '' 4.6.0 .yarn/releases/yarn-4.6.0.cjs)"
 expect_not_log "vendored without pin does not warn" "$d" '::warning::' .setup.log
 
 d=$(fixture setup-yarn-vendored-classic-pin)
-printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
-check "vendored yarnPath + classic pin -> vendored wins, no hard error" "yarn --version" "$(run_setup "$d" yarn 1.22.22 4.6.0)"
+check "vendored yarnPath + classic pin -> vendored wins, no hard error" "yarn --version" "$(run_setup "$d" yarn 1.22.22 4.6.0 .yarn/releases/yarn-4.6.0.cjs)"
 expect_log "vendored vs pin mismatch warns" "$d" '::warning::packageManager pins yarn@1.22.22 but the vendored yarnPath release is yarn@4.6.0' .setup.log
 
 d=$(fixture setup-yarn-vendored-matching-pin)
-printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
-check "vendored yarnPath + matching pin -> quiet" "yarn --version" "$(run_setup "$d" yarn 4.6.0 4.6.0)"
+check "vendored yarnPath + matching pin -> quiet" "yarn --version" "$(run_setup "$d" yarn 4.6.0 4.6.0 .yarn/releases/yarn-4.6.0.cjs)"
 expect_not_log "vendored matching pin does not warn" "$d" '::warning::' .setup.log
 
 # Corepack fallback: PATH without any corepack; the npm stub in STUB2 "installs"
