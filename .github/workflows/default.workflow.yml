@@ -19,7 +19,7 @@ jobs:
         shell: bash
     steps:
     - name: 🚚 Get latest code
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
     - name: Detect package manager
       id: package-manager
@@ -80,6 +80,9 @@ jobs:
           echo "::error::Package manager $pm was selected via $source, but $lockfile is not committed. Commit $lockfile so the production build is reproducible."
           exit 1
         fi
+        if [ -n "$PM_OVERRIDE" ] && [ -n "$pm_field" ] && [ "${pm_field%%@*}" != "$pm" ]; then
+          echo "::warning::The package_manager workflow input ($pm) overrides the packageManager field in package.json ($pm_field). Align the two to avoid confusion."
+        fi
         # Extract the version pin for the resolved manager from the packageManager
         # field — the single place pins are parsed; later steps only consume it.
         # Honored also when the manager itself came from the input or a lockfile.
@@ -90,6 +93,24 @@ jobs:
             pin="${pin%%+*}"
             ;;
         esac
+        # Only an exact version is a valid pin: ranges or tags would make the
+        # build non-reproducible, and the value is passed to installers and
+        # written to GITHUB_OUTPUT, so reject anything else loudly and early.
+        if [ -n "$pin" ] && ! printf '%s' "$pin" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+          echo "::error::The packageManager field in package.json ('$pm_field') does not pin an exact version. Use an exact semver version, e.g. \"$pm@1.2.3\", so the build is reproducible."
+          exit 1
+        fi
+        # A Yarn Berry lockfile needs a Berry binary: without a version pin (or a
+        # vendored release via yarnPath) the runner's classic Yarn 1 cannot read
+        # it and would silently resolve the dependency tree from scratch.
+        if [ "$pm" = "yarn" ] && [ -z "$pin" ] && grep -q '^__metadata:' yarn.lock; then
+          if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
+            echo "Yarn Berry lockfile with a vendored release (yarnPath in .yarnrc.yml) — classic Yarn delegates to it."
+          else
+            echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Yarn version and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json."
+            exit 1
+          fi
+        fi
         if [ -n "$pin" ]; then
           echo "Using package manager: $pm@$pin (from $source; version pinned via the packageManager field)"
         else
@@ -122,7 +143,22 @@ jobs:
               esac
             fi
             npm install -g "pnpm@$version"
-            pnpm --version
+            installed=$(pnpm --version)
+            echo "pnpm $installed"
+            if [ -n "$PIN" ]; then
+              if [ "$installed" != "$PIN" ]; then
+                echo "::error::Expected pnpm@$PIN (packageManager pin) but 'pnpm --version' reports $installed."
+                exit 1
+              fi
+            else
+              case "$installed" in
+                "$version".*) ;;
+                *)
+                  echo "::error::Expected pnpm major $version (derived from pnpm-lock.yaml lockfileVersion) but 'pnpm --version' reports $installed."
+                  exit 1
+                  ;;
+              esac
+            fi
             ;;
           yarn)
             if [ -n "$PIN" ]; then
@@ -133,6 +169,14 @@ jobs:
               # install it if the runner's default Node no longer bundles it
               command -v corepack >/dev/null 2>&1 || npm install -g corepack
               corepack enable yarn
+              # run yarn once now: corepack downloads the pinned version here, in
+              # this step, instead of failing later inside setup-node's cache probe
+              installed=$(yarn --version)
+              echo "yarn $installed"
+              if [ "$installed" != "$PIN" ]; then
+                echo "::error::Expected yarn@$PIN (packageManager pin) but 'yarn --version' reports $installed."
+                exit 1
+              fi
             fi
             # without a pin, the classic Yarn preinstalled on the runner is used
             ;;
@@ -140,7 +184,7 @@ jobs:
         # npm pins are handled after setup-node — see the "Setup npm version" step
 
     - name: Setup project and build
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
       with:
         node-version: '22'
         cache: ${{ steps.package-manager.outputs.pm }}
@@ -154,8 +198,15 @@ jobs:
           # must run after setup-node: the Node toolchain dir prepended to PATH
           # ships its own npm, which would shadow a pin installed any earlier
           npm install -g "npm@$PIN"
+          installed=$(npm --version)
+          echo "npm $installed"
+          if [ "$installed" != "$PIN" ]; then
+            echo "::error::Expected npm@$PIN (packageManager pin) but 'npm --version' reports $installed."
+            exit 1
+          fi
+        else
+          npm --version
         fi
-        npm --version
 
     - name: Install dependencies and build
       env:
@@ -187,7 +238,7 @@ jobs:
           ls -la dist
 
     - name: Save production artifacts
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
       with:
         name: build-${{ github.sha }}-${{ github.run_number }}
         path: |

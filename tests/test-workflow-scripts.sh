@@ -17,21 +17,25 @@ ruby -ryaml -e '
 wf, detect, setup, npm_setup, install = ARGV
 steps = YAML.load_file(wf)["jobs"]["build"]["steps"]
 by_name = steps.map { |s| [s["name"], s] }.to_h
-File.write(detect, by_name["Detect package manager"]["run"])
-File.write(setup, by_name["Setup package manager version"]["run"])
-File.write(npm_setup, by_name["Setup npm version"]["run"])
-File.write(install, by_name["Install dependencies and build"]["run"])
+grab = ->(name) { by_name.fetch(name) { abort "Step \"#{name}\" not found in #{wf} — renamed? Update tests/test-workflow-scripts.sh." }["run"] }
+File.write(detect, grab.call("Detect package manager"))
+File.write(setup, grab.call("Setup package manager version"))
+File.write(npm_setup, grab.call("Setup npm version"))
+File.write(install, grab.call("Install dependencies and build"))
 ' "$WORKFLOW" "$DETECT" "$SETUP" "$NPM_SETUP" "$INSTALL"
 
 # Stub package manager binaries so tests only record what would be executed
-# instead of installing anything for real. YARN_STUB_APPEND_LOCK=1 makes the
-# yarn stub modify yarn.lock, simulating a lockfile drift regeneration.
+# instead of installing anything for real. `--version` answers with
+# $STUB_VERSION so the workflow's version asserts can be exercised;
+# YARN_STUB_APPEND_LOCK=1 makes the yarn stub modify yarn.lock, simulating
+# a lockfile drift regeneration.
 STUB="$TMP/stub-bin"
 mkdir -p "$STUB"
 for cmd in npm corepack pnpm yarn; do
   cat > "$STUB/$cmd" <<EOF
 #!/bin/bash
 if [ \$# -gt 0 ]; then echo "$cmd \$*" >> "\$STUB_LOG"; else echo "$cmd" >> "\$STUB_LOG"; fi
+if [ "\${1:-}" = "--version" ]; then echo "\${STUB_VERSION:-0.0.0}"; fi
 if [ "$cmd" = "yarn" ] && [ \$# -eq 0 ] && [ "\${YARN_STUB_APPEND_LOCK:-}" = "1" ]; then echo drift >> yarn.lock; fi
 EOF
   chmod +x "$STUB/$cmd"
@@ -164,37 +168,94 @@ d=$(fixture broken-pkg-json yarn.lock)
 echo 'not json' > "$d/package.json"
 check "unparsable package.json falls back to lockfile" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
 
+### Detection: pin validation (exact semver only)
+d=$(fixture pin-range pnpm-lock.yaml)
+echo '{"packageManager": "pnpm@^10"}' > "$d/package.json"
+check "range pin (^10) -> error" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+expect_log "range pin error asks for exact version" "$d" '::error::The packageManager field in package.json'
+
+d=$(fixture pin-tag yarn.lock)
+echo '{"packageManager": "yarn@latest"}' > "$d/package.json"
+check "dist-tag pin (latest) -> error" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+
+d=$(fixture pin-prerelease pnpm-lock.yaml)
+echo '{"packageManager": "pnpm@10.0.0-rc.1"}' > "$d/package.json"
+check "prerelease pin is accepted" "exit=0 pm=pnpm pin=10.0.0-rc.1" "$(run_detect "$d" '')" "$d/.log"
+
+### Detection: Yarn Berry lockfile requires a pin or a vendored release
+d=$(fixture berry-no-pin)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+check "berry lockfile without pin -> error" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+expect_log "berry error explains classic yarn cannot read it" "$d" '::error::yarn.lock is in Yarn Berry'
+
+d=$(fixture berry-with-pin)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+echo '{"packageManager": "yarn@4.6.0"}' > "$d/package.json"
+check "berry lockfile with pin -> ok" "exit=0 pm=yarn pin=4.6.0" "$(run_detect "$d" '')" "$d/.log"
+
+d=$(fixture berry-vendored)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+check "berry lockfile with vendored yarnPath -> ok without pin" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
+
+d=$(fixture classic-lock-no-pin yarn.lock)
+check "classic yarn.lock without pin stays ok" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
+
+### Detection: override vs packageManager field conflict warning
+d=$(fixture override-conflict-warns package-lock.json)
+echo '{"packageManager": "yarn@4.6.0"}' > "$d/package.json"
+run_detect "$d" 'npm' > /dev/null
+expect_log "override conflicting with field emits warning" "$d" '::warning::The package_manager workflow input (npm) overrides'
+
+d=$(fixture override-match-no-warn yarn.lock)
+echo '{"packageManager": "yarn@1.22.22"}' > "$d/package.json"
+run_detect "$d" 'yarn' > /dev/null
+expect_not_log "override matching field does not warn" "$d" '::warning::The package_manager workflow input'
+
 ### Version setup (before setup-node): what would be installed/activated
-run_setup() { # dir pm pin -> prints stub log
+run_setup() { # dir pm pin stub_version -> prints stub log
   local log="$1/.stub.log"; : > "$log"
-  ( cd "$1" && PATH="$STUB:$PATH" STUB_LOG="$log" PM="$2" PIN="$3" GITHUB_ENV="$1/.github.env" \
+  ( cd "$1" && PATH="$STUB:$PATH" STUB_LOG="$log" PM="$2" PIN="$3" STUB_VERSION="${4:-0.0.0}" GITHUB_ENV="$1/.github.env" \
     bash --noprofile --norc -e -o pipefail "$SETUP" ) > "$1/.setup.log" 2>&1 || echo "SETUP_FAILED"
   cat "$log"
 }
 
 d=$(fixture setup-pnpm-pinned)
 check "pnpm pin installed as-is" "npm install -g pnpm@9.12.3
-pnpm --version" "$(run_setup "$d" pnpm 9.12.3)"
+pnpm --version" "$(run_setup "$d" pnpm 9.12.3 9.12.3)"
+
+d=$(fixture setup-pnpm-pin-mismatch)
+check "pnpm pin vs installed mismatch -> hard error" "SETUP_FAILED
+npm install -g pnpm@9.12.3
+pnpm --version" "$(run_setup "$d" pnpm 9.12.3 9.99.9)"
+expect_log "pnpm mismatch error names both versions" "$d" '::error::Expected pnpm@9.12.3' .setup.log
 
 d=$(fixture setup-pnpm-lock9)
 printf "lockfileVersion: '9.0'\n" > "$d/pnpm-lock.yaml"
 check "pnpm lockfileVersion 9.0 -> pnpm@10" "npm install -g pnpm@10
-pnpm --version" "$(run_setup "$d" pnpm '')"
+pnpm --version" "$(run_setup "$d" pnpm '' 10.34.5)"
+
+d=$(fixture setup-pnpm-lock9-major-mismatch)
+printf "lockfileVersion: '9.0'\n" > "$d/pnpm-lock.yaml"
+check "mapped major vs installed mismatch -> hard error" "SETUP_FAILED
+npm install -g pnpm@10
+pnpm --version" "$(run_setup "$d" pnpm '' 9.1.0)"
+expect_log "major mismatch error mentions lockfileVersion origin" "$d" '::error::Expected pnpm major 10' .setup.log
 
 d=$(fixture setup-pnpm-lock6)
 printf "lockfileVersion: '6.0'\n" > "$d/pnpm-lock.yaml"
 check "pnpm lockfileVersion 6.0 -> pnpm@8" "npm install -g pnpm@8
-pnpm --version" "$(run_setup "$d" pnpm '')"
+pnpm --version" "$(run_setup "$d" pnpm '' 8.15.9)"
 
 d=$(fixture setup-pnpm-lock54)
 printf "lockfileVersion: 5.4\n" > "$d/pnpm-lock.yaml"
 check "pnpm lockfileVersion 5.4 -> pnpm@7" "npm install -g pnpm@7
-pnpm --version" "$(run_setup "$d" pnpm '')"
+pnpm --version" "$(run_setup "$d" pnpm '' 7.33.7)"
 
 d=$(fixture setup-pnpm-lock53)
 printf "lockfileVersion: 5.3\n" > "$d/pnpm-lock.yaml"
 check "pnpm lockfileVersion 5.3 -> pnpm@7" "npm install -g pnpm@7
-pnpm --version" "$(run_setup "$d" pnpm '')"
+pnpm --version" "$(run_setup "$d" pnpm '' 7.33.7)"
 
 d=$(fixture setup-pnpm-lock-future)
 printf "lockfileVersion: '10.0'\n" > "$d/pnpm-lock.yaml"
@@ -202,13 +263,21 @@ check "unknown future lockfileVersion -> hard error, no silent pnpm@10" "SETUP_F
 expect_log "future lockfileVersion error asks for a pin" "$d" "::error::Unrecognized lockfileVersion '10.0'" .setup.log
 
 d=$(fixture setup-yarn-pinned)
-check "yarn pin activates corepack" "corepack enable yarn" "$(run_setup "$d" yarn 4.6.0)"
+check "yarn pin activates corepack and asserts the version" "corepack enable yarn
+yarn --version" "$(run_setup "$d" yarn 4.6.0 4.6.0)"
 grep -q 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0' "$d/.github.env" \
   && { PASS=$((PASS+1)); echo "PASS: yarn pin exports COREPACK_ENABLE_DOWNLOAD_PROMPT"; } \
   || { FAIL=$((FAIL+1)); echo "FAIL: yarn pin exports COREPACK_ENABLE_DOWNLOAD_PROMPT"; }
 
+d=$(fixture setup-yarn-pin-mismatch)
+check "yarn pin vs activated mismatch -> hard error" "SETUP_FAILED
+corepack enable yarn
+yarn --version" "$(run_setup "$d" yarn 4.6.0 1.22.22)"
+expect_log "yarn mismatch error names both versions" "$d" '::error::Expected yarn@4.6.0' .setup.log
+
 d=$(fixture setup-yarn-classic-pin)
-check "yarn classic pin activates corepack too" "corepack enable yarn" "$(run_setup "$d" yarn 1.22.22)"
+check "yarn classic pin activates corepack too" "corepack enable yarn
+yarn --version" "$(run_setup "$d" yarn 1.22.22 1.22.22)"
 
 d=$(fixture setup-yarn-unpinned yarn.lock)
 check "yarn without pin -> preinstalled yarn, nothing to set up" "" "$(run_setup "$d" yarn '')"
@@ -217,16 +286,22 @@ d=$(fixture setup-npm-noop)
 check "npm handled later -> no install before setup-node" "" "$(run_setup "$d" npm 10.9.2)"
 
 ### npm version setup (after setup-node)
-run_npm_setup() { # dir pin -> prints stub log
+run_npm_setup() { # dir pin stub_version -> prints stub log
   local log="$1/.stub.log"; : > "$log"
-  ( cd "$1" && PATH="$STUB:$PATH" STUB_LOG="$log" PIN="$2" \
+  ( cd "$1" && PATH="$STUB:$PATH" STUB_LOG="$log" PIN="$2" STUB_VERSION="${3:-0.0.0}" \
     bash --noprofile --norc -e -o pipefail "$NPM_SETUP" ) > "$1/.npm-setup.log" 2>&1 || echo "SETUP_FAILED"
   cat "$log"
 }
 
 d=$(fixture npm-setup-pinned)
 check "npm pin installed after setup-node" "npm install -g npm@10.9.2
-npm --version" "$(run_npm_setup "$d" 10.9.2)"
+npm --version" "$(run_npm_setup "$d" 10.9.2 10.9.2)"
+
+d=$(fixture npm-setup-pin-mismatch)
+check "npm pin vs installed mismatch -> hard error" "SETUP_FAILED
+npm install -g npm@10.9.2
+npm --version" "$(run_npm_setup "$d" 10.9.2 11.0.0)"
+expect_log "npm mismatch error names both versions" "$d" '::error::Expected npm@10.9.2' .npm-setup.log
 
 d=$(fixture npm-setup-unpinned)
 check "npm without pin -> bundled npm" "npm --version" "$(run_npm_setup "$d" '')"

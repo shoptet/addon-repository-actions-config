@@ -1,4 +1,4 @@
-name: Shoptet addon deploy workflow
+name: Shoptet addon deploy workflow (wrapper)
 
 # Thin wrapper kept for repositories that call deploy.workflow.yml directly.
 # All build logic lives in default.workflow.yml — change it there only, and
