@@ -260,6 +260,16 @@ touch "$d/yarn.lock"
 printf 'yarnPath: ".yarn/releases/yarn-4.6.0.cjs"\n' > "$d/.yarnrc.yml"
 check "quoted yarnPath value is parsed too" "exit=1 pm= pin=" "$(run_detect "$d" '')"
 
+d=$(fixture yarnpath-crlf yarn.lock)
+mkdir -p "$d/.yarn/releases"; touch "$d/.yarn/releases/yarn-4.6.0.cjs"
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\r\n' > "$d/.yarnrc.yml"
+check "CRLF .yarnrc.yml does not false-positive on committed file" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
+
+d=$(fixture yarnpath-inline-comment yarn.lock)
+mkdir -p "$d/.yarn/releases"; touch "$d/.yarn/releases/yarn-4.6.0.cjs"
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs # vendored release\n' > "$d/.yarnrc.yml"
+check "inline YAML comment after yarnPath is stripped" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
+
 d=$(fixture classic-lock-no-pin yarn.lock)
 check "classic yarn.lock without pin stays ok" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
 
@@ -272,6 +282,12 @@ printf '# yarn lockfile v1\n\n\nleft-pad@^1.3.0:\n  version "1.3.0"\n' > "$d/yar
 echo '{"packageManager": "yarn@4.6.0"}' > "$d/package.json"
 check "berry pin + classic v1 lockfile -> early error (mirror guard)" "exit=1 pm= pin=" "$(run_detect "$d" '')"
 expect_log "mirror guard error explains immutable failure" "$d" 'classic v1 format'
+
+d=$(fixture classic-lock-berry-pin-vendored)
+printf '# yarn lockfile v1\n' > "$d/yarn.lock"
+vendor_release "$d" 1.22.22
+echo '{"packageManager": "yarn@4.6.0"}' > "$d/package.json"
+check "mirror guard exempts vendored yarnPath (vendored wins over pin)" "exit=0 pm=yarn pin=4.6.0" "$(run_detect "$d" '')" "$d/.log"
 
 ### Detection: override vs packageManager field conflict warning
 d=$(fixture override-conflict-warns package-lock.json)

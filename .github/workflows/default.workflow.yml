@@ -129,8 +129,10 @@ jobs:
         fi
         # A yarnPath entry must point at a committed file — a gitignored
         # .yarn/releases would otherwise die much later on a raw node stack trace.
+        yarn_path=""
         if [ "$pm" = "yarn" ] && [ -f .yarnrc.yml ]; then
-          yarn_path=$(sed -n 's/^yarnPath:[[:space:]]*//p' .yarnrc.yml | head -1 | tr -d "\"'")
+          # tolerate CRLF line endings, quotes and inline YAML comments
+          yarn_path=$(sed -n 's/^yarnPath:[[:space:]]*//p' .yarnrc.yml | head -1 | tr -d "\r\"'" | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//')
           if [ -n "$yarn_path" ] && [ ! -f "$yarn_path" ]; then
             echo "::error::.yarnrc.yml sets yarnPath to '$yarn_path', but that file is not committed. Commit the vendored Yarn release (is .yarn/releases in .gitignore?) or remove the yarnPath entry."
             exit 1
@@ -154,7 +156,9 @@ jobs:
         fi
         # The mirror case: a Berry (2+) pin with a classic v1 lockfile would only
         # fail later, deep inside the immutable install — fail early instead.
-        if [ "$pm" = "yarn" ] && [ -n "$pin" ]; then
+        # Like the primary guard, a vendored yarnPath release is exempt: it wins
+        # over the pin at runtime (the setup step warns about the mismatch).
+        if [ "$pm" = "yarn" ] && [ -n "$pin" ] && [ -z "$yarn_path" ]; then
           case "$pin" in
             1.*) ;;
             *)
