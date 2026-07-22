@@ -181,6 +181,12 @@ check "malformed field -> error" "exit=1 pm= pin=" "$(run_detect "$d" '')"
 d=$(fixture broken-pkg-json yarn.lock)
 echo 'not json' > "$d/package.json"
 check "unparsable package.json falls back to lockfile" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
+expect_log "unparsable package.json warns" "$d" '::warning::package.json could not be parsed'
+
+d=$(fixture foreign-lock-with-field pnpm-lock.yaml yarn.lock)
+echo '{"packageManager": "pnpm@10.4.1"}' > "$d/package.json"
+check "field-resolved pm with stray yarn.lock still ok" "exit=0 pm=pnpm pin=10.4.1" "$(run_detect "$d" '')" "$d/.log"
+expect_log "foreign lockfile warning fires for field source too" "$d" '::warning::Multiple lockfiles are committed'
 
 ### Detection: pin validation (exact semver only)
 d=$(fixture pin-range pnpm-lock.yaml)
@@ -220,9 +226,15 @@ printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
 echo '{"packageManager": "yarn@4.6.0"}' > "$d/package.json"
 check "berry lockfile with pin -> ok" "exit=0 pm=yarn pin=4.6.0" "$(run_detect "$d" '')" "$d/.log"
 
+vendor_release() { # dir version — create a committed vendored release file
+  mkdir -p "$1/.yarn/releases"
+  touch "$1/.yarn/releases/yarn-$2.cjs"
+  printf 'yarnPath: .yarn/releases/yarn-%s.cjs\n' "$2" > "$1/.yarnrc.yml"
+}
+
 d=$(fixture berry-vendored)
 printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
-printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+vendor_release "$d" 4.6.0
 check "berry lockfile with vendored yarnPath -> ok without pin" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
 
 d=$(fixture berry-classic-pin)
@@ -233,9 +245,20 @@ expect_log "berry+classic-pin error mentions the pin" "$d" 'found: 1.22.22'
 
 d=$(fixture berry-classic-pin-vendored)
 printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
-printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+vendor_release "$d" 4.6.0
 echo '{"packageManager": "yarn@1.22.22"}' > "$d/package.json"
 check "berry lockfile + classic pin + vendored yarnPath -> ok (delegation)" "exit=0 pm=yarn pin=1.22.22" "$(run_detect "$d" '')" "$d/.log"
+
+d=$(fixture yarnpath-missing-file)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+check "yarnPath pointing at uncommitted file -> early error" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+expect_log "missing yarnPath file error names the path" "$d" "yarnPath to '.yarn/releases/yarn-4.6.0.cjs', but that file is not committed"
+
+d=$(fixture yarnpath-quoted-missing)
+touch "$d/yarn.lock"
+printf 'yarnPath: ".yarn/releases/yarn-4.6.0.cjs"\n' > "$d/.yarnrc.yml"
+check "quoted yarnPath value is parsed too" "exit=1 pm= pin=" "$(run_detect "$d" '')"
 
 d=$(fixture classic-lock-no-pin yarn.lock)
 check "classic yarn.lock without pin stays ok" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
@@ -243,6 +266,12 @@ check "classic yarn.lock without pin stays ok" "exit=0 pm=yarn pin=" "$(run_dete
 d=$(fixture classic-lock-classic-pin yarn.lock)
 echo '{"packageManager": "yarn@1.22.22"}' > "$d/package.json"
 check "classic yarn.lock with classic pin stays ok" "exit=0 pm=yarn pin=1.22.22" "$(run_detect "$d" '')" "$d/.log"
+
+d=$(fixture classic-lock-berry-pin)
+printf '# yarn lockfile v1\n\n\nleft-pad@^1.3.0:\n  version "1.3.0"\n' > "$d/yarn.lock"
+echo '{"packageManager": "yarn@4.6.0"}' > "$d/package.json"
+check "berry pin + classic v1 lockfile -> early error (mirror guard)" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+expect_log "mirror guard error explains immutable failure" "$d" 'classic v1 format'
 
 ### Detection: override vs packageManager field conflict warning
 d=$(fixture override-conflict-warns package-lock.json)
@@ -277,6 +306,7 @@ d=$(fixture setup-pnpm-lock9)
 printf "lockfileVersion: '9.0'\n" > "$d/pnpm-lock.yaml"
 check "pnpm lockfileVersion 9.0 -> pnpm@10" "npm install -g pnpm@10
 pnpm --version" "$(run_setup "$d" pnpm '' 10.34.5)"
+expect_log "9.x mapping emits build-scripts notice" "$d" '::notice::lockfileVersion 9.0 is written by both pnpm 9 and pnpm 10' .setup.log
 
 d=$(fixture setup-pnpm-lock9-major-mismatch)
 printf "lockfileVersion: '9.0'\n" > "$d/pnpm-lock.yaml"

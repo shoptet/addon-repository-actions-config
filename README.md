@@ -17,7 +17,7 @@ Whichever way the package manager is resolved, **its lockfile must be committed*
 
 If more than one lockfile is committed, the first match in the order above wins and a warning is emitted (the build still passes) — remove the extra lockfile or set the `package_manager` input explicitly.
 
-A version pinned in the `packageManager` field is honored: pnpm and npm are installed at the pinned version, and any pinned Yarn (classic or Berry) is activated through corepack. Without a pin, pnpm's major version is chosen to match the `lockfileVersion` of the committed `pnpm-lock.yaml`, Yarn defaults to the classic (1.x) preinstalled on the runner, and npm defaults to the version bundled with Node.
+A version pinned in the `packageManager` field is honored: pnpm and npm are installed at the pinned version, and any pinned Yarn (classic or Berry) is activated through corepack. A `+sha…` integrity suffix in the pin is verified for Yarn (corepack checks it); for pnpm and npm the pinned version is installed from the npm registry without hash verification. Without a pin, pnpm's major version is chosen to match the `lockfileVersion` of the committed `pnpm-lock.yaml`, Yarn defaults to the classic (1.x) preinstalled on the runner, and npm defaults to the version bundled with Node. A Yarn release vendored via `yarnPath` in `.yarnrc.yml` always wins over a pin — the file must be committed.
 
 To override auto-detection, pass the optional `package_manager` input when calling the workflow. The input overrides *which* package manager is used; it does not bypass validation of the `packageManager` field for that manager — if the field pins an invalid version (a range or a tag), fix the field itself:
 
