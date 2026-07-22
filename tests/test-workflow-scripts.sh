@@ -182,6 +182,19 @@ d=$(fixture pin-prerelease pnpm-lock.yaml)
 echo '{"packageManager": "pnpm@10.0.0-rc.1"}' > "$d/package.json"
 check "prerelease pin is accepted" "exit=0 pm=pnpm pin=10.0.0-rc.1" "$(run_detect "$d" '')" "$d/.log"
 
+d=$(fixture pin-newline-injection pnpm-lock.yaml)
+printf '%s' '{"packageManager": "pnpm@1.2.3\npm=yarn"}' > "$d/package.json"
+check "multiline pin -> error (no GITHUB_OUTPUT injection)" "exit=1 pm= pin=" "$(run_detect "$d" '')" "$d/.log"
+expect_log "multiline pin error message" "$d" '::error::The packageManager field in package.json'
+
+d=$(fixture output-integrity pnpm-lock.yaml)
+echo '{"packageManager": "pnpm@10.4.1"}' > "$d/package.json"
+out=$(mktemp)
+( cd "$d" && PM_OVERRIDE="" GITHUB_OUTPUT="$out" bash --noprofile --norc -e -o pipefail "$DETECT" ) > "$d/.log" 2>&1
+check "GITHUB_OUTPUT contains exactly the pm and pin lines" "pm=pnpm
+pin=10.4.1" "$(cat "$out")" "$d/.log"
+rm -f "$out"
+
 ### Detection: Yarn Berry lockfile requires a pin or a vendored release
 d=$(fixture berry-no-pin)
 printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"

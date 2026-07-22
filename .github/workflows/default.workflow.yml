@@ -96,8 +96,11 @@ jobs:
         # Only an exact version is a valid pin: ranges or tags would make the
         # build non-reproducible, and the value is passed to installers and
         # written to GITHUB_OUTPUT, so reject anything else loudly and early.
-        if [ -n "$pin" ] && ! printf '%s' "$pin" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-          echo "::error::The packageManager field in package.json ('$pm_field') does not pin an exact version. Use an exact semver version, e.g. \"$pm@1.2.3\", so the build is reproducible."
+        # [[ =~ ]] (not grep) so the anchors span the whole value — a multiline
+        # pin must not slip extra lines into GITHUB_OUTPUT.
+        semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+        if [ -n "$pin" ] && ! [[ "$pin" =~ $semver_re ]]; then
+          echo "::error::The packageManager field in package.json does not pin an exact version. Use an exact semver version, e.g. \"$pm@1.2.3\", so the build is reproducible."
           exit 1
         fi
         # A Yarn Berry lockfile needs a Berry binary: without a version pin (or a
