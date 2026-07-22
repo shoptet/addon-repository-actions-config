@@ -24,6 +24,20 @@ File.write(npm_setup, grab.call("Setup npm version"))
 File.write(install, grab.call("Install dependencies and build"))
 ' "$WORKFLOW" "$DETECT" "$SETUP" "$NPM_SETUP" "$INSTALL"
 
+# The deploy.workflow.yml wrapper must declare the same inputs as
+# default.workflow.yml — the comment in the wrapper asks for it, this enforces it.
+ruby -ryaml -e '
+def inputs(path)
+  doc = YAML.load_file(path)
+  (doc["on"] || doc[true]).fetch("workflow_call").fetch("inputs")
+end
+root = ARGV[0]
+a = inputs("#{root}/.github/workflows/default.workflow.yml")
+b = inputs("#{root}/.github/workflows/deploy.workflow.yml")
+abort "deploy.workflow.yml wrapper inputs drift from default.workflow.yml:\n#{a}\nvs\n#{b}" unless a == b
+' "$ROOT" || { echo "FAIL: wrapper input parity"; exit 1; }
+echo "PASS: wrapper inputs match default.workflow.yml"
+
 # Stub package manager binaries so tests only record what would be executed
 # instead of installing anything for real. `--version` answers with
 # $STUB_VERSION so the workflow's version asserts can be exercised;
@@ -319,6 +333,42 @@ yarn --version" "$(run_setup "$d" yarn 1.22.22 1.22.22)"
 
 d=$(fixture setup-yarn-unpinned yarn.lock)
 check "yarn without pin -> preinstalled yarn, nothing to set up" "" "$(run_setup "$d" yarn '')"
+
+d=$(fixture setup-yarn-vendored)
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+check "vendored yarnPath -> no corepack, delegation logs version" "yarn --version" "$(run_setup "$d" yarn '' 4.6.0)"
+expect_not_log "vendored without pin does not warn" "$d" '::warning::' .setup.log
+
+d=$(fixture setup-yarn-vendored-classic-pin)
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+check "vendored yarnPath + classic pin -> vendored wins, no hard error" "yarn --version" "$(run_setup "$d" yarn 1.22.22 4.6.0)"
+expect_log "vendored vs pin mismatch warns" "$d" '::warning::packageManager pins yarn@1.22.22 but the vendored yarnPath release is yarn@4.6.0' .setup.log
+
+d=$(fixture setup-yarn-vendored-matching-pin)
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+check "vendored yarnPath + matching pin -> quiet" "yarn --version" "$(run_setup "$d" yarn 4.6.0 4.6.0)"
+expect_not_log "vendored matching pin does not warn" "$d" '::warning::' .setup.log
+
+# Corepack fallback: PATH without any corepack; the npm stub in STUB2 "installs"
+# one when asked, mimicking npm install -g corepack@0.35.0 on a Node 25+ runner.
+STUB2="$TMP/stub-bin-nocorepack"
+mkdir -p "$STUB2"
+cp "$STUB/yarn" "$STUB2/yarn"
+cat > "$STUB2/npm" <<EOF
+#!/bin/bash
+echo "npm \$*" >> "\$STUB_LOG"
+case "\$*" in "install -g corepack@"*) cp "$STUB/corepack" "$STUB2/corepack" ;; esac
+EOF
+chmod +x "$STUB2/npm"
+
+d=$(fixture setup-corepack-fallback)
+rm -f "$STUB2/corepack"
+log="$d/.stub.log"; : > "$log"
+( cd "$d" && PATH="$STUB2:/usr/bin:/bin" STUB_LOG="$log" PM=yarn PIN=4.6.0 STUB_VERSION=4.6.0 GITHUB_ENV="$d/.github.env" \
+  bash --noprofile --norc -e -o pipefail "$SETUP" ) > "$d/.setup.log" 2>&1 || echo "SETUP_FAILED"
+check "missing corepack -> pinned install then activation" "npm install -g corepack@0.35.0
+corepack enable yarn
+yarn --version" "$(cat "$log")" "$d/.setup.log"
 
 d=$(fixture setup-npm-noop)
 check "npm handled later -> no install before setup-node" "" "$(run_setup "$d" npm 10.9.2)"

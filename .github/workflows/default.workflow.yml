@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       package_manager:
-        description: 'Package manager to use (npm, yarn or pnpm). Overrides auto-detection from the lockfile.'
+        description: 'Package manager to use (npm, yarn or pnpm). Overrides which manager is auto-detected; a packageManager version pin for the chosen manager still applies and is still validated.'
         required: false
         type: string
         default: ''
@@ -122,7 +122,7 @@ jobs:
               if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
                 echo "Yarn Berry lockfile with a vendored release (yarnPath in .yarnrc.yml) — classic Yarn delegates to it."
               else
-                echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Berry-capable Yarn version (found: ${pin:-no pin}) and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json."
+                echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Berry-capable Yarn version (found: ${pin:-no pin}) and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json — or, if Yarn is not the package manager you actually use, remove yarn.lock instead."
                 exit 1
               fi
               ;;
@@ -181,7 +181,17 @@ jobs:
             fi
             ;;
           yarn)
-            if [ -n "$PIN" ]; then
+            if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
+              # A vendored release always wins at runtime: every yarn binary
+              # (classic or corepack-activated) delegates to yarnPath, so
+              # activating a pin through corepack here would assert against
+              # a version the build will never use.
+              installed=$(yarn --version)
+              echo "yarn $installed (vendored release via yarnPath in .yarnrc.yml)"
+              if [ -n "$PIN" ] && [ "$installed" != "$PIN" ]; then
+                echo "::warning::packageManager pins yarn@$PIN but the vendored yarnPath release is yarn@$installed — the vendored release wins at runtime. Align the two to avoid confusion."
+              fi
+            elif [ -n "$PIN" ]; then
               # activate the exact pinned Yarn version (classic or Berry) through corepack
               echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
               export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -198,7 +208,7 @@ jobs:
                 exit 1
               fi
             fi
-            # without a pin, the classic Yarn preinstalled on the runner is used
+            # without a pin or a vendored yarnPath, the classic Yarn preinstalled on the runner is used
             ;;
         esac
         # npm pins are handled after setup-node — see the "Setup npm version" step

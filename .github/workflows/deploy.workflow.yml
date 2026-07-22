@@ -12,7 +12,7 @@ on:
   workflow_call:
     inputs:
       package_manager:
-        description: 'Package manager to use (npm, yarn or pnpm). Overrides auto-detection from the lockfile.'
+        description: 'Package manager to use (npm, yarn or pnpm). Overrides which manager is auto-detected; a packageManager version pin for the chosen manager still applies and is still validated.'
         required: false
         type: string
         default: ''
