@@ -13,6 +13,11 @@ jobs:
   build:
     name: 🚀 Build Dev 🚀
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # the build needs nothing but the checkout; never inherit write scopes
+      # from the caller into a job that runs third-party dependency scripts
+      contents: read
     defaults:
       run:
         # explicit bash turns on pipefail, matching how tests/ run these scripts
@@ -20,6 +25,10 @@ jobs:
     steps:
     - name: 🚚 Get latest code
       uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        # install/build runs untrusted dependency scripts (postinstall hooks) —
+        # do not leave the caller's token in .git/config where they could read it
+        persist-credentials: false
 
     - name: Detect package manager
       id: package-manager
@@ -103,16 +112,21 @@ jobs:
           echo "::error::The packageManager field in package.json does not pin an exact version. Use an exact semver version, e.g. \"$pm@1.2.3\", so the build is reproducible."
           exit 1
         fi
-        # A Yarn Berry lockfile needs a Berry binary: without a version pin (or a
-        # vendored release via yarnPath) the runner's classic Yarn 1 cannot read
-        # it and would silently resolve the dependency tree from scratch.
-        if [ "$pm" = "yarn" ] && [ -z "$pin" ] && grep -q '^__metadata:' yarn.lock; then
-          if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
-            echo "Yarn Berry lockfile with a vendored release (yarnPath in .yarnrc.yml) — classic Yarn delegates to it."
-          else
-            echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Yarn version and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json."
-            exit 1
-          fi
+        # A Yarn Berry lockfile needs a Berry binary: classic Yarn 1 — whether
+        # unpinned (the runner default) or explicitly pinned to 1.x — cannot
+        # read it and would silently resolve the dependency tree from scratch.
+        # A vendored release via yarnPath is fine: classic Yarn delegates to it.
+        if [ "$pm" = "yarn" ] && grep -q '^__metadata:' yarn.lock; then
+          case "$pin" in
+            ''|1.*)
+              if [ -f .yarnrc.yml ] && grep -q '^yarnPath:' .yarnrc.yml; then
+                echo "Yarn Berry lockfile with a vendored release (yarnPath in .yarnrc.yml) — classic Yarn delegates to it."
+              else
+                echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Berry-capable Yarn version (found: ${pin:-no pin}) and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json."
+                exit 1
+              fi
+              ;;
+          esac
         fi
         if [ -n "$pin" ]; then
           echo "Using package manager: $pm@$pin (from $source; version pinned via the packageManager field)"
@@ -134,11 +148,14 @@ jobs:
             else
               # Match the pnpm major version to the committed lockfile format.
               # When a new pnpm major introduces a new lockfileVersion, add a line here.
+              # 5.x maps to pnpm 7 for the whole family: pnpm 7 frozen-installs
+              # 5.3 lockfiles fine (verified), while pnpm 6 cannot run on modern
+              # Node at all (ERR_INVALID_THIS on registry fetches).
               lockfile_version=$(grep -m1 -oE "^lockfileVersion: *['\"]?[0-9.]+" pnpm-lock.yaml | grep -oE '[0-9.]+$' || true)
               case "$lockfile_version" in
-                5*) version="7" ;;
-                6*) version="8" ;;
-                9*) version="10" ;;
+                5|5.*) version="7" ;;
+                6|6.*) version="8" ;;
+                9|9.*) version="10" ;;
                 *)
                   echo "::error::Unrecognized lockfileVersion '$lockfile_version' in pnpm-lock.yaml — this workflow does not know which pnpm version it needs. Pin your pnpm version via the packageManager field in package.json, or report this so the workflow's version mapping gets extended."
                   exit 1
@@ -169,8 +186,8 @@ jobs:
               echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
               export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
               # corepack ships with Node 22/24 but was dropped from Node 25 —
-              # install it if the runner's default Node no longer bundles it
-              command -v corepack >/dev/null 2>&1 || npm install -g corepack
+              # install it (pinned) if the runner's default Node no longer bundles it
+              command -v corepack >/dev/null 2>&1 || npm install -g corepack@0.35.0
               corepack enable yarn
               # run yarn once now: corepack downloads the pinned version here, in
               # this step, instead of failing later inside setup-node's cache probe

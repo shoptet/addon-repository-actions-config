@@ -19,6 +19,8 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: read
     uses: ./.github/workflows/default.workflow.yml
     with:
       package_manager: ${{ inputs.package_manager }}

@@ -211,8 +211,24 @@ printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
 printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
 check "berry lockfile with vendored yarnPath -> ok without pin" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
 
+d=$(fixture berry-classic-pin)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+echo '{"packageManager": "yarn@1.22.22"}' > "$d/package.json"
+check "berry lockfile with classic 1.x pin -> error (yarn 1 cannot read it)" "exit=1 pm= pin=" "$(run_detect "$d" '')"
+expect_log "berry+classic-pin error mentions the pin" "$d" 'found: 1.22.22'
+
+d=$(fixture berry-classic-pin-vendored)
+printf '__metadata:\n  version: 8\n' > "$d/yarn.lock"
+printf 'yarnPath: .yarn/releases/yarn-4.6.0.cjs\n' > "$d/.yarnrc.yml"
+echo '{"packageManager": "yarn@1.22.22"}' > "$d/package.json"
+check "berry lockfile + classic pin + vendored yarnPath -> ok (delegation)" "exit=0 pm=yarn pin=1.22.22" "$(run_detect "$d" '')" "$d/.log"
+
 d=$(fixture classic-lock-no-pin yarn.lock)
 check "classic yarn.lock without pin stays ok" "exit=0 pm=yarn pin=" "$(run_detect "$d" '')" "$d/.log"
+
+d=$(fixture classic-lock-classic-pin yarn.lock)
+echo '{"packageManager": "yarn@1.22.22"}' > "$d/package.json"
+check "classic yarn.lock with classic pin stays ok" "exit=0 pm=yarn pin=1.22.22" "$(run_detect "$d" '')" "$d/.log"
 
 ### Detection: override vs packageManager field conflict warning
 d=$(fixture override-conflict-warns package-lock.json)
@@ -274,6 +290,15 @@ d=$(fixture setup-pnpm-lock-future)
 printf "lockfileVersion: '10.0'\n" > "$d/pnpm-lock.yaml"
 check "unknown future lockfileVersion -> hard error, no silent pnpm@10" "SETUP_FAILED" "$(run_setup "$d" pnpm '')"
 expect_log "future lockfileVersion error asks for a pin" "$d" "::error::Unrecognized lockfileVersion '10.0'" .setup.log
+
+d=$(fixture setup-pnpm-lock-missing-version)
+printf "packages: {}\n" > "$d/pnpm-lock.yaml"
+check "pnpm-lock without lockfileVersion line -> hard error" "SETUP_FAILED" "$(run_setup "$d" pnpm '')"
+expect_log "missing lockfileVersion error" "$d" "::error::Unrecognized lockfileVersion ''" .setup.log
+
+d=$(fixture setup-pnpm-lock90-not-9)
+printf "lockfileVersion: '90'\n" > "$d/pnpm-lock.yaml"
+check "lockfileVersion 90 does not match the 9.x mapping" "SETUP_FAILED" "$(run_setup "$d" pnpm '')"
 
 d=$(fixture setup-yarn-pinned)
 check "yarn pin activates corepack and asserts the version" "corepack enable yarn
