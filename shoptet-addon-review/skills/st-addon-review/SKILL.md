@@ -61,10 +61,11 @@ Miř na **přesnost před úplností.** Jeden falešný nález stojí důvěru p
 něco mine. Když si nejsi jistý záměrem, použij dotaz (`❓`), ne tvrzení.
 
 **Přesnost ≠ mlčení.** Znamená to netvrdit, co jsi neověřil — ne zahazovat nejisté stopy.
-Když máš stopu na katalogový nález a jde ověřit levně nástrojem (`grep` přes repo, přečtení
-definice, dohledání volání), **ověř ji, než ji zahodíš.** Tiše zahodit ověřitelný lead
-(„možná F2… radši ne") není zdrženlivost, je to minutí — a na rozdíl od false-positive není
-nikde vidět. Zdrženlivý buď tam, kde ověření není levné nebo záměr zůstává nejasný.
+Když máš stopu na nález — katalogový i judgment — a jde ověřit levně nástrojem (`grep` přes
+repo, přečtení definice, dohledání volání), **ověř ji, než ji zahodíš.** Tiše zahodit
+ověřitelný lead („možná F2… radši ne") není zdrženlivost, je to minutí — a na rozdíl od
+false-positive není nikde vidět. Zdrženlivý buď tam, kde ověření není levné; **nejasný záměr
+= `❓`, ne mlčení** (ověřené pozorování se nezahazuje — místo tvrzení se položí dotaz).
 
 **Hotovo ≠ vypadá hotově.** Review neuzavírej proto, že *výstup vypadá jako hotové review*.
 To je nejčastější tichý miss: první průchod se zastaví, jakmile má review „správný tvar",
@@ -118,6 +119,12 @@ být férová a obhajitelná („blokuje tě pravidlo C3, tady je", ne „AI mě
 kterým si jsi vysoce jistá a žádné pravidlo ho nepokrývá (sedí to na hlavní cíl — nedopustit,
 aby doplněk rozbil e-shop). **Nevytvářej vkusové ani spekulativní připomínky** typu „tohle by
 šlo elegantněji" — to je u slabších partnerů jen šum, který stojí důvěru.
+
+**Pozor na opačnou chybu:** konkrétní, ověřitelný nález bez pravidla není šum. Když se nemapuje
+na katalog, je to judgment — `recommended`, když je bug jistý; `❓`, když je pozorování ověřené,
+ale záměr nejasný (např. degenerativní `X && X`). Tiše ho zahodit je stejná chyba jako vymyslet
+vkusovou připomínku — jen není vidět. Judgment je záchytná síť pro reálné problémy bez pravidla;
+**prázdný judgment kanál není sám o sobě úspěch.**
 
 Proto má každý nález pole `source`:
 - `catalog` — mapuje se na pravidlo z katalogu. Může být až `blocking`.
@@ -189,7 +196,7 @@ pravidlo. Rozhodnutí (formulace, závažnost, Gate, vlastník) je na člověku.
      jazyků/hodnot, než vývojář vyjmenoval.
 4. **Kontrola úplnosti (než uzavřeš).** Krok, co si jinak vynutí až lidský dotaz „to je
    všechno, na nic jsi nezapomněl?" — udělej ho sám, dřív než cokoli vypíšeš. Dvě osy:
-   - **Šířka (katalog):** každý dotčený soubor × sekce A–J; u každé buňky *nález /
+   - **Šířka (katalog):** každý dotčený soubor × sekce A–J + P; u každé buňky *nález /
      neaplikuje se / prověřeno, čisté*. Když nevíš které, buňku jsi neprošel → zpět na krok 3.
      Zapiš jako kompaktní tabulku (interně, do souhrnu partnerovi nepatří) — to tě donutí
      matici fakt projet, ne jen prohlásit „vypadá hotové". **Matice měří šířku, ne hloubku:**
@@ -281,12 +288,15 @@ Pravidla pro pole:
 - `catalog_version` — opiš doslova hodnotu `catalog_version` z hlavičky `references/rules-catalog.md`. Slouží k tomu, aby u srovnávaných běhů a v CI gate bylo dohledatelné, proti které verzi pravidel nález vznikl. Je to **strojová metadata** (jako `rule_id`) — do partnerského textu ani souhrnu nepatří.
 - `source` (`catalog` / `judgment`) — viz sekce *Scope*. `judgment` nález nesmí mít
   `severity: blocking` (invariant 3) a musí být **konkrétní, vysoce jistý bug/riziko** — ne vkus
-  ani spekulace.
+  ani spekulace. **Vysoká jistota se týká *pozorování*, ne záměru autora:** ověřené, konkrétní
+  pozorování (řádek + důkaz) s nejasným záměrem — degenerativní konstrukt typu `X && X`, mrtvá
+  větev — zvedni jako `severity: question`, nezahazuj. Slot `❓` **není zadní vrátka pro vkus
+  ani spekulaci**: nejasný smí být jen záměr, pozorování nikdy.
 - `status` (`new` / `persisting` / `resolved`) — na prvním běhu je vše `new`; na re-runu se
   odvodí z git srovnání minulého a aktuálního commitu (viz *Re-run*). Řídí zápis (nový inline /
   žádný / obecné potvrzení v souhrnu) i gate.
-- `gate_check` — **povinné u každého nálezu na podmíněné pravidlo** (`❌/⚠️`: A2, B1, B5, B6, C1,
-  C3, F3, F5, I2, I4, J1, J2). Ne volný komentář — **binárně zodpovězená Gate otázka daného
+- `gate_check` — **povinné u každého nálezu na podmíněné pravidlo** (`❌/⚠️`: A1, A2, B1, B5, B6,
+  C1, C3, F3, F5, I2, I4, J1, J2, P1). Ne volný komentář — **binárně zodpovězená Gate otázka daného
   pravidla ve tvaru** `ID: <citace Gate otázky>? ANO/NE → <severity>`, např.
   `A2: přeruší pád init doplňku? ANO → blocking`. Severita nálezu **musí** odpovídat téhle
   odpovědi. Smysl je donutit tě gate skutečně provést, ne ji odhadnout: binární otázka „přeruší

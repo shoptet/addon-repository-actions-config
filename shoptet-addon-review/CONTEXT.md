@@ -103,7 +103,7 @@ Meta-vzorec těch chyb: skill zůstával **lokální**, když měl jít **např�
 a **uzavíral nález o jednu otázku dřív**.
 
 **Kalibrace potvrzená napříč běhy:**
-- **Kontrola úplnosti = dvouosá:** šířka (matice soubor × A–J) + hloubka (model chování;
+- **Kontrola úplnosti = dvouosá:** šířka (matice soubor × A–J + P) + hloubka (model chování;
   „reportuju z ověřeného, nebo z ‚myslím, že jsem to protraceoval'?"). **Matice měří šířku, ne
   hloubku** — velký soubor odškrtnutý přes pár sekcí = falešné razítko → `❓ mělce prošlé`.
 - **A2 Gate:** výjimka, co přeruší init doplňku = **❌** (patří na čelo blokujících), ne ⚠️.
@@ -142,7 +142,10 @@ a **uzavíral nález o jednu otázku dřív**.
 - **Plně automatický `submit` (bez člověka) je NAPSANÝ, ale NEZVOLENÝ.** Default `pending`.
   Zapnout až bude pending výstup opakovaně takový, že bys ho submitnul beze změny. Servisní
   identita (`shoptet-ai-reviewer`) patří až sem, ne k pending.
-- **Backlog pravidel** (A6–A11, P1 GDPR, sekce J accessibility = runtime) — parkováno.
+- **Backlog pravidel** (A6–A11, sekce J accessibility = runtime) — parkováno. **P1 (cookie
+  consent pro tracking) z backlogu kodifikováno 2026-07-22** — judgment kanál ho našel naostro
+  (datixo PR #3, perzistentní tracking bez `shoptet.consent`) a jako judgment nemohl blokovat
+  (invariant 3); přesně kodifikační cesta, se kterou design počítá.
 
 ## Pasti, do kterých nespadnout
 
@@ -170,7 +173,7 @@ shoptet-addon-review/
 └── skills/st-addon-review/
     ├── SKILL.md                           # proces review (řídí agenta)
     └── references/
-        ├── rules-catalog.md               # rubrika A–J (čte agent)
+        ├── rules-catalog.md               # rubrika A–J, P (čte agent)
         ├── shoptet-reference.md           # companion pro B1/B4/B6
         └── guide.md                       # lidská příručka (agent nepotřebuje)
 ```

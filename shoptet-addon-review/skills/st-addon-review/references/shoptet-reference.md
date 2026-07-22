@@ -69,12 +69,12 @@ Tyto objekty jsou v kontextu doplňku **vždy definované** → defenzivní kont
 
 | Namespace | K čemu (vybrané členy) |
 |-----------|------------------------|
-| `shoptet.config` | konfigurace — `breakpoints.{sm,…}`, `animationDuration`, `agreementCookieName/Expire`, `mobileHeaderVersion`, `thumbnailsDirection` |
+| `shoptet.config` | konfigurace — `breakpoints.{sm,…}`, `animationDuration`, `agreementCookieName/Expire`, `mobileHeaderVersion`, `thumbnailsDirection`, `cookiesConsentOptAnalytics` (klíč pro `shoptet.consent.isAccepted`) |
 | `shoptet.abilities` | schopnosti šablony — `about.id`, `config.navigation_breakpoint`, `feature.fixed_header`, `feature.smart_labels` |
 | `shoptet.common` | `throttle` |
 | `shoptet.helpers` | `toFloat` |
 | `shoptet.cookie` | `create` |
-| `shoptet.consent` | `cookiesConsentSubmit`, `openCookiesSettingModal` |
+| `shoptet.consent` | `cookiesConsentSubmit`, `openCookiesSettingModal`, `isAccepted(opt)`, `onAccept(cb)` — consent API pro P1 (vždy dostupné v době běhu doplňku; detaily chování viz katalog P1) |
 | `shoptet.modal` | `open`, `close`, `shoptetResize`, `config.*` |
 | `shoptet.popups` | `showPopupWindow`, `hideContentWindows` |
 | `shoptet.global` | `showPopupWindow`, `hideContentWindows`, `toggleRegionsWrapper`, … |

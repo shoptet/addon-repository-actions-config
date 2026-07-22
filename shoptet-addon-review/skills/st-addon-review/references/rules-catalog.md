@@ -1,8 +1,8 @@
 # Katalog pravidel — Shoptet doplňky
 
-**`catalog_version: 2026-07-10`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u srovnávaných běhů a v CI gate bylo jasné, proti kterým pravidlům nález vznikl.
+**`catalog_version: 2026-07-22`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u srovnávaných běhů a v CI gate bylo jasné, proti kterým pravidlům nález vznikl.
 
-> Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J)**. Lidská část (proces, „typická struktura review", checklist) je v `GUIDE.md`.
+> Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J, P)**. Lidská část (proces, „typická struktura review", checklist) je v `GUIDE.md`.
 >
 > **Pravidla B1 / B4 / B6 vyžadují znalost Shoptet prostředí** (dataLayer klíče, vždy dostupné globály, seznam core funkcí). Tu agent dostane z companion souboru **`shoptet-reference.md`**, který se předává spolu s tímto katalogem. Bez něj jsou B1/B4/B6 systematicky slabé.
 
@@ -21,14 +21,34 @@
 
 ### A1 — XSS / nebezpečné vkládání HTML
 - **ID:** A1
-- **Severity:** ❌ blokující
+- **Severity:** ❌/⚠️ podmíněné (viz Gate)
 - **Vlastník:** Oba
 - **Nástroj:** `eslint-plugin-no-unsanitized`
+- **Gate:** Severita se škáluje podle **zdroje a útočné plochy** — nález se ale **hlásí vždy**
+  a A1 **nikdy neklesá pod ⚠️ `recommended`** (žádné 💡, žádné ticho). Gate otázka (binární):
+  *Může hodnotu naplnit nedůvěryhodný aktér A vyrenderuje se jinému návštěvníkovi?*
+  ANO → ❌ / NE → ⚠️. Dvě úsudkové osy:
+  - **Důvěryhodnost zdroje** — kdo může do hodnoty vložit škodlivý obsah: **nedůvěryhodný** =
+    externí API, XML/feed import, vstup jiného uživatele/zákazníka; **polodůvěryhodný/admin** =
+    konfigurace e-shopu, obsah plněný redakcí/majitelem (např. název produktu, alt text) — ten má
+    k e-shopu stejně plný přístup.
+  - **Útočná plocha** — komu se hodnota spustí: **cross-user** = vyrenderuje se jinému
+    návštěvníkovi; **self-XSS** = vrací se výhradně tomu, kdo ji zadal (např. vlastní jméno
+    zákazníka v jeho klientské sekci).
+  - ❌ blocking: nedůvěryhodný zdroj **a zároveň** cross-user plocha. ⚠️ recommended (hardening):
+    polodůvěryhodný/admin zdroj **nebo** jen self-XSS plocha.
+  - **Konzervativní default:** když si nejsi jistý, odkud hodnota pochází, ber ji jako
+    nedůvěryhodnou; když neumíš doložit, že se vrací jen zadavateli, ber plochu jako cross-user
+    → ❌. Pochybnost hraje ve prospěch bezpečnosti.
+  - Je to **úsudková osa zdroj × plocha, ne lookup tabulka** — příklady v závorkách jsou
+    ilustrace, ne seznam „bezpečných/nebezpečných polí". Posuzuj konkrétní tok konkrétní hodnoty.
+  - **Požadavek na escapování se severitou nemění:** ⚠️ neznamená „neřešit", znamená
+    „neblokuje merge". Řešení níže platí pro obě větve stejně.
 - **Problém:** Data (z API, konfigurace, uživatele) se vkládají do DOM bez ošetření — `element.innerHTML = data`, `JSON.stringify` přímo do HTML, `.replace()` nad HTML stringem.
 - **Proč:** Útočník může vložit `<script>`/`onerror` a spustit cizí kód na e-shopu. Nejčastější blokující problém vůbec.
 - **Řešení:** Pro text `textContent` místo `innerHTML`; pro HTML sanitizovat (allowlist) nebo skládat přes DOM API (`createElement`/`append`), případně DOMPurify; používat builder element a hodnoty vkládat jako text.
 - **Pozn.:** `eslint-plugin-no-unsanitized` flagne `innerHTML =` a podobné sinky; AI posoudí reálné riziko a kvalitu sanitizace.
-- **Pozn. (překryv s E1):** Skládání HTML konkatenací (`'<div>' + apiData + '</div>'`) **není jen E1** (styl) — pokud je v řetězci **neošetřená hodnota z API / konfigurace / uživatele, je to A1** (blokující). Konkatenace je typický XSS vektor právě proto, že neumožňuje escapování. Když vidíš `+`-skládání HTML s daty, posuď ho jako A1, ne ho odbýt jako kosmetické E1.
+- **Pozn. (překryv s E1):** Skládání HTML konkatenací (`'<div>' + apiData + '</div>'`) **není jen E1** (styl) — pokud je v řetězci **neošetřená hodnota z API / konfigurace / uživatele, je to A1** (severita dle Gate výše). Konkatenace je typický XSS vektor právě proto, že neumožňuje escapování. Když vidíš `+`-skládání HTML s daty, posuď ho jako A1, ne ho odbýt jako kosmetické E1.
 
 ### A2 — Kontrola / validace vstupních parametrů
 - **ID:** A2
@@ -303,7 +323,7 @@
 - **Problém:** HTML se skládá `'<div class="' + x + '">'`.
 - **Proč:** Konkatenace je nečitelná a náchylná k chybám i XSS.
 - **Řešení:** Template literals (backticky) nebo DOM API; string skládej a přiřaď jednou, ne opakovaně.
-- **Pozn. (překryv s A1):** Když konkatenace míchá do HTML **data z API / konfigurace / uživatele**, nejde jen o styl — je to **XSS a řeší se jako A1 (blokující)**. E1 samotné je ❌ za formu; jakmile jsou v řetězci neošetřená data, eskaluj na A1.
+- **Pozn. (překryv s A1):** Když konkatenace míchá do HTML **data z API / konfigurace / uživatele**, nejde jen o styl — je to **XSS a řeší se jako A1 (severita dle A1 Gate)**. E1 samotné je ❌ za formu; jakmile jsou v řetězci neošetřená data, eskaluj na A1.
 
 ### E2 — Moderní JS
 - **ID:** E2
@@ -633,3 +653,46 @@
 - **Proč:** Uživatelé čteček se jinak nedostanou k informaci (např. hodnocení) ani neovládnou prvek (autoplay).
 - **Řešení:** Skrytý text pro čtečky (`sr-only`) s číselnou hodnotou; `aria-label` s překladem; u autoplay vizuálně skryté pause tlačítko (WCAG 2.2.2, technika G4); `onblur` validace není přístupná a nedisabluj submit.
 - **Pozn.:** Axe runtime odhalí chybějící `aria-label`, kontrast ap.; AI dělá statický best-effort a část ze statického HTML stringu nezachytí.
+
+# P. Soukromí / GDPR
+
+### P1 — Cookie souhlas pro tracking / analytiku
+- **ID:** P1
+- **Severity:** ❌/⚠️ podmíněné (viz Gate)
+- **Vlastník:** AI
+- **Nástroj:** —
+- **Gate:** Gate otázka (binární): *Ukládá nebo odesílá doplněk data návštěvníka pro
+  analytické/marketingové účely bez ověření souhlasu přes `shoptet.consent`?* ANO → ❌ / NE → ⚠️
+  nebo nic (viz větve). Osa je **účel úložiště/odesílání**:
+  - **Analytika/marketing** = perzistentní identifikátor návštěvníka (UUID v localStorage/cookie),
+    sběr navštívených URL / refereru, odesílání behaviorálních eventů na externí API, pixely.
+    Bez jakékoli consent kontroly → ❌. Kontrola existuje, ale je děravá (jen jednorázově při
+    init bez re-checku v `onAccept`; neověřuje se odvolání souhlasu per-event) → ⚠️.
+  - **Technicky nezbytné** = úložiště nutné pro samotnou funkci doplňku (stav widgetu, obsah
+    košíku, cache konfigurace) **bez identifikace návštěvníka** — mimo pravidlo, nehlásí se.
+  - **Konzervativní default:** když neumíš doložit, že je úložiště technicky nezbytné (ukládá
+    se identifikátor návštěvníka a data někam odcházejí), ber účel jako analytický → gate se
+    aplikuje. Pochybnost hraje ve prospěch soukromí.
+- **Problém:** Doplněk vytváří perzistentní identifikátor návštěvníka nebo odesílá trackingová data (navštívené URL, referer, behaviorální eventy) na externí API bez ověření cookie souhlasu přes `shoptet.consent`.
+- **Proč:** Shoptet po doplňcích **výslovně vyžaduje**, aby analytické/marketingové cookies (a ekvivalentní localStorage tracking) běžely jen se souhlasem návštěvníka — viz [oficiální dokumentace](https://developers.shoptet.com/3rd-party-marketing-and-analytics-cookies-in-add-ons/). Porušení není styl, ale nesplnění podmínek platformy (a GDPR/ePrivacy riziko pro e-shop).
+- **Řešení:** Tracking startovat až po ověření souhlasu; API `shoptet.consent` je v době běhu doplňku vždy dostupné. Pro analytiku `shoptet.config.cookiesConsentOptAnalytics` (pro marketingové cookies analogický opt dle dokumentace výše). Bez souhlasu negenerovat identifikátor, nezapisovat trackingová data do úložiště a nic neodesílat.
+- **Náhrada kódu:**
+  ```js
+  function hasAnalyticsConsent() {
+    return shoptet.consent.isAccepted(shoptet.config.cookiesConsentOptAnalytics);
+  }
+
+  function startTrackingWhenConsented(startTracking) {
+    if (hasAnalyticsConsent()) {
+      startTracking();
+      return;
+    }
+    shoptet.consent.onAccept(() => {
+      if (hasAnalyticsConsent()) {
+        startTracking();
+      }
+    });
+  }
+  ```
+- **Pozn. (tři neintuitivní detaily API):** (1) `shoptet.consent.isAccepted(...)` vrací `true` i když má e-shop cookie lištu vypnutou — tenhle případ netřeba řešit zvlášť. (2) Callback `onAccept` se volá při **každém** odeslání lišty, včetně odmítnutí — kontrola `hasAnalyticsConsent()` musí být **uvnitř** callbacku, plus guard proti dvojímu spuštění (uživatel může nastavení odeslat opakovaně). (3) Souhlas lze později **odvolat** — ověřovat při každém odeslání eventu (levné čtení cookie), ne jen jednou při inicializaci.
+- **Pozn. (scope):** Pravidlo cílí na tracking **vlastní logikou doplňku** i na inicializaci third-party nástrojů (pixel, analytika) doplňkem. Netýká se úložiště bez identifikace návštěvníka — na `localStorage` bez try/catch je E7, na obecné side-efekty B8.
