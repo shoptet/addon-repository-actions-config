@@ -158,67 +158,76 @@ jobs:
               if (m && c.user && c.user.login === 'github-actions[bot]') mine.set(m[1], c.id);
             }
 
-            // New findings (not already commented) → post as ONE batched review.
-            // Posting comments one-by-one trips GitHub's secondary rate limit
-            // ("submitted too quickly") on finding-heavy files, so we batch them
-            // into a single createReview call (fall back to individual posts only
-            // if the batch is rejected).
-            const toPost = [];
-            for (const [key, d] of wanted) {
-              if (mine.has(key)) continue; // dedup — already commented
+            // Gate on all commentable blockers (independent of how many we post).
+            const blockers = [...wanted.values()].filter(d => d.severity === 'ERROR').length;
+
+            // New findings (not already commented), blockers first, capped so we
+            // never burst hundreds of comments — that trips GitHub's secondary
+            // rate limit ("blocked from content creation") and isn't useful to a
+            // human reviewer anyway. The overflow count is surfaced in the body.
+            const MAX_COMMENTS = 50;
+            const fresh = [...wanted.entries()]
+              .filter(([key]) => !mine.has(key))
+              .sort((a, b) => (a[1].severity === 'ERROR' ? 0 : 1) - (b[1].severity === 'ERROR' ? 0 : 1));
+            const capped = fresh.slice(0, MAX_COMMENTS);
+            const overflow = fresh.length - capped.length;
+            const comments = capped.map(([key, d]) => {
               const icon = d.severity === 'ERROR' ? '❌' : '⚠️';
               const rule = d.code?.value ? ` \`${d.code.value}\`` : '';
-              toPost.push({
+              return {
                 path: d.location.path, line: d.location.range.start.line, side: 'RIGHT',
                 body: `${icon}${rule}: ${d.message}\n\n<!-- ${MARKER}:${key} -->`,
-              });
-            }
+              };
+            });
 
-            let created = 0, deleted = 0, failed = 0;
-            if (toPost.length) {
-              try {
-                await github.rest.pulls.createReview({
-                  owner, repo, pull_number, commit_id, event: 'COMMENT', comments: toPost,
-                });
-                created = toPost.length;
-              } catch (error) {
-                core.warning(`Batched review failed (${error.message}); retrying comments individually.`);
-                for (const c of toPost) {
-                  try {
-                    await github.rest.pulls.createReviewComment({ owner, repo, pull_number, commit_id, ...c });
-                    created++;
-                  } catch (e) {
-                    failed++;
-                    core.warning(`Could not comment ${c.path}:${c.line}: ${e.message}`);
-                  }
-                }
-              }
-            }
+            // Delete comments of resolved findings (usually few).
+            let deleted = 0;
             for (const [key, id] of mine) {
-              if (!wanted.has(key)) { // finding resolved → remove its comment
+              if (!wanted.has(key)) {
                 try { await github.rest.pulls.deleteReviewComment({ owner, repo, comment_id: id }); deleted++; }
                 catch (error) { core.warning(`Could not delete comment ${id}: ${error.message}`); }
               }
             }
 
-            // Verdict + single gating check (blockers on changed lines only).
-            const blockers = [...wanted.values()].filter(d => d.severity === 'ERROR').length;
             const reviews = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number });
-            const botRequests = reviews.filter(r => r.user && r.user.login === 'github-actions[bot]' && r.state === 'CHANGES_REQUESTED');
-            if (blockers > 0) {
-              if (botRequests.length === 0) {
-                await github.rest.pulls.createReview({
-                  owner, repo, pull_number, event: 'REQUEST_CHANGES',
-                  body: `🤖 Automatický review: **${blockers}** blokujících nálezů na změněných řádcích. Detaily v komentářích; po opravě se požadavek automaticky zruší.`,
-                });
-              }
-            } else {
-              for (const r of botRequests) {
-                await github.rest.pulls.dismissReview({ owner, repo, pull_number, review_id: r.id, message: '✅ Blokující problémy vyřešeny — automaticky odblokováno.' });
+            const hasRequest = reviews.some(r => r.user && r.user.login === 'github-actions[bot]' && r.state === 'CHANGES_REQUESTED');
+
+            // ONE content-creation call: new comments + verdict together.
+            // (REQUEST_CHANGES only if we don't already have one standing.)
+            const event = blockers > 0 && !hasRequest ? 'REQUEST_CHANGES' : 'COMMENT';
+            let created = 0;
+            if (comments.length || (blockers > 0 && !hasRequest)) {
+              const body = blockers > 0
+                ? `🤖 Automatický review: **${blockers}** blokujících nálezů na změněných řádcích`
+                  + (overflow > 0 ? ` (zobrazeno prvních ${capped.length}, dalších ${overflow} skryto)` : '')
+                  + `. Po opravě se požadavek automaticky zruší.`
+                : `🤖 Automatický review: ${comments.length} připomínek na změněných řádcích`
+                  + (overflow > 0 ? ` (+${overflow} dalších skryto)` : '') + `.`;
+              // Retry the single call with backoff on secondary rate limits;
+              // never fan out to per-comment calls (that makes the limit worse).
+              for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                  await github.rest.pulls.createReview({ owner, repo, pull_number, commit_id, event, body, comments });
+                  created = comments.length;
+                  break;
+                } catch (error) {
+                  const secondary = /secondary rate limit|submitted too quickly|content creation/i.test(error.message);
+                  if (secondary && attempt < 2) { await new Promise(r => setTimeout(r, 45000 * (attempt + 1))); continue; }
+                  core.warning(`Could not post review: ${error.message}`);
+                  break;
+                }
               }
             }
 
-            core.info(`Reconciled comments: +${created} / -${deleted} / !${failed}; ${blockers} blocker(s) on changed lines.`);
+            // Clear a standing REQUEST_CHANGES once everything is resolved.
+            if (blockers === 0) {
+              for (const r of reviews.filter(r => r.user && r.user.login === 'github-actions[bot]' && r.state === 'CHANGES_REQUESTED')) {
+                try { await github.rest.pulls.dismissReview({ owner, repo, pull_number, review_id: r.id, message: '✅ Blokující problémy vyřešeny — automaticky odblokováno.' }); }
+                catch (error) { core.warning(`Could not dismiss review ${r.id}: ${error.message}`); }
+              }
+            }
+
+            core.info(`Comments posted: ${created} (+${overflow} hidden) / -${deleted}; ${blockers} blocker(s) on changed lines.`);
             if (blockers > 0) core.setFailed(`${blockers} blocking finding(s) on changed lines.`);
 
       # ── Variant "pending": post findings as a PENDING draft review ──
