@@ -144,6 +144,7 @@ jobs:
               .digest('hex');
             const wanted = new Map();
             for (const d of diagnostics) {
+              if (d.severity !== 'ERROR') continue; // blockers mode: only blockers, no warnings
               if (!commentable.has(d.location.path)) continue; // file not part of this PR
               const lines = commentable.get(d.location.path);
               if (lines === null || lines.has(d.location.range.start.line)) wanted.set(fp(d), d);

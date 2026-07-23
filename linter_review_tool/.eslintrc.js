@@ -60,9 +60,9 @@ module.exports = {
     'max-depth': ['error', 4], // C4 ❌
     'max-nested-callbacks': ['error', 3], // C4 ❌
     'max-lines': [
-      'warn',
+      'error',
       { max: 200, skipBlankLines: true, skipComments: true },
-    ], // C1
+    ], // C1 ❌
     'max-lines-per-function': [
       'warn',
       { max: 50, skipBlankLines: true, skipComments: true },
