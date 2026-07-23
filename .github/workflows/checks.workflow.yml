@@ -166,7 +166,7 @@ jobs:
             // never burst hundreds of comments — that trips GitHub's secondary
             // rate limit ("blocked from content creation") and isn't useful to a
             // human reviewer anyway. The overflow count is surfaced in the body.
-            const MAX_COMMENTS = 50;
+            const MAX_COMMENTS = 100;
             const fresh = [...wanted.entries()]
               .filter(([key]) => !mine.has(key))
               .sort((a, b) => (a[1].severity === 'ERROR' ? 0 : 1) - (b[1].severity === 'ERROR' ? 0 : 1));
@@ -227,6 +227,39 @@ jobs:
                 catch (error) { core.warning(`Could not dismiss review ${r.id}: ${error.message}`); }
               }
             }
+
+            // Job Summary: full, uncapped table of every blocker (inline comments
+            // are capped for readability, but the summary is the complete source
+            // of truth — one write, no rate limit).
+            core.summary.addHeading('🔍 Code Review — blockery', 2);
+            if (blockers === 0) {
+              core.summary.addRaw('✅ Žádné blokující nálezy na změněných řádcích.');
+            } else {
+              core.summary.addRaw(
+                `Nalezeno **${blockers}** blokujících nálezů na změněných řádcích` +
+                (overflow > 0 ? ` — inline zobrazeno prvních ${created}, kompletní seznam níže.` : '.'),
+                true
+              );
+              const rows = [...wanted.values()]
+                .sort((a, b) => a.location.path.localeCompare(b.location.path)
+                  || a.location.range.start.line - b.location.range.start.line)
+                .map(d => [
+                  d.location.path,
+                  String(d.location.range.start.line),
+                  d.code?.value || '',
+                  d.message.replace(/\r?\n/g, ' '),
+                ]);
+              core.summary.addTable([
+                [
+                  { data: 'Soubor', header: true },
+                  { data: 'Řádek', header: true },
+                  { data: 'Pravidlo', header: true },
+                  { data: 'Popis', header: true },
+                ],
+                ...rows,
+              ]);
+            }
+            await core.summary.write();
 
             core.info(`Comments posted: ${created} (+${overflow} hidden) / -${deleted}; ${blockers} blocker(s) on changed lines.`);
             if (blockers > 0) core.setFailed(`${blockers} blocking finding(s) on changed lines.`);
