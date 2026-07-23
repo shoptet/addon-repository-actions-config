@@ -158,28 +158,46 @@ jobs:
               if (m && c.user && c.user.login === 'github-actions[bot]') mine.set(m[1], c.id);
             }
 
-            let created = 0, deleted = 0, failed = 0;
+            // New findings (not already commented) → post as ONE batched review.
+            // Posting comments one-by-one trips GitHub's secondary rate limit
+            // ("submitted too quickly") on finding-heavy files, so we batch them
+            // into a single createReview call (fall back to individual posts only
+            // if the batch is rejected).
+            const toPost = [];
             for (const [key, d] of wanted) {
               if (mine.has(key)) continue; // dedup — already commented
               const icon = d.severity === 'ERROR' ? '❌' : '⚠️';
               const rule = d.code?.value ? ` \`${d.code.value}\`` : '';
+              toPost.push({
+                path: d.location.path, line: d.location.range.start.line, side: 'RIGHT',
+                body: `${icon}${rule}: ${d.message}\n\n<!-- ${MARKER}:${key} -->`,
+              });
+            }
+
+            let created = 0, deleted = 0, failed = 0;
+            if (toPost.length) {
               try {
-                await github.rest.pulls.createReviewComment({
-                  owner, repo, pull_number, commit_id,
-                  path: d.location.path, line: d.location.range.start.line, side: 'RIGHT',
-                  body: `${icon}${rule}: ${d.message}\n\n<!-- ${MARKER}:${key} -->`,
+                await github.rest.pulls.createReview({
+                  owner, repo, pull_number, commit_id, event: 'COMMENT', comments: toPost,
                 });
-                created++;
+                created = toPost.length;
               } catch (error) {
-                // e.g. line GitHub does not consider part of the diff — don't abort the run.
-                failed++;
-                core.warning(`Could not comment ${d.location.path}:${d.location.range.start.line}: ${error.message}`);
+                core.warning(`Batched review failed (${error.message}); retrying comments individually.`);
+                for (const c of toPost) {
+                  try {
+                    await github.rest.pulls.createReviewComment({ owner, repo, pull_number, commit_id, ...c });
+                    created++;
+                  } catch (e) {
+                    failed++;
+                    core.warning(`Could not comment ${c.path}:${c.line}: ${e.message}`);
+                  }
+                }
               }
             }
             for (const [key, id] of mine) {
               if (!wanted.has(key)) { // finding resolved → remove its comment
-                await github.rest.pulls.deleteReviewComment({ owner, repo, comment_id: id });
-                deleted++;
+                try { await github.rest.pulls.deleteReviewComment({ owner, repo, comment_id: id }); deleted++; }
+                catch (error) { core.warning(`Could not delete comment ${id}: ${error.message}`); }
               }
             }
 
