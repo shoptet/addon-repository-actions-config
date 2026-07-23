@@ -44,6 +44,10 @@ jobs:
     steps:
       - name: Checkout addon code
         uses: actions/checkout@v6
+        with:
+          # Full history so we can reconstruct changed lines via `git diff` for
+          # large files whose diff GitHub omits from the API `patch` field.
+          fetch-depth: 0
 
       - name: Checkout review tool
         uses: actions/checkout@v6
@@ -79,6 +83,7 @@ jobs:
           script: |
             const fs = require('fs');
             const crypto = require('crypto');
+            const { execSync } = require('child_process');
             const MARKER = 'shoptet-review-fp';
 
             let diagnostics = [];
@@ -91,22 +96,46 @@ jobs:
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
             const commit_id = context.payload.pull_request.head.sha;
+            const base_sha = context.payload.pull_request.base.sha;
 
-            // Commentable = new-side line numbers inside diff hunks.
-            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
-            const commentable = new Map();
-            for (const file of files) {
-              if (!file.patch) continue;
+            // Parse a unified diff into the set of new-side line numbers that are additions.
+            function parseAddedLines(diff) {
               const lines = new Set();
               let newLine = 0;
-              for (const raw of file.patch.split('\n')) {
+              for (const raw of diff.split('\n')) {
                 const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
                 if (hunk) { newLine = parseInt(hunk[1], 10); continue; }
+                if (raw.startsWith('+++') || raw.startsWith('---')) continue;
                 if (raw.startsWith('+')) { lines.add(newLine); newLine++; }
                 else if (raw.startsWith('-')) { /* old side only */ }
                 else { newLine++; }
               }
-              commentable.set(file.filename, lines);
+              return lines;
+            }
+
+            // Commentable = new-side line numbers of additions per file.
+            // GitHub omits `patch` for large files, so fall back to a local
+            // `git diff` (needs fetch-depth: 0) — the fix that lets large files
+            // get inline comments and gate the PR. Value semantics:
+            //   Set  → only these lines are commentable
+            //   null → couldn't determine (post best-effort, don't silently drop)
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
+            const commentable = new Map();
+            for (const file of files) {
+              if (file.patch) {
+                commentable.set(file.filename, parseAddedLines(file.patch));
+                continue;
+              }
+              try {
+                const diff = execSync(
+                  `git diff --unified=0 ${base_sha}...${commit_id} -- "${file.filename}"`,
+                  { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }
+                );
+                commentable.set(file.filename, parseAddedLines(diff));
+              } catch (error) {
+                core.warning(`No API patch and git diff failed for ${file.filename}: ${error.message}`);
+                commentable.set(file.filename, null); // best-effort: allow posting
+              }
             }
 
             // Findings on changed lines only (off-diff lines are not commentable), keyed by fingerprint.
@@ -115,7 +144,9 @@ jobs:
               .digest('hex');
             const wanted = new Map();
             for (const d of diagnostics) {
-              if (commentable.get(d.location.path)?.has(d.location.range.start.line)) wanted.set(fp(d), d);
+              if (!commentable.has(d.location.path)) continue; // file not part of this PR
+              const lines = commentable.get(d.location.path);
+              if (lines === null || lines.has(d.location.range.start.line)) wanted.set(fp(d), d);
             }
 
             // Existing bot comments we manage (carry our marker).
@@ -127,17 +158,23 @@ jobs:
               if (m && c.user && c.user.login === 'github-actions[bot]') mine.set(m[1], c.id);
             }
 
-            let created = 0, deleted = 0;
+            let created = 0, deleted = 0, failed = 0;
             for (const [key, d] of wanted) {
               if (mine.has(key)) continue; // dedup — already commented
               const icon = d.severity === 'ERROR' ? '❌' : '⚠️';
               const rule = d.code?.value ? ` \`${d.code.value}\`` : '';
-              await github.rest.pulls.createReviewComment({
-                owner, repo, pull_number, commit_id,
-                path: d.location.path, line: d.location.range.start.line, side: 'RIGHT',
-                body: `${icon}${rule}: ${d.message}\n\n<!-- ${MARKER}:${key} -->`,
-              });
-              created++;
+              try {
+                await github.rest.pulls.createReviewComment({
+                  owner, repo, pull_number, commit_id,
+                  path: d.location.path, line: d.location.range.start.line, side: 'RIGHT',
+                  body: `${icon}${rule}: ${d.message}\n\n<!-- ${MARKER}:${key} -->`,
+                });
+                created++;
+              } catch (error) {
+                // e.g. line GitHub does not consider part of the diff — don't abort the run.
+                failed++;
+                core.warning(`Could not comment ${d.location.path}:${d.location.range.start.line}: ${error.message}`);
+              }
             }
             for (const [key, id] of mine) {
               if (!wanted.has(key)) { // finding resolved → remove its comment
@@ -163,7 +200,7 @@ jobs:
               }
             }
 
-            core.info(`Reconciled comments: +${created} / -${deleted}; ${blockers} blocker(s) on changed lines.`);
+            core.info(`Reconciled comments: +${created} / -${deleted} / !${failed}; ${blockers} blocker(s) on changed lines.`);
             if (blockers > 0) core.setFailed(`${blockers} blocking finding(s) on changed lines.`);
 
       # ── Variant "pending": post findings as a PENDING draft review ──
