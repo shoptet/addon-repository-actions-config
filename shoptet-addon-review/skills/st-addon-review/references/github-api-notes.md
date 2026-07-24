@@ -15,9 +15,11 @@ gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews \
   -F 'comments[][path]=src/...' -F 'comments[][line]=42' -F 'comments[][body]=<text>'
 ```
 
-- **`pending` (draft):** review vytvoř **bez pole `event`** → zůstane ve stavu `PENDING`.
-- **`submit`:** přidej **`event=COMMENT`** → publikuje se okamžitě. **Nikdy `REQUEST_CHANGES`**
-  (viz invarianty v `SKILL.md`).
+- **`pending` (draft):** review vytvoř **bez pole `event`** → zůstane ve stavu `PENDING`. Verdikt
+  (Comment / Approve / Request changes) vybírá až člověk při submitu; skill ho jen doporučí
+  (`recommended_verdict` ve výstupu).
+- **`submit`** (autonomní): přidej **`event=COMMENT`** → publikuje se okamžitě. **Nikdy
+  `REQUEST_CHANGES` ani `APPROVE`** (viz invariant 1 v `SKILL.md`).
 - `suggestion` v těle komentáře = GitHub ` ```suggestion ` blok (oprava na jedno kliknutí).
 
 ## Pending draft — viditelnost (ověřeno)

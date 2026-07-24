@@ -1,6 +1,6 @@
 # Katalog pravidel — Shoptet doplňky
 
-**`catalog_version: 2026-07-22`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u srovnávaných běhů a v CI gate bylo jasné, proti kterým pravidlům nález vznikl.
+**`catalog_version: 2026-07-24`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u každého nálezu bylo jasné, proti které verzi pravidel vznikl.
 
 > Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J, P)**. Lidská část (proces, „typická struktura review", checklist) je v `GUIDE.md`.
 >
@@ -190,14 +190,34 @@
 - **Řešení:** Vázat se na běžné CSS třídy, ne na testovací atributy.
 - **Pozn.:** `no-restricted-syntax` chytí statické výskyty; AI dořeší dynamicky skládané selektory.
 
-### B8 — Side-efekty / izolace doplňku
+### B8 — Side-efekty / izolace doplňku (JS i CSS)
 - **ID:** B8
-- **Severity:** ❌ blokující
+- **Severity:** ❌/⚠️ podmíněné (viz Gate)
 - **Vlastník:** AI
 - **Nástroj:** —
-- **Problém:** Doplněk ovlivňuje prvky mimo sebe — selektor zasáhne cizí elementy, globálně se spouští `resize` event.
-- **Proč:** Rozbíjí e-shop a ostatní doplňky.
-- **Řešení:** Všechny selektory zužuj na vlastní kontejner doplňku, eventy a změny drž v jeho rozsahu.
+- **Gate otázka (binární):** *Zasáhne styl/selektor/side-efekt prokazatelně mimo vlastní kontejner
+  doplňku?* ANO → ❌ / NE → ⚠️ (ověřený rizikový vzor) / ❓ (nejasný záměr). ❌ vyžaduje **důkaz
+  v kódu**, ne domněnku. Typicky ANO: CSS pravidlo na **holý element** (`a`, `button`, `img`,
+  `body`, `input`) nebo jinak nescopovaný globální selektor; `!important` na Shoptet core/theme
+  třídě; extrémní `z-index` fightující header/modal; **dispatch globálního eventu**
+  (`window.dispatchEvent(new Event('resize'))` apod.), který rozhodí cizí kód / ostatní doplňky;
+  JS listener, jehož **handler prokazatelně sahá mimo kontejner** (mění cizí elementy). Naopak
+  **samotné poslouchání** na `window`/`document` se scopovaným handlerem (delegace s filtrem
+  `e.target.closest('.addon…')`, resize se scopovaným dopadem) ven nesahá — **není nález** (NE
+  větev). Na NE větvi pinuj severitu: **⚠️** u ověřeného rizikového vzoru, který ven prokazatelně
+  nesahá (neprefixovaná generická třída, co by *mohla* kolidovat); **❓** když je nejasný záměr.
+  **Nejde o pravděpodobnost, ale o důkaz zásahu ven** — doložený leak nízká četnost výskytu na
+  ⚠️ nesnižuje.
+- **Problém:** Doplněk ovlivňuje prvky mimo sebe — selektor (v CSS i v JS dotazech) zasáhne cizí
+  elementy, styl přepíše globální/theme vzhled e-shopu, doplněk dispatchne globální event, který
+  rozhodí cizí kód.
+- **Proč:** Rozbíjí e-shop a ostatní doplňky — u CSS je to nejčastější tichý průšvih (holý `a {}`
+  přebarví celý web, ne jen doplněk).
+- **Řešení:** Všechny selektory (CSS i JS) zužuj na vlastní kontejner doplňku; styluj jen vlastní
+  třídy, ne holé elementy ani core/theme; eventy a změny drž v rozsahu doplňku.
+- **Pozn. (překryv s H1):** Kosmetická nekonzistence (jednotky, nadbytečný `z-index`) je H1
+  (neblokuje). Jakmile styl **prokazatelně sahá mimo doplněk** (holý element, přepis theme,
+  `!important` na core), není to H1 — je to **B8 (severita dle Gate)**.
 
 ---
 
@@ -211,7 +231,7 @@
 - **Gate:** Rozliš kvalitu od kvantity — blokuje nereviewovatelnost, ne délka.
   - ❌ blokuje jen u **nereviewovatelného monolitu**: jeden soubor / jedna funkce mísí nesouvisející odpovědnosti (parsování + generování HTML + slider + resize…) tak, že kód nejde rozumně projít ani bezpečně změnit.
   - ⚠️ u **pouhé délky**: soubor je dlouhý, ale logika je soudržná a čitelná. Délka sama o sobě neblokuje.
-  - Pracovní hranice pro ⚠️: ~400 ř. na soubor / ~80 ř. na funkci (orientační, kalibruj z eval sady — není to tvrdý blok). Počítání řádků patří linteru přes `max-lines`; AI řeší ten kvalitativní monolit, ne počet řádků.
+  - Pracovní hranice pro ⚠️: ~400 ř. na soubor / ~80 ř. na funkci (orientační, ne tvrdý blok). Počítání řádků patří linteru přes `max-lines`; AI řeší ten kvalitativní monolit, ne počet řádků.
 - **Problém:** Veškerá logika v jednom obrovském souboru s promíchanými odpovědnostmi (typicky i jedna funkce o stovkách řádků).
 - **Proč:** Menší, soudržné celky se lépe kontrolují, udržují a testují. Blokuje se promíchání a nereviewovatelnost, ne délka jako taková.
 - **Řešení:** Rozděl do logických ES modulů podle odpovědnosti a importuj do jednoho vstupního bodu.
@@ -558,14 +578,33 @@
 
 # H. CSS / vizuál
 
+> **Jak projít CSS/SCSS** (ať buňka „H" v matici není jen glance). U každého stylového souboru projeď osy:
+> - **Izolace** — sahá selektor/styl mimo kontejner doplňku? Holé elementy (`a`, `button`, `img`),
+>   `!important` na core/theme, přepis globálních stylů → **B8** (blokující dle Gate), ne H1.
+> - **z-index** — extrém (`99999`) fightující header/modal → **B8**; nadbytečný z-index na více třídách → H1.
+> - **Breakpointy** — media queries **mimo** Shoptet breakpointy → **B2**.
+> - **Jednotky / inline styly / deprecated / velikost písma** → H1 / H2 / H3.
+>
+> **Mechanické věci** (jednotky, deprecated, část specificity) sbírá **stylelint** — až poběží,
+> nehlas je ručně (stejně jako u ESLintu); do té doby je CSS lint-vrstva degradovaná.
+>
+> **Statický strop:** jestli to *vypadá* dobře, responzivita, overflow, stacking v kontextu —
+> to statické čtení nevidí (stejný strop jako přístupnost J = axe runtime). Tyhle vizuální vady
+> jsou **runtime věc na později** (screenshot/browser diff), ne mezera katalogu. CSS soubor po
+> **důkladném** statickém průchodu proto neznač prostým `ok` — ale ani `❓ mělce prošlé` (to je
+> jiná věc: nedostatek běhu, viz `SKILL.md` › krok 4, a odstraní ho další průchod). Použij
+> **`staticky ok, runtime neověřeno`** — ať je vidět, že vizuál/responzivita čeká na runtime,
+> ne že jsi průchod odbyl (tenhle strop žádný další statický průchod neodstraní).
+
 ### H1 — CSS jednotky, z-index, media query, styly
 - **ID:** H1
 - **Severity:** ⚠️/💡 (neblokuje)
 - **Vlastník:** Oba
 - **Nástroj:** stylelint — **ne ESLint**
-- **Problém:** `pt` místo `px`, zbytečný `z-index` na více třídách, `width` na `display:none`, přepis globálních stylů.
-- **Proč:** Nekonzistentní jednotky a přepis globálních stylů rozbíjí vzhled e-shopu i ostatních prvků.
-- **Řešení:** Konzistentní `px`; `z-index` jen tam, kde je potřeba; nepřepisuj globální styly e-shopu; část logiky řeš CSS třídou místo inline stylů.
+- **Problém:** `pt` místo `px`, zbytečný `z-index` na více třídách, `width` na `display:none`.
+- **Proč:** Nekonzistentní jednotky a stylové zvyklosti zhoršují údržbu a konzistenci vzhledu doplňku.
+- **Řešení:** Konzistentní `px`; `z-index` jen tam, kde je potřeba; část logiky řeš CSS třídou místo inline stylů.
+- **Pozn. (překryv s B8):** „Přepis globálních stylů" sem jako kosmetika **nepatří** — když styl prokazatelně sahá mimo doplněk (holý element, přepis theme, `!important` na core), je to **B8 (izolace, blokující dle Gate)**, ne H1. H1 je jen vzhledová konzistence uvnitř doplňku.
 
 ### H2 — Deprecated HTML/CSS
 - **ID:** H2

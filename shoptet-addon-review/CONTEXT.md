@@ -43,23 +43,24 @@ Nálezy se dělí podle toho, který nástroj je nejlevnější, co je chytí:
   není jistá záměrem → dotaz (`❓`), ne tvrzení.
 - **Cílové prostředí = review v Claude Code** nad naklonovaným repem (ne CI). Agent si diff
   vytáhne přes `git`/`gh` a kontext čte z celého checkoutu, ne z izolovaného diffu.
-- **Gate ≠ REQUEST_CHANGES.** AI posílá `COMMENT` (neblokující); povinná fáze se řeší
-  samostatným required checkem, který se přepočítá na push a jde přebít štítkem `human-review`.
+- **Gate ≠ REQUEST_CHANGES.** V autonomním `submit` posílá AI vždy `COMMENT` (neblokující);
+  překlopit PR na Approve/Request changes smí jen člověk v `pending`. Vynucení povinné fáze je
+  věc samostatného required checku (CI vrstva mimo skill) — mechanika je připravená, ale **zatím
+  plošně vypnutá a nepoužívá se** (včetně štítku `human-review`).
 - **AI needituje katalog ani kód.** Opravy jen navrhuje (`suggestion`), nefixuje.
 - **Multi-agent odložen** — start je jeden agent. Změny se týkají **jen nových doplňků**.
 
 ## Aktuální režim běhu
 
-**Reálné review, ne eval.** Pouštíš to na PR **bez lidského review** — AI je první (a zatím
-jediný) reviewer, tak jak to má fungovat v produkci. Není gold standard, proti kterému
-porovnávat; výstup je genuine review.
+**Reálné review.** Pouštíš to na PR **bez lidského review** — AI je první (a zatím
+jediný) reviewer, tak jak to má fungovat v produkci. Výstup je genuine review.
 
 - **Judgment: ZAPNUTÝ** (mantinely výše).
 - **Zápis do GitHubu: řízen přepínačem `github_review` v SKILL.md** (sekce „Vracení do GitHubu"),
   teď **`pending`**. Tři stavy: `off` = jen vypiš; `pending` = vlož jako **draft** review pod
   loginem člověka (nic se neodešle, dokud člověk nesubmitne) + vypiš do chatu; `submit` =
-  **cílový stav** — review rovnou odešle (`event: COMMENT`, nikdy `REQUEST_CHANGES`) **bez lidské
-  kontroly**. `submit` = ta „poslední brána"; zapnout **až po opakovaně čistém pending výstupu**
+  **cílový stav** — review rovnou odešle (`event: COMMENT`, nikdy `REQUEST_CHANGES` ani `APPROVE`)
+  **bez lidské kontroly**. `submit` = ta „poslední brána"; zapnout **až po opakovaně čistém pending výstupu**
   (výstup, který bys N běhů po sobě, napříč typy PR, submitnul beze změny). Do té doby default
   `pending`. **Štítky ani gate skill nedělá v žádném stavu** — gate je zvlášť řešená CI vrstva.
   Přepíná se editací té jedné hodnoty v SKILL.md.
@@ -68,7 +69,7 @@ porovnávat; výstup je genuine review.
 
 ## Odkud se vzala důvěra tento krok udělat
 
-Předchozí eval běh na 6 reálných PR (jQuery monolity, všechny bez ESLintu): vysoký recall na
+Předchozí ověřovací běh na 6 reálných PR (jQuery monolity, všechny bez ESLintu): vysoký recall na
 katalogové nálezy, nízké false-positives, funkční zdrženlivost (B1 potlačené tam, kde partner
 čte dataLayer správně; žádný B6 false-positive). Katalog se z toho běhu i doladil:
 - **C1** rozdělené — blokuje **nereviewovatelný monolit** (promíchané odpovědnosti), ne pouhá
@@ -136,9 +137,18 @@ a **uzavíral nález o jednu otázku dřív**.
 - **Linter vrstva (ESLint/stylelint/depcheck) není hotová** → všechny běhy jely v degradovaném
   režimu. Staví ji kolega; patří do boilerplate. Sem míří i sweep-typové věci (zakomentovaný
   mrtvý kód napříč soubory, lockfily, prázdné soubory).
-- **Perzistovaný findings JSON** — pro re-run dedup není potřeba (identitu nesou skryté markery +
-  git srovnání, viz `SKILL.md` › *Re-run*); zůstává jako budoucí kanonický záznam běhu pro CI gate
-  a polotovar eval sady. Zavést až s CI vrstvou / eval sadou.
+- **Perzistovaný findings JSON pro re-run není potřeba** — identitu nálezů nesou skryté markery +
+  git srovnání commitů (viz `SKILL.md` › *Re-run*).
+- **TODO (budoucí): eval sada + ukládání běhů.** Zatím **NEEXISTUJE** — žádné běhy se neukládají,
+  nic se proti ničemu neporovnává; jednotlivé výstupy prochází člověk a tak to nějakou dobu
+  zůstane. Až bude potřeba měřit regrese při změnách katalogu/skillu, vznikne takto: z reálných
+  (klidně zavřených) PR se vybere ~5–10 reprezentativních případů; u každého se uchová **vstup**
+  (repo + SHA / diff) a **pročištěný „blessed" baseline** — ručně opravený výstup, tj. *jak mělo
+  review vypadat*, ne syrový výstup s dnešními chybami (jinak by se zabetonovaly současné chyby
+  jako cíl). Protože jde o LLM nad volným textem, **neporovnává se JSON 1:1** — z každého případu
+  se vydestiluje krátký seznam **must-find** (nálezy, co MUSÍ padnout, včetně severity),
+  **must-not-flag** (pasti na false-positive) a u podmíněných pravidel očekávaná ❌/⚠️ větev.
+  Regrese = přehrát ty stejné PR upraveným skillem a zkontrolovat, že seznam pořád sedí.
 - **Plně automatický `submit` (bez člověka) je NAPSANÝ, ale NEZVOLENÝ.** Default `pending`.
   Zapnout až bude pending výstup opakovaně takový, že bys ho submitnul beze změny. Servisní
   identita (`shoptet-ai-reviewer`) patří až sem, ne k pending.

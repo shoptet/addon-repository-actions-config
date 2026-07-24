@@ -24,9 +24,11 @@ Sedm zákazů, které platí **vždy a ve všech režimech**. Nikde dál v soubo
 na místech použití je jen krátký odkaz „(invariant N)". Poruší-li se kterýkoli, je výstup vadný
 bez ohledu na zbytek.
 
-1. **Nikdy `REQUEST_CHANGES` / „changes requested".** Skill sám nikdy nepřevádí PR do blokujícího
-   stavu; posílá jen `event: COMMENT`. Blokující nález znamená „tohle je potřeba opravit", ne
-   „blokuju merge" — finální rozhodnutí dělá člověk.
+1. **AI nikdy *autonomně* nepřeklápí PR do blokujícího ani schvalujícího stavu.** V autonomním
+   `submit` režimu posílá skill jen `event: COMMENT` — nikdy `REQUEST_CHANGES` ani `APPROVE`.
+   V režimu s člověkem (`pending`) smí skill verdikt jen **doporučit**; vybrat a aplikovat
+   (Comment / Approve / Request changes při submitu) ho může jen člověk. Blokující nález znamená
+   „tohle je potřeba opravit", ne „AI blokuje merge" — finální rozhodnutí dělá člověk.
 2. **Žádná interní metadata do viditelného partnerského textu.** `rule_id`, čísla/ID pravidel
    („A1", „C3", „viz F2") **ani slovo „katalog"/„mimo katalog"** se nikdy neobjeví v `title`,
    `explanation`, `suggestion`, v inline komentáři ani v souhrnu. Žijí jen v JSON a ve skrytém
@@ -136,6 +138,38 @@ katalog je kurátorský a upravuje ho jen člověk. Místo toho na to **výrazn�
 označ nález příznakem `rule_candidate: true` a v souhrnu zmiň, že by stálo za zvážení přidat
 pravidlo. Rozhodnutí (formulace, závažnost, Gate, vlastník) je na člověku.
 
+## Verifikace nálezů a hluboký průchod
+
+Základní review je levný cílený předfiltr. Vedle něj může — **manuálně, mimo tenhle skill** —
+běžet **hluboký průchod** (dražší, jde do šířky i hloubky, najde víc *kandidátů*). Ať nález
+pochází z tvého vlastního úsudku nebo z takového průchodu, platí jedno: **kandidáty generuj
+široce, ven pouštěj jen ověřené.** Hloubku a přesnost řídíš odděleně — víc hloubky se nevyvažuje
+mělčím hledáním, ale striktnější verifikací za ním.
+
+**Verifikační brána — každý nález mimo mechanický lint.** Než ho pustíš do výstupu, *zkus ho
+vyvrátit*: musíš umět uvést **přesný řádek + důkaz + proč je to reálný problém** (ne dojem).
+- Doložíš → projde (severita dle Gate, resp. judgment laťky).
+- Nedoložíš, ale pozorování je ověřené a nejasný je jen *záměr* → `❓` (viz *Scope*), ne tvrzení.
+- Nedoložíš vůbec → **zahoď.** Brána je záměrně vychýlená k zahození nejistého (přesnost před
+  úplností — radši minu, než tvrdím, co neunesu).
+
+Není to protimluv s *„Přesnost ≠ mlčení"*: tam jde o to **levně ověřitelnou stopu nezahodit bez
+ověření**; tady o to **nepustit ven, co ani po ověření neunese důkaz.** Nejdřív ověř, pak teprve
+případně zahoď. A dělej to vždy — ne až když se tě někdo doptá (to je přesně ten krok, po kterém
+model nález často přehodnotí).
+
+**Merge výstupu hlubokého průchodu.**
+- **Dedup přes `fp`/markery** (viz *Re-run*) — týž nález z obou průchodů je jeden.
+- **Zařaď do slotů, ne mimo ně:** mapuje se na katalog → katalogový nález s Gate; ne → judgment
+  (nikdy `blocking` — invariant 3; laťka „konkrétní, vysoce jistý bug", viz *Scope*).
+- **Neshoda = signál k ověření, ne k sečtení.** Když jeden průchod flagne a druhý ne (nebo se
+  liší severita), prožeň nález verifikační bránou; **neber sjednocení** — to je přímá cesta k FP.
+- Hraniční kandidát (něco tam je, jistota o záměru chybí) → `❓`, ne ❌/⚠️. Dotaz je poctivý
+  ventil; špatné ❌/⚠️ stojí důvěru, `❓` ne.
+
+Hluboký průchod **tenhle skill nespouští** — je to samostatný krok vedle. Sekce jen říká, jak
+jeho (i tvoje vlastní) kandidáty ukáznit, aby hloubka nepřinesla šum.
+
 ## Co máš k dispozici
 
 - **Naklonované repo (celý checkout), ne izolovaný diff.** Pracuješ nad pracovní kopií repa.
@@ -204,6 +238,8 @@ pravidlo. Rozhodnutí (formulace, závažnost, Gate, vlastník) je na člověku.
      je **falešné razítko** — velký SCSS/JS odškrtnutý jako „H: !important, hotovo" typicky
      hloubkově projetý není. Když jsi soubor prošel jen mělce, označ ho `❓ mělce prošlé`
      (a řekni to v poznámkách k běhu), ne `ok` — ať je mělkost vidět, ne zamaskovaná.
+     U CSS/SCSS je navíc stav `staticky ok, runtime neověřeno` (viz H-preambule katalogu) — to
+     není mělký průchod, ale inherentní strop statiky (vizuál/responzivita); nezaměňuj s `❓ mělce prošlé`.
    - **Hloubka (chování):** u každé dotčené funkce/toku se ptej — *reportuju z ověřeného
      modelu chování, nebo z „myslím, že jsem to protraceoval"?* To druhé ještě není ověřeno.
      Nevyřízená behaviorální stopa, co jde levně dojet (přečíst volanou funkci, dohledat
@@ -240,8 +276,9 @@ Drž značky z příručky:
 z API…`. Partner tak vidí závažnost hned na začátku, bez čtení celého komentáře. (Do textu ale
 nepiš `rule_id` — viz *Výstupní kontrakt*.)
 
-Blokující nález znamená „tohle je potřeba opravit", ne „blokuju ti merge" — nikdy PR nepřeváděj
-do „changes requested" (invariant 1).
+Blokující nález znamená „tohle je potřeba opravit", ne „AI blokuje merge". V autonomním `submit`
+skill PR nikdy nepřeklápí do „changes requested" ani „approved" (jde vždy jen `COMMENT`);
+v `pending` verdikt jen doporučí a vybere ho člověk (invariant 1).
 
 ## Výstupní kontrakt
 
@@ -250,8 +287,9 @@ Vrať JSON v tomto tvaru:
 ```json
 {
   "summary": "Česká souhrnná zpráva ve formátu šablony níže.",
-  "catalog_version": "2026-07-10",
+  "catalog_version": "2026-07-24",
   "linter_available": true,
+  "recommended_verdict": "request_changes",
   "findings": [
     {
       "rule_id": "A1",
@@ -263,6 +301,7 @@ Vrať JSON v tomto tvaru:
       "line": 42,
       "title": "XSS přes innerHTML s daty z API",
       "explanation": "Data z API se vkládají přes innerHTML bez ošetření — útočník může vložit skript.",
+      "gate_check": "A1: může hodnotu naplnit nedůvěryhodný aktér a vyrenderuje se jinému návštěvníkovi? ANO → blocking",
       "suggestion": "element.textContent = data;",
       "confidence": "high"
     },
@@ -285,7 +324,12 @@ Vrať JSON v tomto tvaru:
 ```
 
 Pravidla pro pole:
-- `catalog_version` — opiš doslova hodnotu `catalog_version` z hlavičky `references/rules-catalog.md`. Slouží k tomu, aby u srovnávaných běhů a v CI gate bylo dohledatelné, proti které verzi pravidel nález vznikl. Je to **strojová metadata** (jako `rule_id`) — do partnerského textu ani souhrnu nepatří.
+- `catalog_version` — opiš doslova hodnotu `catalog_version` z hlavičky `references/rules-catalog.md`. Slouží k dohledatelnosti — u každého nálezu je jasné, proti které verzi pravidel vznikl. Je to **strojová metadata** (jako `rule_id`) — do partnerského textu ani souhrnu nepatří.
+- `recommended_verdict` (`comment` / `approve` / `request_changes`) — **doporučený** review verdikt,
+  ne akce skillu. Odvoď mechanicky: `request_changes` při aspoň jednom nevyřešeném blokeru
+  (`severity: blocking` a `status` ≠ `resolved`), `approve` když **žádný nález nemá `status` ≠
+  `resolved`** (čistý první běh i re-run, kde partner vše opravil), jinak `comment`. Pozn.: zodpovězený `❓` (partner vysvětlil záměr v diskuzi **bez změny kódu**) zůstává `status` ≠ `resolved` (invariant 7 — resolved jen ze změny kódu), takže verdikt **záměrně** drží `comment`; jestli diskuze dotaz uspokojivě uzavřela, přehodí na `approve` člověk při submitu (skill nehodnotí kvalitu diskuzní odpovědi). V autonomním `submit` se **nepoužije** (jde vždy `COMMENT` — invariant 1); v `pending`
+  ho člověk při submitu jen potvrdí nebo přehodí.
 - `source` (`catalog` / `judgment`) — viz sekce *Scope*. `judgment` nález nesmí mít
   `severity: blocking` (invariant 3) a musí být **konkrétní, vysoce jistý bug/riziko** — ne vkus
   ani spekulace. **Vysoká jistota se týká *pozorování*, ne záměru autora:** ověřené, konkrétní
@@ -296,7 +340,7 @@ Pravidla pro pole:
   odvodí z git srovnání minulého a aktuálního commitu (viz *Re-run*). Řídí zápis (nový inline /
   žádný / obecné potvrzení v souhrnu) i gate.
 - `gate_check` — **povinné u každého nálezu na podmíněné pravidlo** (`❌/⚠️`: A1, A2, B1, B5, B6,
-  C1, C3, F3, F5, I2, I4, J1, J2, P1). Ne volný komentář — **binárně zodpovězená Gate otázka daného
+  B8, C1, C3, F3, F5, I2, I4, J1, J2, P1). Ne volný komentář — **binárně zodpovězená Gate otázka daného
   pravidla ve tvaru** `ID: <citace Gate otázky>? ANO/NE → <severity>`, např.
   `A2: přeruší pád init doplňku? ANO → blocking`. Severita nálezu **musí** odpovídat téhle
   odpovědi. Smysl je donutit tě gate skutečně provést, ne ji odhadnout: binární otázka „přeruší
@@ -332,7 +376,7 @@ Blokující — bez opravy nelze doplněk schválit:
 Kromě toho je u řádků v kódu několik doporučených úprav a tipů{; hlavně k: téma1, téma2, téma3 — max 3, ne výčet}.
 
 Toto je automatické předběžné review — pokud s některým bodem nesouhlasíš a máš důvod,
-napiš ho do diskuze a označ PR štítkem `human-review`, předáme to lidskému reviewerovi.
+napiš ho do diskuze u PR; projde to člověk.
 
 S pozdravem,
 Shoptet AI reviewer
@@ -368,6 +412,11 @@ jsou v `references/github-api-notes.md` — čti je při zápisu):
   komentáři a souhrnem jako `body`. **Tělo každého komentáře začni značkou závažnosti**
   (`❌`/`⚠️`/`💡`/`❓`, viz *Mapování*) a **na poslední řádek připoj skrytý marker** `st-review:…`
   (viz *Re-run*). Vždy zároveň vypiš JSON + zprávu i do chatu.
+- **Doporuč verdikt — aplikuje ho člověk.** Pending draft sám verdikt nenese; Comment / Approve /
+  Request changes se volí až při submitu a dělá to člověk. Skill proto uvede **doporučený verdikt**
+  (`recommended_verdict`, viz *Výstupní kontrakt*): `request_changes` když je aspoň jeden nevyřešený
+  bloker, `comment` u otevřených doporučení/tipů/dotazů, `approve` když žádný nález není nevyřešený
+  (čistý PR i re-run, kde je vše `resolved`). Je to doporučení k jednomu kliknutí, ne akce skillu.
 - **Souhrn čti z výstupu běhu (chat), ne z GitHubu** — `body` pending draftu je do submitu
   neviditelný (viz notes).
 - **Zakládej pod svým vlastním `gh` loginem, ne pod servisní identitou** — draft vidí jen jeho
@@ -389,13 +438,14 @@ Když je přepínač **`submit`** (cílový stav, bez lidské kontroly):
   horní komentář, inline nálezy u řádků (v `submit` se strandování 0-řádkových nálezů netýká).
   Vždy zároveň vypiš i do chatu. **Marker i re-run platí stejně jako v `pending`** — připoj skrytý
   `st-review:…` marker ke každému komentáři a na re-runu se řiď sekcí *Re-run*.
-- **Event vždy `COMMENT`, NIKDY `REQUEST_CHANGES`** (invariant 1).
+- **Event vždy `COMMENT` — nikdy `REQUEST_CHANGES` ani `APPROVE`** (invariant 1: autonomní režim
+  PR nepřeklápí). `recommended_verdict` z běhu se sem **nepřenáší** — bez člověka jde vždy `COMMENT`.
 - Pozor: `submit` **publikuje okamžitě a notifikuje** — žádný záchytný bod. Jediná pojistka
   je kvalita výstupu; zapínej ho, až pending výstup opakovaně obstojí beze změny.
 
-**Gate (samostatný required check) tímhle NEzapínáme** — zůstává jako zvlášť řešená CI vrstva
-(z nálezů se odvodí signál pro pipeline: dokud je nevyřešený bloker, gate červený; po opravě
-na push nebo štítku `human-review` zelený). Není součástí zápisu do GitHubu.
+**Gate (samostatný required check) tímhle NEzapínáme** — je to zvlášť řešená CI vrstva mimo tenhle
+skill. Mechanika je připravená, ale **zatím je plošně vypnutá a nepoužívá se** (včetně štítku
+`human-review`). Skill se gate ani štítků nedotýká v žádném režimu (invariant 5).
 
 ## Re-run (opakovaný běh na témže PR)
 
@@ -410,7 +460,7 @@ i `submit`, tedy i na prvním běhu) připoj na **poslední řádek** těla HTML
 neviditelný, přes API čitelný (standardní praxe botů: Dependabot, danger-js):
 
 ```
-<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-07-10"} -->
+<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-07-24"} -->
 ```
 
 - `rule_id` — u `judgment` nálezu nech prázdné.
@@ -481,9 +531,9 @@ lokálně. Hlavní cesta vždy preferuje skutečný ESLint; tohle je jen záchra
 
 ## Co NEDĚLAT
 
-Absolutní zákazy jsou **Invarianty** nahoře (REQUEST_CHANGES, interní metadata partnerovi,
-judgment blocking, editace katalogu/kódu, štítky/submit v pending, mazání draftu, „vyřešeno" bez
-změny kódu). Tady zbytek — praktiky, kde záleží na úsudku:
+Absolutní zákazy jsou **Invarianty** nahoře (autonomní překlopení PR na REQUEST_CHANGES/APPROVE,
+interní metadata partnerovi, judgment blocking, editace katalogu/kódu, štítky/submit v pending,
+mazání draftu, „vyřešeno" bez změny kódu). Tady zbytek — praktiky, kde záleží na úsudku:
 
 - Nepřezkoumávej mechanické věci, když je ESLint k dispozici.
 - **Nehlas soubory mimo PR.** Než něco (i úklid) nahlásíš, ověř, že je součástí diffu / změněných
