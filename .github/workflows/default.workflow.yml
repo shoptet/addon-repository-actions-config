@@ -24,7 +24,7 @@ jobs:
         shell: bash
     steps:
     - name: 🚚 Get latest code
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      uses: actions/checkout@v6
       with:
         # install/build runs untrusted dependency scripts (postinstall hooks) —
         # do not leave the caller's token in .git/config where they could read it
@@ -269,7 +269,7 @@ jobs:
         # npm pins are handled after setup-node — see the "Setup npm version" step
 
     - name: Setup project and build
-      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: ${{ steps.package-manager.outputs.pm }}
@@ -323,7 +323,7 @@ jobs:
           ls -la dist
 
     - name: Save production artifacts
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      uses: actions/upload-artifact@v5
       with:
         name: build-${{ github.sha }}-${{ github.run_number }}
         path: |

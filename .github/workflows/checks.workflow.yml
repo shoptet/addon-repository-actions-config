@@ -27,21 +27,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout addon code
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
+        uses: actions/checkout@v6
 
       - name: Checkout review tool
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v6
         with:
           repository: shoptet/addon-repository-actions-config
           ref: review_tool
           path: review-tool
-          persist-credentials: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -59,7 +56,7 @@ jobs:
     steps:
       - name: Get PR author
         id: pr-info
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@v7
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -84,7 +81,7 @@ jobs:
     steps:
       - name: Check protected files
         id: files
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@v7
         with:
           script: |
             const files = await github.paginate(github.rest.pulls.listFiles, {
@@ -113,7 +110,7 @@ jobs:
     steps:
       - name: Check required reviewers
         id: reviewers
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@v7
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
