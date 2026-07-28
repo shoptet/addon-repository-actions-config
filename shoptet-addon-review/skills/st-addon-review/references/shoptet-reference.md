@@ -192,7 +192,7 @@ Doplněk se má napojit na životní cyklus přes Shoptet eventy (`document.addE
 
 ## 6. Údržba a regenerace (jen pro údržbáře skillu — agent u review přeskoč)
 
-> **Proč to tu je:** na téhle referenci stojí blokovatelná pravidla **B1/B4/B6** a celé sekce „co NENÍ nález". `@master` snapshot tiše stárne vůči pohyblivému cíli. Že to není hypotetické: **2026-07-09** se faktická chyba (`ShoptetDOMContentLoaded` prý běží i při prvním načtení) propsala **do tří souborů najednou** (tahle reference §4, pravidlo B5 v katalogu, checklist v guide). Postup níže má takovou chybu chytit **systematicky, ne náhodou**.
+> **Proč to tu je:** na téhle referenci stojí blokovatelná pravidla **B1/B4/B6** a celé sekce „co NENÍ nález". `@master` snapshot tiše stárne vůči pohyblivému cíli. Že to není hypotetické: **2026-07-09** se faktická chyba (`ShoptetDOMContentLoaded` prý běží i při prvním načtení) propsala **do tří souborů najednou** (tahle reference §4, pravidlo B5 v katalogu, checklist — dnes v `CONTEXT.md`). Postup níže má takovou chybu chytit **systematicky, ne náhodou**.
 
 **Kdy regenerovat:** při větší změně `templates-assets`, při podezření na zastaralý fakt (falešný B1/B6 bloker), nebo periodicky (á 6 měsíců).
 
@@ -207,7 +207,7 @@ Doplněk se má napojit na životní cyklus přes Shoptet eventy (`document.addE
 4. **Aktualizuj hlavičku:** nový `Pin` (hash) + `Snapshot k datu`. Bez zapsaného hashe je regenerace neúplná.
 5. **KŘÍŽOVÁ KONTROLA ZÁVISLÝCH PRAVIDEL (nevynechat — tady vznikla chyba 07-09).** Každý změněný/opravený fakt projdi napříč soubory, které z něj žijí:
    - `rules-catalog.md` — pravidla **B1, B4, B6** (a jejich Gate / „co NENÍ nález") + cokoli, co cituje konkrétní klíč/metodu/event z reference.
-   - `guide.md` — partnerský checklist (např. řádek o init eventech).
+   - `CONTEXT.md` — partnerský pre-submit checklist (např. řádek o init eventech).
    - jinde v `shoptet-reference.md` — sekce „co NENÍ nález" a poznámky, které fakt opakují.
 
    Pravidlo: **fakt v referenci se nikdy nemění osamoceně** — buď se změní i závislá pravidla, nebo se ověří, že se jich netýká. Opravu datuj poznámkou u dotčeného místa (jako blok „Oprava (2026-07-09)" v §4).

@@ -15,7 +15,7 @@ shoptet-addon-review/
         └── references/
             ├── rules-catalog.md      # rubrika (čte agent)
             ├── shoptet-reference.md  # companion pro B1/B4/B6 (čte agent)
-            └── guide.md              # lidská příručka (agent nepotřebuje)
+            └── github-api-notes.md   # mechanika zápisu do GitHubu (čte agent)
 ```
 
 ## Zařazení do marketplace `shoptet/skills`
