@@ -1,65 +1,89 @@
-# Katalog pravidel — Shoptet doplňky
+# Rules catalog — Shoptet addons
 
-**`catalog_version: 2026-07-28`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u každého nálezu bylo jasné, proti které verzi pravidel vznikl.
+**`catalog_version: 2026-07-28`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
 
-> Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J, P)**. Lidská orientace (proces, značky, checklist) → `SKILL.md` a `CONTEXT.md`.
+> A machine-readable catalog for the review agent. It contains **only the rules (A–J, P)**. Human orientation (process, marks, checklist) → `SKILL.md` and `CONTEXT.md`.
 >
-> **Pravidla B1 / B4 / B6 vyžadují znalost Shoptet prostředí** (dataLayer klíče, vždy dostupné globály, seznam core funkcí). Tu agent dostane z companion souboru **`shoptet-reference.md`**, který se předává spolu s tímto katalogem. Bez něj jsou B1/B4/B6 systematicky slabé.
+> **Rules B1 / B4 / B6 require knowledge of the Shoptet environment** (dataLayer keys, always-available globals, the list of core functions). The agent gets that from the companion file **`shoptet-reference.md`**, which is handed over together with this catalog. Without it, B1/B4/B6 are systematically weak.
 
-**Formát záznamu** — každé pravidlo má stejná pole ve stejném pořadí:
-`ID`, `Severity`, `Vlastník`, `Nástroj`, `Gate` (jen u podmíněných), `Problém`, `Proč`, `Řešení`, `Náhrada kódu` (volitelně), `Pozn.` (volitelně).
+**Record format** — every rule has the same fields in the same order:
+`ID`, `Severity`, `Owner`, `Tool`, `Gate` (conditional rules only), `Problem`, `Why`, `Solution`, `Code replacement` (optional), `Note` (optional).
 
-- **Severity:** `❌ blokující` · `⚠️ doporučené` · `💡 tip` · `❌/⚠️ podmíněné (viz Gate)` · `⚠️/💡 (neblokuje)`
-- **Vlastník:** `Linter` (mechanické, vynutitelné) · `AI` (kontextové posouzení) · `Oba` (linter mechanickou část, AI kontext)
-- **Nástroj:** konkrétní nástroj; `—` = žádný (čistě AI). Nástroje mimo ESLint jsou označené.
-- **Gate:** binární kritérium pro `❌/⚠️` pravidla — kdy blokuje a kdy ne. Závazné pro AI i člověka.
-- **Náhrada kódu:** přítomný fenced blok = konkrétní náhrada → lze z něj generovat `suggestion`. Bez něj je `Řešení` jen prozaická rada.
+- **Severity:** `❌ blocking` · `⚠️ recommended` · `💡 tip` · `❌/⚠️ conditional (see Gate)` · `⚠️/💡 (non-blocking)`
+- **Owner:** `Linter` (mechanical, enforceable) · `AI` (contextual judgment) · `Both` (linter does the mechanical part, AI the context)
+- **Tool:** the specific tool; `—` = none (purely AI). Tools other than ESLint are marked.
+- **Gate:** a binary criterion for `❌/⚠️` rules — when it blocks and when it doesn't. Binding for the AI and for humans.
+- **Code replacement:** a fenced block present = a concrete replacement → a `suggestion` can be generated from it. Without it, `Solution` is only prose advice.
 
 ---
 
-# A. Bezpečnost
+# A. Security
 
-### A1 — XSS / nebezpečné vkládání HTML
+### A1 — XSS / unsafe HTML insertion
 - **ID:** A1
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Oba
-- **Nástroj:** `eslint-plugin-no-unsanitized`
-- **Gate:** Severita se škáluje podle **zdroje a útočné plochy** — nález se ale **hlásí vždy**
-  a A1 **nikdy neklesá pod ⚠️ `recommended`** (žádné 💡, žádné ticho). Gate otázka (binární):
-  *Může hodnotu naplnit nedůvěryhodný aktér A vyrenderuje se jinému návštěvníkovi?*
-  ANO → ❌ / NE → ⚠️. Dvě úsudkové osy:
-  - **Důvěryhodnost zdroje** — kdo může do hodnoty vložit škodlivý obsah: **nedůvěryhodný** =
-    externí API, XML/feed import, vstup jiného uživatele/zákazníka; **polodůvěryhodný/admin** =
-    konfigurace e-shopu, obsah plněný redakcí/majitelem (např. název produktu, alt text) — ten má
-    k e-shopu stejně plný přístup.
-  - **Útočná plocha** — komu se hodnota spustí: **cross-user** = vyrenderuje se jinému
-    návštěvníkovi; **self-XSS** = vrací se výhradně tomu, kdo ji zadal (např. vlastní jméno
-    zákazníka v jeho klientské sekci).
-  - ❌ blocking: nedůvěryhodný zdroj **a zároveň** cross-user plocha. ⚠️ recommended (hardening):
-    polodůvěryhodný/admin zdroj **nebo** jen self-XSS plocha.
-  - **Konzervativní default:** když si nejsi jistý, odkud hodnota pochází, ber ji jako
-    nedůvěryhodnou; když neumíš doložit, že se vrací jen zadavateli, ber plochu jako cross-user
-    → ❌. Pochybnost hraje ve prospěch bezpečnosti.
-  - Je to **úsudková osa zdroj × plocha, ne lookup tabulka** — příklady v závorkách jsou
-    ilustrace, ne seznam „bezpečných/nebezpečných polí". Posuzuj konkrétní tok konkrétní hodnoty.
-  - **Požadavek na escapování se severitou nemění:** ⚠️ neznamená „neřešit", znamená
-    „neblokuje merge". Řešení níže platí pro obě větve stejně.
-- **Problém:** Data (z API, konfigurace, uživatele) se vkládají do DOM bez ošetření — `element.innerHTML = data`, `JSON.stringify` přímo do HTML, `.replace()` nad HTML stringem.
-- **Proč:** Útočník může vložit `<script>`/`onerror` a spustit cizí kód na e-shopu. Nejčastější blokující problém vůbec.
-- **Řešení:** Pro text `textContent` místo `innerHTML`; pro HTML sanitizovat (allowlist) nebo skládat přes DOM API (`createElement`/`append`), případně DOMPurify; používat builder element a hodnoty vkládat jako text.
-- **Pozn.:** `eslint-plugin-no-unsanitized` flagne `innerHTML =` a podobné sinky; AI posoudí reálné riziko a kvalitu sanitizace.
-- **Pozn. (překryv s E1):** Skládání HTML konkatenací (`'<div>' + apiData + '</div>'`) **není jen E1** (styl) — pokud je v řetězci **neošetřená hodnota z API / konfigurace / uživatele, je to A1** (severita dle Gate výše). Konkatenace je typický XSS vektor právě proto, že neumožňuje escapování. Když vidíš `+`-skládání HTML s daty, posuď ho jako A1, ne ho odbýt jako kosmetické E1.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Both
+- **Tool:** `eslint-plugin-no-unsanitized`
+- **Gate:** Severity scales with the **source and the attack surface** — but the finding is
+  **always reported** and A1 **never drops below ⚠️ `recommended`** (no 💡, no silence). The
+  Gate question (binary): *Can an untrusted actor supply the value AND does it render to
+  another visitor?* YES → ❌ / NO → ⚠️. Two judgment axes:
+  - **Trustworthiness of the source** — who can put malicious content into the value:
+    **untrusted** = an external API, an XML/feed import, input from another user/customer;
+    **semi-trusted/admin** = the e-shop's configuration, content filled in by the editors/owner
+    (e.g. a product name, alt text) — they have full access to the e-shop anyway.
+  - **Attack surface** — who the value executes for: **cross-user** = it renders to another
+    visitor; **self-XSS** = it comes back exclusively to whoever entered it (e.g. a customer's
+    own name in their client section).
+  - ❌ blocking: an untrusted source **and** a cross-user surface. ⚠️ recommended (hardening):
+    a semi-trusted/admin source **or** only a self-XSS surface.
+  - **Conservative default:** when you're not sure where the value comes from, treat it as
+    untrusted; when you can't prove it returns only to the person who entered it, treat the
+    surface as cross-user → ❌. Doubt plays in favor of security.
+  - It is a **judgment axis of source × surface, not a lookup table** — the examples in
+    parentheses are illustrations, not a list of "safe/unsafe fields". Judge the concrete flow
+    of the concrete value.
+  - **The escaping requirement does not change with severity:** ⚠️ doesn't mean "don't fix it",
+    it means "it doesn't block the merge". The Solution below applies to both branches alike.
+- **Problem:** Data (from an API, configuration, a user) is inserted into the DOM without
+  sanitization — `element.innerHTML = data`, `JSON.stringify` straight into HTML, `.replace()`
+  over an HTML string.
+- **Why:** An attacker can inject `<script>`/`onerror` and run foreign code on the e-shop. The
+  most common blocking problem of all.
+- **Solution:** For text use `textContent` instead of `innerHTML`; for HTML sanitize
+  (allowlist) or build via the DOM API (`createElement`/`append`), possibly DOMPurify; use
+  a builder element and insert values as text.
+- **Note:** `eslint-plugin-no-unsanitized` flags `innerHTML =` and similar sinks; the AI judges
+  the real risk and the quality of the sanitization.
+- **Note (overlap with E1):** Building HTML by concatenation (`'<div>' + apiData + '</div>'`)
+  **is not just E1** (style) — if the string contains an **unsanitized value from an API /
+  configuration / user, it is A1** (severity per the Gate above). Concatenation is a typical
+  XSS vector precisely because it allows no escaping. When you see `+`-built HTML with data,
+  judge it as A1; don't dismiss it as cosmetic E1.
 
-### A2 — Kontrola / validace vstupních parametrů
+### A2 — Checking / validating input parameters
 - **ID:** A2
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** ❌ když neošetřený vstup **vyhodí výjimku, která přeruší zbytek inicializace doplňku** (`x.match(…)[1]` na `null`, `.getAttribute()`/`.replace()` nad `undefined` v init toku) **nebo skončí v citlivém kontextu** (DOM, URL, `fetch`); ⚠️ jen když je selhání **ohraničené** (interní hodnota, na kterou nenavazuje další kód). Pozor: **„shodit doplněk" stačí — nemusí spadnout celý e-shop.** Pád v init handleru, po němž tiše neproběhne zbytek setupu (další `setup*` funkce), je ❌ (doplněk je rozbitý), ne ⚠️ — a v souhrnu patří **na čelo blokujících**, ne doprostřed doporučených. **Podmíněnost pádu závažnost nesnižuje:** „spadne, *jen když* shop nevloží config" / „*jen když* obrázek nemá `data-src`" / „to se *asi* nestane" **není důvod dát ⚠️ místo ❌**. Gate se ptá na **následek, když to nastane** (přeruší init → ❌), ne na pravděpodobnost. Nízká pravděpodobnost patří do `confidence`, **ne** do severity — nediskontuj ❌ na ⚠️.
-- **Problém:** Funkce nepočítá s prázdným/chybějícím vstupem (`undefined`, prázdné video, chybějící URL).
-- **Proč:** Skript spadne na neošetřené hodnotě a rozbije zbytek stránky.
-- **Řešení:** Guard na začátku + výchozí hodnoty parametrů.
-- **Náhrada kódu:**
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** ❌ when the unhandled input **throws an exception that interrupts the rest of the
+  addon's initialization** (`x.match(…)[1]` on `null`, `.getAttribute()`/`.replace()` over
+  `undefined` in the init flow) **or ends up in a sensitive context** (DOM, URL, `fetch`);
+  ⚠️ only when the failure is **contained** (an internal value with no downstream code
+  depending on it). Careful: **"breaking the addon" is enough — the whole e-shop doesn't have
+  to crash.** A crash in an init handler after which the rest of the setup silently doesn't run
+  (further `setup*` functions) is ❌ (the addon is broken), not ⚠️ — and in the summary it
+  belongs **at the top of the blockers**, not in the middle of the recommendations.
+  **Conditionality of the crash does not reduce severity:** "it crashes *only if* the shop
+  doesn't insert the config" / "*only if* the image has no `data-src`" / "that *probably* won't
+  happen" **is no reason to give ⚠️ instead of ❌**. The Gate asks about the **consequence when
+  it happens** (interrupts init → ❌), not about the probability. Low probability belongs in
+  `confidence`, **not** in severity — don't discount ❌ to ⚠️.
+- **Problem:** A function doesn't account for an empty/missing input (`undefined`, an empty
+  video, a missing URL).
+- **Why:** The script crashes on the unhandled value and breaks the rest of the page.
+- **Solution:** A guard at the start + default parameter values.
+- **Code replacement:**
   ```js
   function createMp4Slide(url = '') {
     if (!url) return '';
@@ -67,187 +91,254 @@
   }
   ```
 
-### A3 — Mutace vstupů / oddělení vstupu od stavu
+### A3 — Mutating inputs / separating input from state
 - **ID:** A3
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `no-param-reassign`
-- **Problém:** Funkce přepisuje svůj vstupní parametr; jedna proměnná slouží zároveň jako uživatelský vstup i jako interní stav.
-- **Proč:** Nečekané vedlejší efekty, těžko se ladí.
-- **Řešení:** Lokální kopie (`const local = {...input}`) a oddělené proměnné pro vstup a interní stav.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** ESLint `no-param-reassign`
+- **Problem:** A function overwrites its input parameter; one variable serves both as user
+  input and as internal state.
+- **Why:** Unexpected side effects, hard to debug.
+- **Solution:** A local copy (`const local = {...input}`) and separate variables for input and
+  internal state.
 
-### A4 — Citlivá data v kódu
+### A4 — Sensitive data in the code
 - **ID:** A4
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** secret-scan (gitleaks / trufflehog) — **ne ESLint**
-- **Problém:** Token / API klíč viditelný v produkčním (klientském) kódu.
-- **Proč:** Klientský kód si přečte kdokoli.
-- **Řešení:** Ověř, že token smí být veřejný (vázaný na origin/eshop); jinak ho vydávej z backendu s kontrolou původu requestu.
-- **Pozn.:** Secret-scan detekuje vzor tokenu, AI posoudí citlivost.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** secret-scan (gitleaks / trufflehog) — **not ESLint**
+- **Problem:** A token / API key visible in production (client-side) code.
+- **Why:** Anyone can read client-side code.
+- **Solution:** Verify the token is allowed to be public (bound to the origin/e-shop);
+  otherwise serve it from a backend with request-origin checking.
+- **Note:** The secret-scan detects the token pattern; the AI judges the sensitivity.
 
-### A5 — Externí odkazy target="_blank"
+### A5 — External links with target="_blank"
 - **ID:** A5
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Oba
-- **Nástroj:** runtime (htmlhint / axe nad vyrenderovaným HTML) / grep
-- **Problém:** Odkaz do nového okna bez `rel`.
-- **Proč:** Otevřená stránka může přes `window.opener` zmanipulovat původní stránku (reverse tabnabbing).
-- **Řešení:** Vždy `rel="noopener noreferrer"`.
-- **Pozn.:** Odkazy se skládají jako HTML stringy (ne JSX) → `react/jsx-no-target-blank` nezabere; mechanická část je runtime, ne ESLint.
+- **Severity:** ⚠️ recommended
+- **Owner:** Both
+- **Tool:** runtime (htmlhint / axe over the rendered HTML) / grep
+- **Problem:** A link opening a new window without `rel`.
+- **Why:** The opened page can manipulate the original page via `window.opener` (reverse
+  tabnabbing).
+- **Solution:** Always `rel="noopener noreferrer"`.
+- **Note:** Links are built as HTML strings (not JSX) → `react/jsx-no-target-blank` won't
+  catch it; the mechanical part is runtime, not ESLint.
 
 ---
 
-# B. Integrace se Shoptetem
+# B. Integration with Shoptet
 
-### B1 — Čtení dat přes dataLayer / oficiální API
+### B1 — Reading data via the dataLayer / official API
 - **ID:** B1
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** ❌ když získání dat závisí na parsování DOMu / hardcoded hodnotách, které se při změně šablony rozbijí (funkční riziko); ⚠️ jinak (existuje fallback, jde o drobné zjednodušení).
-- **Problém:** Doplněk si jazyk, typ stránky, kód produktu apod. zjišťuje vlastní cestou (parsování DOMu, hardcoded hodnoty).
-- **Proč:** Vlastní parsování DOMu se rozbije při změně šablony; oficiální API je stabilní a jednotné.
-- **Řešení:** Používej `getShoptetDataLayer()`; pro číselné identifikátory `shoptet.abilities.about.id` místo mapování na class name.
-- **Pozn.:** Seznam dostupných klíčů a jejich dostupnost dle typu stránky → `shoptet-reference.md` §1.
-- **Pozn. (co NENÍ nález):** Cílit DOM prvky přes **class selektory** je v Shoptet doplňcích běžný
-  a často **jediný možný** způsob — šablona pro většinu prvků nenabízí stabilní hook a `data-testid`
-  je navíc zakázané (B7). Samotná „křehkost class selektoru" tedy **není nález** (ani jako judgment) —
-  nevytýkej ji, když stabilní alternativa neexistuje. B1 platí jen na **získávání dat** dostupných
-  přes dataLayer/`shoptet.abilities` (jazyk, typ stránky, ID produktu → mapování na class name je
-  tady nález). Reálné zůstávají i sousední případy: vazba na `data-testid` (B7), selektor sahající
-  **mimo vlastní kontejner** doplňku (B8), nebo konkrétně stabilnější hook, který partner obešel.
-- **Náhrada kódu:**
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** ❌ when obtaining the data depends on DOM parsing / hardcoded values that break on
+  a template change (a functional risk); ⚠️ otherwise (a fallback exists, it's a minor
+  simplification).
+- **Problem:** The addon determines the language, page type, product code etc. its own way
+  (DOM parsing, hardcoded values).
+- **Why:** Custom DOM parsing breaks on a template change; the official API is stable and
+  uniform.
+- **Solution:** Use `getShoptetDataLayer()`; for numeric identifiers use
+  `shoptet.abilities.about.id` instead of mapping from a class name.
+- **Note:** The list of available keys and their availability per page type →
+  `shoptet-reference.md` §1.
+- **Note (what is NOT a finding):** Targeting DOM elements via **class selectors** is common in
+  Shoptet addons and often the **only possible** way — the template offers no stable hook for
+  most elements and `data-testid` is moreover forbidden (B7). The mere "fragility of a class
+  selector" is therefore **not a finding** (not even as judgment) — don't call it out when no
+  stable alternative exists. B1 applies only to **obtaining data** available via the
+  dataLayer/`shoptet.abilities` (language, page type, product ID → mapping from a class name IS
+  a finding here). The neighboring cases remain real too: binding to `data-testid` (B7),
+  a selector reaching **outside the addon's own container** (B8), or a concretely more stable
+  hook the partner bypassed.
+- **Code replacement:**
   ```js
   const lang = getShoptetDataLayer('language');
   const isProduct = getShoptetDataLayer('pageType') === 'productDetail';
   const { product } = getShoptetDataLayer();
-  // s variantami je kód jen v codes[]; bez variant existuje i product.code (viz shoptet-reference §1)
+  // with variants the code lives only in codes[]; without variants product.code also exists (see shoptet-reference §1)
   const code = product?.hasVariants
     ? product.codes.map(c => c.code)
     : (product?.code ?? product?.codes?.[0]?.code);
   ```
 
-### B2 — Breakpointy ze Shoptetu
+### B2 — Breakpoints from Shoptet
 - **ID:** B2
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Vlastní/náhodné breakpointy (např. `550px`, `767px`), které nesedí se šablonou.
-- **Proč:** Doplněk se pak zalamuje jinde než zbytek šablony — nekonzistentní chování napříč zařízeními.
-- **Řešení:** Čti z `shoptet.config.breakpoints`, případně použij oficiální hodnoty: min-width xs `480` / sm `768` / md `992` / lg `1200` / xl `1440`; max-width xs `479` / sm `767` / md `991` / lg `1199` / xl `1439`.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Custom/random breakpoints (e.g. `550px`, `767px`) that don't match the template.
+- **Why:** The addon then wraps at different points than the rest of the template —
+  inconsistent behavior across devices.
+- **Solution:** Read from `shoptet.config.breakpoints`, or use the official values: min-width
+  xs `480` / sm `768` / md `992` / lg `1200` / xl `1440`; max-width xs `479` / sm `767` / md
+  `991` / lg `1199` / xl `1439`.
 
-### B3 — Konfigurace přes Shoptet API místo generování
+### B3 — Configuration via the Shoptet API instead of generating it
 - **ID:** B3
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Doplněk nutí uživatele generovat/vkládat konfiguraci ručně.
-- **Proč:** Ruční postup je chybový a nepřívětivý; přes API je nastavení spolehlivé a aktualizovatelné.
-- **Řešení:** Nastavení vkládej přes API (inline JSON do hlavičky), v kódu ho jen čteš.
-- **Náhrada kódu:**
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** The addon forces the user to generate/paste configuration manually.
+- **Why:** The manual procedure is error-prone and unfriendly; via the API the settings are
+  reliable and updatable.
+- **Solution:** Insert the settings via the API (inline JSON into the header); the code only
+  reads them.
+- **Code replacement:**
   ```js
   const myAddonConfig = { eshopSpecificData: /* … */ };
-  // → v kódu: myAddonConfig.eshopSpecificData
+  // → in the code: myAddonConfig.eshopSpecificData
   ```
 
-### B4 — Zbytečné kontroly Shoptet objektů
+### B4 — Unnecessary checks of Shoptet objects
 - **ID:** B4
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Defenzivní kontroly nad objekty, které jsou vždy dostupné (`shoptet`, `screen`, `dataLayer`).
-- **Proč:** Zbytečný kód navíc, který jen zhoršuje čitelnost.
-- **Řešení:** `shoptet`, `dataLayer` i `screen` jsou v prohlížeči vždy definované — kontrolu vynech.
-- **Pozn.:** Seznam „vždy definovaných" Shoptet objektů je tentýž jako deklarace Shoptet globálů pro ESLint `no-undef` v D1 — udržuj jako jeden sdílený zdroj. Konkrétní výčet (`shoptet.*` namespaces, `dataLayer`, `getShoptetDataLayer`, jQuery) → `shoptet-reference.md` §2.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Defensive checks on objects that are always available (`shoptet`, `screen`,
+  `dataLayer`).
+- **Why:** Unnecessary extra code that only hurts readability.
+- **Solution:** `shoptet`, `dataLayer` and `screen` are always defined in the browser — drop
+  the check.
+- **Note:** The list of "always defined" Shoptet objects is the same as the declaration of
+  Shoptet globals for ESLint `no-undef` in D1 — maintain it as one shared source. The concrete
+  enumeration (`shoptet.*` namespaces, `dataLayer`, `getShoptetDataLayer`, jQuery) →
+  `shoptet-reference.md` §2.
 
 ### B5 — Lifecycle / race conditions
 - **ID:** B5
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** ❌ když kód reálně závisí na `setTimeout` hacku nebo způsobuje chyby ze souběhu / neidempotentní re-run při AJAX update; ⚠️ jinak (preventivní úklid bez prokázaného dopadu).
-- **Problém:** Inicializace obchází životní cyklus přes `setTimeout(fn, 0)`, kód běží dřív, než je jádro připravené; nebo kód navázaný na `ShoptetDOMContentLoaded` **není idempotentní** (při každém AJAX update se spustí znovu → hromadí listenery/elementy). Samotná kombinace listenerů na `DOMContentLoaded` + `ShoptetDOMContentLoaded` je **správný vzor, ne nález** — viz `shoptet-reference.md` §4.
-- **Proč:** Náhodné chyby ze souběhu; hromadění listenerů a duplicitních elementů po AJAX akcích.
-- **Řešení:** První načtení inicializuj v nativním `DOMContentLoaded`; pro obsah donačtený AJAXem navíc `ShoptetDOMContentLoaded` — **idempotentně**. Ne `setTimeout`/polling. Specifické varianty: `ShoptetDOMPageContentLoaded` (stránkování/filtry), `ShoptetDOMCartContentLoaded` (košík) — viz `shoptet-reference.md` §4.
-- **Pozn. (falešná domněnka — NENÍ nález):** „Globál/core může být `undefined`, protože nedoběhl Shoptet skript nebo jsou skripty špatně řazené" **není nález.** Shoptet garantuje, že v době běhu doplňku jsou globály i core připravené (`shoptet`, `shoptet.*`, `getShoptetDataLayer`, `dataLayer`, `$`/`jQuery` — reference §2; footer bundle běží po jádru — §5). Nenavrhuj guardy proti undefined ani nevaruj o pořadí skriptů. Rozliš *globál je připravený* (garantováno → domněnka, mlč) od *DOM/obsah ještě není* (reálné → B5). **Reálné B5 zavádí sám kód doplňku:** `setTimeout(fn,0)` hack, init v parse-time místo v lifecycle eventu, dvojí bind, a čtení **obsahu/DOMu, který je až po AJAX update eventu** (košík/filtry/stránkování — §4). Pozor i na sousední (ne-B5) případ: **dataLayer klíče vázané na typ stránky** (`product` jen na `productDetail`) čtené jinde jsou reálný problém — ale to je **B1** (dostupnost dat), ne „globál undefined".
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** ❌ when the code genuinely depends on a `setTimeout` hack or causes concurrency
+  errors / a non-idempotent re-run on AJAX updates; ⚠️ otherwise (preventive cleanup without
+  a demonstrated impact).
+- **Problem:** Initialization bypasses the life cycle via `setTimeout(fn, 0)`, code runs before
+  the core is ready; or code bound to `ShoptetDOMContentLoaded` **is not idempotent** (it runs
+  again on every AJAX update → accumulates listeners/elements). The mere combination of
+  listeners on `DOMContentLoaded` + `ShoptetDOMContentLoaded` is a **correct pattern, not
+  a finding** — see `shoptet-reference.md` §4.
+- **Why:** Random concurrency errors; accumulation of listeners and duplicated elements after
+  AJAX actions.
+- **Solution:** Initialize the first load in the native `DOMContentLoaded`; for content loaded
+  later via AJAX additionally `ShoptetDOMContentLoaded` — **idempotently**. Not
+  `setTimeout`/polling. Specific variants: `ShoptetDOMPageContentLoaded` (pagination/filters),
+  `ShoptetDOMCartContentLoaded` (cart) — see `shoptet-reference.md` §4.
+- **Note (false assumption — NOT a finding):** "The global/core may be `undefined` because
+  a Shoptet script hasn't finished or the scripts are ordered wrong" **is not a finding.**
+  Shoptet guarantees that by the time the addon runs, the globals and core are ready
+  (`shoptet`, `shoptet.*`, `getShoptetDataLayer`, `dataLayer`, `$`/`jQuery` — reference §2; the
+  footer bundle runs after the core — §5). Don't propose guards against undefined and don't
+  warn about script ordering. Distinguish *the global is ready* (guaranteed → an assumption,
+  stay silent) from *the DOM/content isn't there yet* (real → B5). **Real B5 is introduced by
+  the addon's own code:** a `setTimeout(fn,0)` hack, init at parse time instead of in
+  a lifecycle event, double binding, and reading **content/DOM that only exists after an AJAX
+  update event** (cart/filters/pagination — §4). Also watch the neighboring (non-B5) case:
+  **dataLayer keys bound to a page type** (`product` only on `productDetail`) read elsewhere
+  are a real problem — but that is **B1** (data availability), not "global undefined".
 
-### B6 — Nepřepisovat / využít Shoptet core
+### B6 — Don't rewrite / do reuse Shoptet core
 - **ID:** B6
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** Překryv s core (`shoptet-reference.md` §3) je **nutná, ne postačující** podmínka. ❌ jen u **zjevné duplikace** (partnerova verze nepřináší nic navíc oproti core) nebo **přepisu/override core funkce**. ⚠️/❓ při pouhém překryvu kategorie — partner má vlastní slider/modal apod., ale dělá něco navíc; to **neblokuje** (řada partnerů legitimně potřebuje upravenou verzi).
-- **Problém:** Doplněk si píše vlastní implementaci toho, co Shoptet už má, nebo přímo přepisuje core funkce (`initColorBox`, funkce z `templates-assets`).
-- **Proč:** Rozbije se při aktualizaci jádra, kolize s ostatními.
-- **Řešení:** Využij existující řešení (např. `colorbox`, který už v Shoptetu je); core funkce nepřepisuj, pokud pro to není opravdový důvod.
-- **Pozn.:** Seznam funkcionality, kterou Shoptet už dodává (a nemá se reimplementovat) → `shoptet-reference.md` §3.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** Overlap with core (`shoptet-reference.md` §3) is a **necessary, not sufficient**
+  condition. ❌ only for **obvious duplication** (the partner's version adds nothing over core)
+  or an **overwrite/override of a core function**. ⚠️/❓ for a mere category overlap — the
+  partner has their own slider/modal etc. but it does something extra; that does **not block**
+  (many partners legitimately need a customized version).
+- **Problem:** The addon writes its own implementation of something Shoptet already has, or
+  directly overwrites core functions (`initColorBox`, functions from `templates-assets`).
+- **Why:** It breaks on core updates; collisions with others.
+- **Solution:** Use the existing solution (e.g. the `colorbox` that's already in Shoptet);
+  don't overwrite core functions unless there is a genuine reason.
+- **Note:** The list of functionality Shoptet already ships (and that should not be
+  reimplemented) → `shoptet-reference.md` §3.
 
-### B7 — Zákaz data-testid selektorů
+### B7 — data-testid selectors forbidden
 - **ID:** B7
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** custom ESLint `no-restricted-syntax` / grep na `data-testid`
-- **Problém:** Doplněk se váže na atributy `data-testid` (čtení i zápis).
-- **Proč:** „Negarantujeme jejich stabilitu, kdykoli je můžeme z produkce odstranit."
-- **Řešení:** Vázat se na běžné CSS třídy, ne na testovací atributy.
-- **Pozn.:** `no-restricted-syntax` chytí statické výskyty; AI dořeší dynamicky skládané selektory.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** custom ESLint `no-restricted-syntax` / grep for `data-testid`
+- **Problem:** The addon binds to `data-testid` attributes (reading or writing).
+- **Why:** "We do not guarantee their stability; we may remove them from production at any
+  time."
+- **Solution:** Bind to regular CSS classes, not to testing attributes.
+- **Note:** `no-restricted-syntax` catches static occurrences; the AI resolves dynamically
+  built selectors.
 
-### B8 — Side-efekty / izolace doplňku (JS i CSS)
+### B8 — Side effects / addon isolation (JS and CSS)
 - **ID:** B8
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate otázka (binární):** *Zasáhne styl/selektor/side-efekt prokazatelně mimo vlastní kontejner
-  doplňku?* ANO → ❌ / NE → ⚠️ (ověřený rizikový vzor) / ❓ (nejasný záměr). ❌ vyžaduje **důkaz
-  v kódu**, ne domněnku. Typicky ANO: CSS pravidlo na **holý element** (`a`, `button`, `img`,
-  `body`, `input`) nebo jinak nescopovaný globální selektor; `!important` na Shoptet core/theme
-  třídě; extrémní `z-index` fightující header/modal; **dispatch globálního eventu**
-  (`window.dispatchEvent(new Event('resize'))` apod.), který rozhodí cizí kód / ostatní doplňky;
-  JS listener, jehož **handler prokazatelně sahá mimo kontejner** (mění cizí elementy). Naopak
-  **samotné poslouchání** na `window`/`document` se scopovaným handlerem (delegace s filtrem
-  `e.target.closest('.addon…')`, resize se scopovaným dopadem) ven nesahá — **není nález** (NE
-  větev). Na NE větvi pinuj severitu: **⚠️** u ověřeného rizikového vzoru, který ven prokazatelně
-  nesahá (neprefixovaná generická třída, co by *mohla* kolidovat); **❓** když je nejasný záměr.
-  **Nejde o pravděpodobnost, ale o důkaz zásahu ven** — doložený leak nízká četnost výskytu na
-  ⚠️ nesnižuje.
-- **Problém:** Doplněk ovlivňuje prvky mimo sebe — selektor (v CSS i v JS dotazech) zasáhne cizí
-  elementy, styl přepíše globální/theme vzhled e-shopu, doplněk dispatchne globální event, který
-  rozhodí cizí kód.
-- **Proč:** Rozbíjí e-shop a ostatní doplňky — u CSS je to nejčastější tichý průšvih (holý `a {}`
-  přebarví celý web, ne jen doplněk).
-- **Řešení:** Všechny selektory (CSS i JS) zužuj na vlastní kontejner doplňku; styluj jen vlastní
-  třídy, ne holé elementy ani core/theme; eventy a změny drž v rozsahu doplňku.
-- **Pozn. (překryv s H1):** Kosmetická nekonzistence (jednotky, nadbytečný `z-index`) je H1
-  (neblokuje). Jakmile styl **prokazatelně sahá mimo doplněk** (holý element, přepis theme,
-  `!important` na core), není to H1 — je to **B8 (severita dle Gate)**.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate question (binary):** *Does the style/selector/side effect demonstrably reach outside
+  the addon's own container?* YES → ❌ / NO → ⚠️ (a verified risky pattern) / ❓ (unclear
+  intent). ❌ requires **evidence in the code**, not an assumption. Typically YES: a CSS rule
+  on a **bare element** (`a`, `button`, `img`, `body`, `input`) or an otherwise unscoped global
+  selector; `!important` on a Shoptet core/theme class; an extreme `z-index` fighting the
+  header/modal; **dispatching a global event**
+  (`window.dispatchEvent(new Event('resize'))` etc.) that disrupts foreign code / other addons;
+  a JS listener whose **handler demonstrably reaches outside the container** (modifies foreign
+  elements). Conversely, **merely listening** on `window`/`document` with a scoped handler
+  (delegation with an `e.target.closest('.addon…')` filter, resize with a scoped impact)
+  doesn't reach out — it is **not a finding** (the NO branch). On the NO branch pin the
+  severity: **⚠️** for a verified risky pattern that demonstrably doesn't reach out (an
+  unprefixed generic class that *could* collide); **❓** when the intent is unclear.
+  **It is not about probability, but about evidence of reaching out** — a demonstrated leak is
+  not discounted to ⚠️ by low occurrence.
+- **Problem:** The addon affects elements outside itself — a selector (in CSS and in JS
+  queries) hits foreign elements, a style overrides the e-shop's global/theme look, the addon
+  dispatches a global event that disrupts foreign code.
+- **Why:** It breaks the e-shop and other addons — with CSS it's the most common silent
+  disaster (a bare `a {}` recolors the whole site, not just the addon).
+- **Solution:** Narrow all selectors (CSS and JS) to the addon's own container; style only your
+  own classes, not bare elements or core/theme; keep events and changes within the addon's
+  scope.
+- **Note (overlap with H1):** Cosmetic inconsistency (units, a redundant `z-index`) is H1
+  (non-blocking). As soon as a style **demonstrably reaches outside the addon** (a bare
+  element, a theme override, `!important` on core), it is not H1 — it is **B8 (severity per
+  the Gate)**.
 
 ---
 
-# C. Struktura a architektura kódu
+# C. Code structure and architecture
 
-### C1 — Monolit → rozdělení do modulů
+### C1 — Monolith → split into modules
 - **ID:** C1
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `max-lines`, `max-lines-per-function` (řádkový práh vynucuje linter)
-- **Gate:** Rozliš kvalitu od kvantity — blokuje nereviewovatelnost, ne délka.
-  - ❌ blokuje jen u **nereviewovatelného monolitu**: jeden soubor / jedna funkce mísí nesouvisející odpovědnosti (parsování + generování HTML + slider + resize…) tak, že kód nejde rozumně projít ani bezpečně změnit.
-  - ⚠️ u **pouhé délky**: soubor je dlouhý, ale logika je soudržná a čitelná. Délka sama o sobě neblokuje.
-  - Pracovní hranice pro ⚠️: ~400 ř. na soubor / ~80 ř. na funkci (orientační, ne tvrdý blok). Počítání řádků patří linteru přes `max-lines`; AI řeší ten kvalitativní monolit, ne počet řádků.
-- **Problém:** Veškerá logika v jednom obrovském souboru s promíchanými odpovědnostmi (typicky i jedna funkce o stovkách řádků).
-- **Proč:** Menší, soudržné celky se lépe kontrolují, udržují a testují. Blokuje se promíchání a nereviewovatelnost, ne délka jako taková.
-- **Řešení:** Rozděl do logických ES modulů podle odpovědnosti a importuj do jednoho vstupního bodu.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Both
+- **Tool:** ESLint `max-lines`, `max-lines-per-function` (the line threshold is enforced by the linter)
+- **Gate:** Distinguish quality from quantity — unreviewability blocks, length doesn't.
+  - ❌ blocks only for an **unreviewable monolith**: one file / one function mixes unrelated
+    responsibilities (parsing + HTML generation + slider + resize…) such that the code can't
+    reasonably be walked or safely changed.
+  - ⚠️ for **mere length**: the file is long but the logic is cohesive and readable. Length by
+    itself does not block.
+  - Working threshold for ⚠️: ~400 lines per file / ~80 lines per function (indicative, not
+    a hard block). Counting lines belongs to the linter via `max-lines`; the AI handles the
+    qualitative monolith, not the line count.
+- **Problem:** All the logic in one huge file with mixed responsibilities (typically including
+  a single function hundreds of lines long).
+- **Why:** Smaller, cohesive units are easier to check, maintain, and test. What blocks is the
+  mixing and unreviewability, not the length as such.
+- **Solution:** Split into logical ES modules by responsibility and import them into one entry
+  point.
 
-### C2 — Refactoring / menší metody
+### C2 — Refactoring / smaller methods
 - **ID:** C2
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `complexity`, `max-statements`
-- **Problém:** Jedna funkce dělá příliš mnoho (parsování, generování HTML/CSS, slider, resize…), „switch hell", složité větvení.
-- **Proč:** Velké funkce s mnoha odpovědnostmi se špatně čtou, testují i ladí.
-- **Řešení:** Rozsekej na menší pojmenované metody, použij early returns; pro mnoho variant konfigurační objekt místo `switch`.
-- **Náhrada kódu:**
+- **Severity:** ⚠️ recommended
+- **Owner:** Both
+- **Tool:** ESLint `complexity`, `max-statements`
+- **Problem:** One function does too much (parsing, HTML/CSS generation, slider, resize…),
+  "switch hell", complex branching.
+- **Why:** Large functions with many responsibilities are hard to read, test, and debug.
+- **Solution:** Cut into smaller named methods, use early returns; for many variants
+  a configuration object instead of a `switch`.
+- **Code replacement:**
   ```js
   async render() {
     if (!this.isValidPage()) return;
@@ -256,107 +347,128 @@
   }
   ```
 
-### C3 — Duplicita / DRY
+### C3 — Duplication / DRY
 - **ID:** C3
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Oba
-- **Nástroj:** jscpd / SonarJS `sonarjs/no-identical-functions` — **ne core ESLint**
-- **Gate:** ❌ když je duplikovaná netriviální logika (riziko, že se oprava/bezpečnostní fix provede jen na jednom místě); ⚠️ jinak (drobné opakování, čistě kosmetické zjednodušení).
-- **Problém:** Skoro identické funkce, opakovaný blok kódu, stejný selektor na desítkách míst, stejná podmínka ve více funkcích.
-- **Proč:** Opravu/změnu pak musíš dělat na více místech a snadno na některé zapomeneš.
-- **Řešení:** Sjednoť do jedné funkce (případně s parametrem), opakovaný kód do helperu, opakovaný selektor/hodnotu do `const`, společnou podmínku vytáhni nahoru.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Both
+- **Tool:** jscpd / SonarJS `sonarjs/no-identical-functions` — **not core ESLint**
+- **Gate:** ❌ when non-trivial logic is duplicated (risk that a fix/security patch gets
+  applied in only one place); ⚠️ otherwise (minor repetition, purely cosmetic simplification).
+- **Problem:** Nearly identical functions, a repeated code block, the same selector in dozens
+  of places, the same condition in multiple functions.
+- **Why:** A fix/change then has to be made in several places and it's easy to forget one.
+- **Solution:** Unify into one function (possibly parameterized), repeated code into a helper,
+  a repeated selector/value into a `const`, hoist the shared condition up.
 
-### C4 — Zanořené IFy / cykly
+### C4 — Nested IFs / loops
 - **ID:** C4
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `max-depth`, `max-nested-callbacks`
-- **Problém:** Hluboké vnoření, `.each` v `.each`, „pyramidy hrůzy" / callback hell.
-- **Proč:** Zhoršuje čitelnost i výkon a zvyšuje riziko chyb.
-- **Řešení:** Zploštit — `async/await`, ternární operátory, jQuery `filter`/`find`, brzké returny.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** ESLint `max-depth`, `max-nested-callbacks`
+- **Problem:** Deep nesting, `.each` inside `.each`, "pyramids of doom" / callback hell.
+- **Why:** Hurts readability and performance and increases the risk of errors.
+- **Solution:** Flatten — `async/await`, ternaries, jQuery `filter`/`find`, early returns.
 
-### C5 — Umístění / scope / deklarace
+### C5 — Placement / scope / declarations
 - **ID:** C5
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Funkce zbytečně definovaná uvnitř jiné, deklarace proměnných roztroušené, kód v cyklu, který tam nepatří.
-- **Proč:** Zbytečně velký scope a roztroušené deklarace komplikují pochopení toku kódu (a kód v cyklu zbytečně běží opakovaně).
-- **Řešení:** Funkci nezávislou na vnitřním stavu definuj vně; deklarace na začátek funkce; invariantní kód vytáhni mimo cyklus.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** A function needlessly defined inside another, variable declarations scattered
+  around, code inside a loop that doesn't belong there.
+- **Why:** A needlessly large scope and scattered declarations complicate understanding the
+  code flow (and code in a loop runs repeatedly for no reason).
+- **Solution:** Define a function independent of inner state outside; declarations at the top
+  of the function; hoist invariant code out of the loop.
 
-### C6 — ES6 třídy / struktura objektů
+### C6 — ES6 classes / object structure
 - **ID:** C6
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Zavádějící „objekt", který supluje třídu.
-- **Proč:** Pseudo-objekt zastírá skutečnou strukturu; třída s privátními metodami je čitelnější a lépe zapouzdřená.
-- **Řešení:** Použij skutečnou ES6 třídu s privátními metodami, nebo čistý konfigurační objekt.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** A misleading "object" standing in for a class.
+- **Why:** A pseudo-object obscures the real structure; a class with private methods is more
+  readable and better encapsulated.
+- **Solution:** Use a real ES6 class with private methods, or a plain configuration object.
 
 ---
 
-# D. Rozsah proměnných a závislosti
+# D. Variable scope and dependencies
 
-### D1 — Globální → blokové proměnné
+### D1 — Global → block-scoped variables
 - **ID:** D1
-- **Severity:** ❌ blokující
-- **Vlastník:** Linter
-- **Nástroj:** ESLint `no-var`, `no-undef`, `no-implicit-globals`
-- **Problém:** Plošné globální proměnné, `var`.
-- **Proč:** Kolize s jinými doplňky a e-shopem.
-- **Řešení:** `const`/`let`, nikdy `var`; doplň chybějící deklarace.
-- **Pozn.:** `no-undef` bude hlásit `getShoptetDataLayer()`, `shoptet.*` apod. jako chybu, dokud v ESLint configu nedeklaruješ seznam Shoptet globálů (`languageOptions.globals`). Bez něj dostaneš lavinu false-positives. Tento seznam je jeden sdílený zdroj pro D1 (povolený globál) i B4 (vždy definované).
+- **Severity:** ❌ blocking
+- **Owner:** Linter
+- **Tool:** ESLint `no-var`, `no-undef`, `no-implicit-globals`
+- **Problem:** Widespread global variables, `var`.
+- **Why:** Collisions with other addons and the e-shop.
+- **Solution:** `const`/`let`, never `var`; add the missing declarations.
+- **Note:** `no-undef` will report `getShoptetDataLayer()`, `shoptet.*` etc. as errors until
+  you declare the list of Shoptet globals in the ESLint config
+  (`languageOptions.globals`). Without it you get an avalanche of false positives. This list is
+  one shared source for D1 (allowed globals) and B4 (always defined).
 
-### D2 — const místo let
+### D2 — const instead of let
 - **ID:** D2
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Linter
-- **Nástroj:** ESLint `prefer-const`
-- **Problém:** `let` u hodnoty, která se nemění.
-- **Proč:** `const` dává najevo, že se hodnota nemění, a chrání před nechtěným přepsáním.
-- **Řešení:** Co se nepřiřazuje znovu, deklaruj jako `const`.
+- **Severity:** ⚠️ recommended
+- **Owner:** Linter
+- **Tool:** ESLint `prefer-const`
+- **Problem:** `let` on a value that never changes.
+- **Why:** `const` signals the value doesn't change and protects against accidental
+  overwriting.
+- **Solution:** Whatever is never reassigned, declare as `const`.
 
-### D3 — Předávání závislostí: parametr místo window
+### D3 — Passing dependencies: parameters instead of window
 - **ID:** D3
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Hodnoty/elementy se sdílí přes `window` nebo globál.
-- **Proč:** Vzniká skrytá závislost a riziko kolize; parametr je explicitní a lépe testovatelný.
-- **Řešení:** Předávej je funkci jako parametr; element, který už byl nalezen, posílej dál, nehledej znovu.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Values/elements are shared via `window` or a global.
+- **Why:** It creates a hidden dependency and collision risk; a parameter is explicit and more
+  testable.
+- **Solution:** Pass them to the function as parameters; an element that was already found,
+  pass along — don't look it up again.
 
-### D4 — Namespace / prefix / kolize
+### D4 — Namespace / prefix / collisions
 - **ID:** D4
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** custom ESLint pravidlo (jediný povolený prefix z `package.json`)
-- **Problém:** Obecné názvy proměnných, `localStorage` klíčů a `id` elementů.
-- **Proč:** Pád jiných doplňků nebo e-shopu.
-- **Řešení:** Zabal do namespace a dej unikátní prefix (např. `elevate_`) na proměnné, `localStorage` klíče i `id`; nepoužívej jméno autora v názvech. Jediný povolený prefix se odvozuje z `package.json` a vynucuje ho custom ESLint pravidlo (deterministicky); AI posoudí kvalitu zbytku názvu.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** custom ESLint rule (the single allowed prefix from `package.json`)
+- **Problem:** Generic names for variables, `localStorage` keys and element `id`s.
+- **Why:** Crashes of other addons or the e-shop.
+- **Solution:** Wrap in a namespace and give a unique prefix (e.g. `elevate_`) to variables,
+  `localStorage` keys and `id`s; don't use the author's name in identifiers. The single
+  allowed prefix derives from `package.json` and is enforced by the custom ESLint rule
+  (deterministically); the AI judges the quality of the rest of the name.
 
 ---
 
 # E. JavaScript — best practices
 
-### E1 — Template literals / DOM API místo skládání stringů
+### E1 — Template literals / DOM API instead of string concatenation
 - **ID:** E1
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `prefer-template`
-- **Problém:** HTML se skládá `'<div class="' + x + '">'`.
-- **Proč:** Konkatenace je nečitelná a náchylná k chybám i XSS.
-- **Řešení:** Template literals (backticky) nebo DOM API; string skládej a přiřaď jednou, ne opakovaně.
-- **Pozn. (překryv s A1):** Když konkatenace míchá do HTML **data z API / konfigurace / uživatele**, nejde jen o styl — je to **XSS a řeší se jako A1 (severita dle A1 Gate)**. E1 samotné je ❌ za formu; jakmile jsou v řetězci neošetřená data, eskaluj na A1.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** ESLint `prefer-template`
+- **Problem:** HTML is built with `'<div class="' + x + '">'`.
+- **Why:** Concatenation is unreadable and prone to errors and XSS.
+- **Solution:** Template literals (backticks) or the DOM API; build the string and assign once,
+  not repeatedly.
+- **Note (overlap with A1):** When the concatenation mixes **data from an API / configuration /
+  a user** into the HTML, it's not just style — it is **XSS and is handled as A1 (severity per
+  the A1 Gate)**. E1 by itself is ❌ for the form; as soon as unsanitized data is in the
+  string, escalate to A1.
 
-### E2 — Moderní JS
+### E2 — Modern JS
 - **ID:** E2
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Oba
-- **Nástroj:** ESLint plugin `eslint-plugin-unicorn`
-- **Problém:** Zastaralé konstrukce (`XMLHttpRequest`, ruční smyčky).
-- **Proč:** Jsou upovídanější, hůř čitelné a náchylnější k chybám než moderní ekvivalenty.
-- **Řešení:** `fetch` + `async/await`, `forEach`/`map`, `clone` kde dává smysl.
-- **Náhrada kódu:**
+- **Severity:** ⚠️ recommended
+- **Owner:** Both
+- **Tool:** ESLint plugin `eslint-plugin-unicorn`
+- **Problem:** Outdated constructs (`XMLHttpRequest`, manual loops).
+- **Why:** They are more verbose, harder to read, and more error-prone than the modern
+  equivalents.
+- **Solution:** `fetch` + `async/await`, `forEach`/`map`, `clone` where it makes sense.
+- **Code replacement:**
   ```js
   async function load(url) {
     const res = await fetch(url);
@@ -365,360 +477,444 @@
   }
   ```
 
-### E3 — jQuery idiomy
+### E3 — jQuery idioms
 - **ID:** E3
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Opakované `$(this)`, zbytečný `.detach()`, `filter` tam, kde stačí `find`.
-- **Proč:** Opakované dotazy do DOMu zbytečně zatěžují výkon a zhoršují čitelnost.
-- **Řešení:** Cachuj `const $this = $(this);`, používej `find`, zbytečné volání odstraň.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Repeated `$(this)`, an unnecessary `.detach()`, `filter` where `find` suffices.
+- **Why:** Repeated DOM queries needlessly burden performance and hurt readability.
+- **Solution:** Cache `const $this = $(this);`, use `find`, remove unnecessary calls.
 
 ### E4 — Strict equality ===
 - **ID:** E4
-- **Severity:** ❌ blokující
-- **Vlastník:** Linter
-- **Nástroj:** ESLint `eqeqeq`
-- **Problém:** Loose equality `==`.
-- **Proč:** `==` provádí implicitní konverzi typů a vede k těžko odhalitelným chybám.
-- **Řešení:** Vždy `===` / `!==`.
+- **Severity:** ❌ blocking
+- **Owner:** Linter
+- **Tool:** ESLint `eqeqeq`
+- **Problem:** Loose equality `==`.
+- **Why:** `==` performs implicit type conversion and leads to hard-to-spot bugs.
+- **Solution:** Always `===` / `!==`.
 
 ### E5 — Debounce / throttle
 - **ID:** E5
 - **Severity:** 💡 tip
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Náročný handler na častém eventu (`resize`, `scroll`).
-- **Proč:** Handler se volá mnohokrát za sekundu a zbytečně zatěžuje prohlížeč (sekání).
-- **Řešení:** Obal do `debounce`/`throttle`.
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** An expensive handler on a frequent event (`resize`, `scroll`).
+- **Why:** The handler fires many times per second and needlessly burdens the browser (jank).
+- **Solution:** Wrap in `debounce`/`throttle`.
 
-### E6 — Event listenery
+### E6 — Event listeners
 - **ID:** E6
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Listenery se přidávají opakovaně bez odebrání; zbytečná kombinace více eventů.
-- **Proč:** Neodebrané listenery se hromadí (memory leak, vícenásobné spuštění handleru).
-- **Řešení:** Před přidáním odeber starý listener; často stačí jen `click` (spouští se i na mobilu); klik na overlay detekuj přímo na overlay.
-- **Náhrada kódu:**
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Listeners are added repeatedly without removal; an unnecessary combination of
+  multiple events.
+- **Why:** Unremoved listeners accumulate (memory leak, the handler firing multiple times).
+- **Solution:** Remove the old listener before adding; often `click` alone suffices (it fires
+  on mobile too); detect a click on an overlay directly on the overlay.
+- **Code replacement:**
   ```js
   if (resizeListener) window.removeEventListener('resize', resizeListener);
   resizeListener = debounce(handleResize, 150);
   window.addEventListener('resize', resizeListener);
   ```
 
-### E7 — localStorage v try/catch
+### E7 — localStorage in try/catch
 - **ID:** E7
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Práce s `localStorage` bez ošetření (může vyhodit výjimku, být plné/zakázané).
-- **Proč:** V privátním režimu / při plné kvótě `localStorage` vyhodí výjimku a shodí celý skript.
-- **Řešení:** Obal do `try/catch`; neukládej klíče, které se nikde nečtou.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Working with `localStorage` without handling (it can throw, be full/disabled).
+- **Why:** In private mode / with a full quota, `localStorage` throws and takes down the whole
+  script.
+- **Solution:** Wrap in `try/catch`; don't store keys that are never read.
 
 ### E8 — Error handling / response.ok
 - **ID:** E8
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** `fetch` bez kontroly stavu, chybějící `try/catch`.
-- **Proč:** Bez kontroly stavu a chyb selže `fetch` tiše a doplněk se chová nepředvídatelně.
-- **Řešení:** Kontroluj `response.ok`, ošetři chyby.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** `fetch` without a status check, missing `try/catch`.
+- **Why:** Without status and error checks, `fetch` fails silently and the addon behaves
+  unpredictably.
+- **Solution:** Check `response.ok`, handle errors.
 
-### E9 — Drobné JS opravy / redundance
+### E9 — Minor JS fixes / redundancies
 - **ID:** E9
 - **Severity:** 💡 tip
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `radix`, `no-extra-boolean-cast`
-- **Problém:** `parseInt` bez radixu, redundantní `.trim()` / převody na string, zbytečné `> 0`, nadbytečný `/gi` flag.
-- **Proč:** Drobnosti samy o sobě nevadí, ale dohromady zhoršují čitelnost a občas skrývají chybu (např. `parseInt` bez radixu).
-- **Řešení:** `parseInt(x, 10)`; odstraň redundance; `/gi` netřeba u lowercase textu.
+- **Owner:** Both
+- **Tool:** ESLint `radix`, `no-extra-boolean-cast`
+- **Problem:** `parseInt` without a radix, a redundant `.trim()` / string conversions,
+  an unnecessary `> 0`, a superfluous `/gi` flag.
+- **Why:** The small things don't matter alone, but together they hurt readability and
+  occasionally hide a bug (e.g. `parseInt` without a radix).
+- **Solution:** `parseInt(x, 10)`; remove redundancies; `/gi` is unnecessary on lowercase text.
 
 ### E10 — Magic constants
 - **ID:** E10
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `no-magic-numbers`
-- **Problém:** Natvrdo čísla (`3600000`), URL, názvy šablon, HTTP statusy v kódu.
-- **Proč:** Nepojmenované hodnoty jsou nesrozumitelné a při změně se musí dohledávat po celém kódu.
-- **Řešení:** Vytáhni do pojmenovaných konstant / konfigurace.
-- **Pozn.:** `no-magic-numbers` flaguje kandidáty, AI rozhodne, co je opravdu „magické".
+- **Severity:** ⚠️ recommended
+- **Owner:** Both
+- **Tool:** ESLint `no-magic-numbers`
+- **Problem:** Hardcoded numbers (`3600000`), URLs, template names, HTTP statuses in the code.
+- **Why:** Unnamed values are unintelligible and on a change must be hunted down across the
+  whole codebase.
+- **Solution:** Extract into named constants / configuration.
+- **Note:** `no-magic-numbers` flags candidates; the AI decides what is truly "magic".
 
-### E11 — Konzistence / pojmenování
+### E11 — Consistency / naming
 - **ID:** E11
 - **Severity:** 💡 tip
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Nekonzistentní hodnoty (`Math.min(3` vs jinde jiné), zavádějící názvy funkcí (`render`, která nic nerenderuje), `element` parametr, který je ve skutečnosti selector.
-- **Proč:** Zavádějící názvy a nekonzistence matou a zvyšují riziko chyb při úpravách.
-- **Řešení:** Sjednoť hodnoty; název ať odpovídá tomu, co funkce/parametr dělá (`shouldRender`, `selector`).
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Inconsistent values (`Math.min(3` vs. a different one elsewhere), misleading
+  function names (a `render` that renders nothing), an `element` parameter that is actually
+  a selector.
+- **Why:** Misleading names and inconsistencies confuse and raise the risk of errors during
+  changes.
+- **Solution:** Unify the values; let names match what the function/parameter does
+  (`shouldRender`, `selector`).
 
 ---
 
-# F. Čistota produkčního kódu
+# F. Production code cleanliness
 
-### F1 — Odstranit zakomentovaný kód
+### F1 — Remove commented-out code
 - **ID:** F1
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** SonarJS `sonarjs/no-commented-code` (plugin)
-- **Problém:** Zakomentované bloky kódu v produkci.
-- **Proč:** Mrtvý kód mate čtenáře, zbytečně zvětšuje soubor a nikdo neví, jestli ještě platí.
-- **Řešení:** Smazat. Historie je v gitu.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** SonarJS `sonarjs/no-commented-code` (plugin)
+- **Problem:** Commented-out code blocks in production.
+- **Why:** Dead code confuses the reader, needlessly bloats the file, and nobody knows if it
+  still holds.
+- **Solution:** Delete it. History lives in git.
 
-### F2 — Nepoužívaný / mrtvý kód a soubory
+### F2 — Unused / dead code and files
 - **ID:** F2
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `no-unused-vars` (proměnné) + knip / ts-prune (soubory)
-- **Problém:** Nepoužívané proměnné (`index`, který se nečte), nebuildované soubory, nepotřebné složky.
-- **Proč:** Zvyšuje velikost a údržbu kódu a svádí k omylům (co se používá a co ne).
-- **Řešení:** Odstranit vše, co se nevyužívá.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** ESLint `no-unused-vars` (variables) + knip / ts-prune (files)
+- **Problem:** Unused variables (an `index` that is never read), unbuilt files, unneeded
+  folders.
+- **Why:** Increases code size and maintenance and invites mistakes (what is used and what
+  isn't).
+- **Solution:** Remove everything that isn't used.
 
-### F3 — console.log / debug v produkci
+### F3 — console.log / debug in production
 - **ID:** F3
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Linter
-- **Nástroj:** ESLint `no-console`
-- **Gate:** ❌ když se `console`/debug dostane do produkčního buildu; ⚠️ jen u dev nástrojů odděleně izolovaných za `dev` ENV (do produkce se nedostanou).
-- **Problém:** Výpisy do konzole, debug metody (200+ řádků, které klient nevyužije).
-- **Proč:** Zatěžují konzoli i výkon prohlížeče koncového uživatele a mohou vyzradit interní informace.
-- **Řešení:** Odstranit; debug nástroje vyčlenit do modulu povoleného jen pod `dev` ENV (produkční build běží s `production`).
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Linter
+- **Tool:** ESLint `no-console`
+- **Gate:** ❌ when `console`/debug makes it into the production build; ⚠️ only for dev tools
+  cleanly isolated behind a `dev` ENV (they don't reach production).
+- **Problem:** Console output, debug methods (200+ lines the client never uses).
+- **Why:** They burden the end user's console and browser performance and can leak internal
+  information.
+- **Solution:** Remove; extract debug tools into a module enabled only under a `dev` ENV (the
+  production build runs with `production`).
 
-### F4 — Logování chyb přes Sentry
+### F4 — Error logging via Sentry
 - **ID:** F4
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Chyby se logují do konzole koncového uživatele.
-- **Proč:** Do konzole uživatele nevidíš — o reálných chybách se nedozvíš, navíc ho to zatěžuje.
-- **Řešení:** Použij řešení, které nezatěžuje uživatele — např. Sentry.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Errors are logged to the end user's console.
+- **Why:** You can't see the user's console — you never learn about real errors, and it burdens
+  the user on top.
+- **Solution:** Use a solution that doesn't burden the user — e.g. Sentry.
 
-### F5 — Prázdné / dummy soubory, dev pozůstatky
+### F5 — Empty / dummy files, dev leftovers
 - **ID:** F5
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Oba
-- **Nástroj:** CI/skript (`.gitignore`, dist, prázdné soubory) — **ne ESLint**
-- **Gate:** ❌ když se do PR/produkce dostanou dev buildy nebo `dist` (riziko nasazení dev kódu); ⚠️ u prázdných/dummy souborů bez funkčního dopadu (úklid).
-- **Problém:** Prázdné soubory, `dist` ve verzování, dev buildy, pozůstatky lokálního vývoje
-  (např. prázdný `yarn.lock` pozůstatek vedle reálného lockfilu → viz i F6).
-- **Proč:** Plní repo nepotřebným obsahem, zhoršují přehlednost a do produkce by se mohl dostat dev build.
-- **Řešení:** `dist` ani dev buildy nepatří do PR; přepni na produkční build; smaž prázdné/dummy soubory.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Both
+- **Tool:** CI/script (`.gitignore`, dist, empty files) — **not ESLint**
+- **Gate:** ❌ when dev builds or `dist` make it into the PR/production (risk of deploying dev
+  code); ⚠️ for empty/dummy files with no functional impact (cleanup).
+- **Problem:** Empty files, `dist` under version control, dev builds, leftovers of local
+  development (e.g. an empty leftover `yarn.lock` next to the real lockfile → see also F6).
+- **Why:** They fill the repo with unneeded content, hurt clarity, and a dev build could reach
+  production.
+- **Solution:** Neither `dist` nor dev builds belong in a PR; switch to the production build;
+  delete empty/dummy files.
 
-### F6 — Balíčky / lock soubory
+### F6 — Packages / lock files
 - **ID:** F6
 - **Severity:** 💡 tip
-- **Vlastník:** Oba
-- **Nástroj:** depcheck — **ne ESLint**
-- **Problém:** Nepoužívané npm balíčky; **víc než jeden lockfile různých správců** v repu —
-  `package-lock.json` (npm), `yarn.lock` (yarn), `pnpm-lock.yaml` (pnpm), `bun.lockb`/`bun.lock` (bun).
-  **Počítá se i prázdný / pozůstatkový lockfile** jiného správce, ne jen dvojice npm+yarn.
-- **Proč:** Dva lockfily vedou k nekonzistentním instalacím; a nástroje/CI/`corepack` vybírají
-  správce podle **přítomnosti** souboru — takže i prázdný `yarn.lock` vedle `pnpm-lock.yaml` může
-  build přesměrovat na špatného správce. Nepoužité balíčky zbytečně nafukují závislosti.
-- **Řešení:** Nech lockfile **jednoho** správce; ostatní (i prázdné) smaž. Odstraň nepoužívané
-  závislosti. Prázdný lockfile je zároveň prázdný soubor → projeď i optikou F5.
+- **Owner:** Both
+- **Tool:** depcheck — **not ESLint**
+- **Problem:** Unused npm packages; **more than one lockfile of different package managers** in
+  the repo — `package-lock.json` (npm), `yarn.lock` (yarn), `pnpm-lock.yaml` (pnpm),
+  `bun.lockb`/`bun.lock` (bun). **Even an empty / leftover lockfile** of another manager
+  counts, not just the npm+yarn pair.
+- **Why:** Two lockfiles lead to inconsistent installs; and tools/CI/`corepack` pick the
+  manager by the **presence** of the file — so even an empty `yarn.lock` next to
+  `pnpm-lock.yaml` can redirect the build to the wrong manager. Unused packages needlessly
+  bloat the dependencies.
+- **Solution:** Keep the lockfile of **one** manager; delete the others (even empty ones).
+  Remove unused dependencies. An empty lockfile is also an empty file → run it through the F5
+  lens too.
 
 ---
 
-# G. Build, tooling a soubory
+# G. Build, tooling and files
 
-### G1 — Minifikace
+### G1 — Minification
 - **ID:** G1
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** CI/build kontrola výstupu — **ne ESLint**
-- **Problém:** Produkční kód není minifikovaný (i když to název kroku slibuje).
-- **Proč:** Uživatel stahuje zbytečně velký kód.
-- **Řešení:** Zapni reálnou minifikaci, případně použij build step z boilerplate.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** CI/build output check — **not ESLint**
+- **Problem:** The production code is not minified (even when the step's name promises it).
+- **Why:** The user downloads needlessly large code.
+- **Solution:** Turn on real minification, or use the build step from the boilerplate.
 
 ### G2 — Build / webpack / vendor
 - **ID:** G2
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Knihovny třetích stran (Fancybox, Splide) smíchané s vlastním kódem; obfuscator i přes vyjmuté názvy funkcí.
-- **Proč:** Smíchaný vendor kód brání cachování a tree-shakingu a komplikuje review vlastního kódu.
-- **Řešení:** Vendor knihovny do samostatných souborů; pro dev/prod přepínání `DefinePlugin`; měj na paměti tree-shaking.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Third-party libraries (Fancybox, Splide) mixed with the addon's own code; an
+  obfuscator despite the exempted function names.
+- **Why:** Mixed-in vendor code prevents caching and tree-shaking and complicates reviewing the
+  own code.
+- **Solution:** Vendor libraries into separate files; `DefinePlugin` for dev/prod switching;
+  keep tree-shaking in mind.
 
-### G3 — ES moduly / build nezávislý na pořadí
+### G3 — ES modules / an order-independent build
 - **ID:** G3
-- **Severity:** ❌ blokující
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Build závisí na názvech a pořadí souborů (např. `01-settings.js`, `02-…`); SCSS natahuje partial i index soubory dvakrát.
-- **Proč:** Závislost na pořadí je křehká — přejmenování nebo přidání souboru build rozbije.
-- **Řešení:** Přepiš na `import`/ES moduly — init funkce se volá explicitně, ne přes pořadí ani `window`; sjednoť SCSS importy.
+- **Severity:** ❌ blocking
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** The build depends on file names and ordering (e.g. `01-settings.js`, `02-…`);
+  SCSS pulls in partials and index files twice.
+- **Why:** Order dependence is fragile — renaming or adding a file breaks the build.
+- **Solution:** Rewrite to `import`/ES modules — the init function is called explicitly, not
+  via ordering or `window`; unify the SCSS imports.
 
-### G4 — CI workflow / branch konfigurace
+### G4 — CI workflow / branch configuration
 - **ID:** G4
-- **Severity:** ❌ blokující
-- **Vlastník:** Oba
-- **Nástroj:** actionlint / CI validace — **ne ESLint**
-- **Problém:** Chybí/špatně nastavený GitHub workflow file pro deploy; repo má `master`, ale konfigurace počítá jen s `main`.
-- **Proč:** Bez správné konfigurace se doplněk nenasadí (deploy běží jen z očekávané větve).
-- **Řešení:** Doplň workflow file; do konfigurace přidej `master` i `main`; deploy se spouští přes Actions z hlavní větve.
+- **Severity:** ❌ blocking
+- **Owner:** Both
+- **Tool:** actionlint / CI validation — **not ESLint**
+- **Problem:** A missing/misconfigured GitHub workflow file for deploy; the repo has `master`
+  but the configuration only expects `main`.
+- **Why:** Without correct configuration the addon won't deploy (the deploy runs only from the
+  expected branch).
+- **Solution:** Add the workflow file; add both `master` and `main` to the configuration; the
+  deploy runs via Actions from the main branch.
 
-### G5 — Assety / fonty / CDN / obrázky
+### G5 — Assets / fonts / CDN / images
 - **ID:** G5
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Oba
-- **Nástroj:** stylelint (CSS `url()`) + custom grep na absolutní URL
-- **Problém:** Absolutní URL na CDN vývojáře (`$asset`), fonty/obrázky mimo assety, chybějící atributy obrázků.
-- **Proč:** Cizí CDN je mimo kontrolu Shoptetu (dostupnost, bezpečnost, GDPR) a může kdykoli vypadnout.
-- **Řešení:** Soubory měj mezi assety, ne na cizí CDN; doplň `srcset`/`poster` kde dává smysl.
+- **Severity:** ⚠️ recommended
+- **Owner:** Both
+- **Tool:** stylelint (CSS `url()`) + a custom grep for absolute URLs
+- **Problem:** Absolute URLs to the developer's CDN (`$asset`), fonts/images outside the
+  assets, missing image attributes.
+- **Why:** A foreign CDN is outside Shoptet's control (availability, security, GDPR) and can
+  drop out at any time.
+- **Solution:** Keep files among the assets, not on a foreign CDN; add `srcset`/`poster` where
+  it makes sense.
 
-### G6 — Cache / výkon
+### G6 — Cache / performance
 - **ID:** G6
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Dotazování na obrázky/bannery, které nejsou v cache; obcházení cachování stylů; `find` uvnitř `map` při velkém počtu položek (v košíku mohou být desetitisíce).
-- **Proč:** Zbytečné dotazy a obcházení cache zpomalují e-shop; u velkých kolekcí to znatelně zatíží prohlížeč.
-- **Řešení:** Nedotazuj se na necachované zdroje, neobcházej cache, optimalizuj vyhledávání ve velkých kolekcích.
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Requesting images/banners that are not cached; bypassing style caching; `find`
+  inside `map` over a large item count (a cart can hold tens of thousands).
+- **Why:** Unnecessary requests and cache bypasses slow down the e-shop; on large collections
+  it noticeably burdens the browser.
+- **Solution:** Don't request uncached resources, don't bypass the cache, optimize lookups in
+  large collections.
 
 ---
 
-# H. CSS / vizuál
+# H. CSS / visuals
 
-> **Jak projít CSS/SCSS** (ať buňka „H" v matici není jen glance). U každého stylového souboru projeď osy:
-> - **Izolace** — sahá selektor/styl mimo kontejner doplňku? Holé elementy (`a`, `button`, `img`),
->   `!important` na core/theme, přepis globálních stylů → **B8** (blokující dle Gate), ne H1.
-> - **z-index** — extrém (`99999`) fightující header/modal → **B8**; nadbytečný z-index na více třídách → H1.
-> - **Breakpointy** — media queries **mimo** Shoptet breakpointy → **B2**.
-> - **Jednotky / inline styly / deprecated / velikost písma** → H1 / H2 / H3.
+> **How to walk CSS/SCSS** (so the "H" cell in the matrix isn't just a glance). For every style
+> file walk these axes:
+> - **Isolation** — does the selector/style reach outside the addon's container? Bare elements
+>   (`a`, `button`, `img`), `!important` on core/theme, overriding global styles → **B8**
+>   (blocking per the Gate), not H1.
+> - **z-index** — an extreme (`99999`) fighting the header/modal → **B8**; a redundant z-index
+>   on multiple classes → H1.
+> - **Breakpoints** — media queries **outside** the Shoptet breakpoints → **B2**.
+> - **Units / inline styles / deprecated / font size** → H1 / H2 / H3.
 >
-> **Mechanické věci** (jednotky, deprecated, část specificity) sbírá **stylelint** — až poběží,
-> nehlas je ručně (stejně jako u ESLintu); do té doby je CSS lint-vrstva degradovaná.
+> **Mechanical things** (units, deprecated, part of specificity) are collected by
+> **stylelint** — once it runs, don't report them manually (same as with ESLint); until then
+> the CSS lint layer is degraded.
 >
-> **Statický strop:** jestli to *vypadá* dobře, responzivita, overflow, stacking v kontextu —
-> to statické čtení nevidí (stejný strop jako přístupnost J = axe runtime). Tyhle vizuální vady
-> jsou **runtime věc na později** (screenshot/browser diff), ne mezera katalogu. CSS soubor po
-> **důkladném** statickém průchodu proto neznač prostým `ok` — ale ani `❓ mělce prošlé` (to je
-> jiná věc: nedostatek běhu, viz `SKILL.md` › krok 4, a odstraní ho další průchod). Použij
-> **`staticky ok, runtime neověřeno`** — ať je vidět, že vizuál/responzivita čeká na runtime,
-> ne že jsi průchod odbyl (tenhle strop žádný další statický průchod neodstraní).
+> **The static ceiling:** whether it *looks* right, responsiveness, overflow, stacking in
+> context — static reading can't see that (the same ceiling as accessibility J = axe runtime).
+> These visual defects are a **runtime matter for later** (screenshot/browser diff), not a gap
+> in the catalog. So after a **thorough** static pass don't mark a CSS file with a plain `ok` —
+> but not `❓ shallowly reviewed` either (that's a different thing: a lack of walking, see
+> `SKILL.md` › step 4, removable by another pass). Use **`statically ok, runtime unverified`**
+> — making it visible that visuals/responsiveness await runtime, not that you skimped on the
+> pass (no further static pass removes this ceiling).
 
-### H1 — CSS jednotky, z-index, media query, styly
+### H1 — CSS units, z-index, media queries, styles
 - **ID:** H1
-- **Severity:** ⚠️/💡 (neblokuje)
-- **Vlastník:** Oba
-- **Nástroj:** stylelint — **ne ESLint**
-- **Problém:** `pt` místo `px`, zbytečný `z-index` na více třídách, `width` na `display:none`.
-- **Proč:** Nekonzistentní jednotky a stylové zvyklosti zhoršují údržbu a konzistenci vzhledu doplňku.
-- **Řešení:** Konzistentní `px`; `z-index` jen tam, kde je potřeba; část logiky řeš CSS třídou místo inline stylů.
-- **Pozn. (překryv s B8):** „Přepis globálních stylů" sem jako kosmetika **nepatří** — když styl prokazatelně sahá mimo doplněk (holý element, přepis theme, `!important` na core), je to **B8 (izolace, blokující dle Gate)**, ne H1. H1 je jen vzhledová konzistence uvnitř doplňku.
+- **Severity:** ⚠️/💡 (non-blocking)
+- **Owner:** Both
+- **Tool:** stylelint — **not ESLint**
+- **Problem:** `pt` instead of `px`, a redundant `z-index` on multiple classes, `width` on
+  `display:none`.
+- **Why:** Inconsistent units and style habits hurt the addon's maintainability and visual
+  consistency.
+- **Solution:** Consistent `px`; `z-index` only where needed; solve part of the logic with
+  a CSS class instead of inline styles.
+- **Note (overlap with B8):** "Overriding global styles" does **not** belong here as
+  cosmetics — when a style demonstrably reaches outside the addon (a bare element, a theme
+  override, `!important` on core), it is **B8 (isolation, blocking per the Gate)**, not H1. H1
+  is only visual consistency inside the addon.
 
 ### H2 — Deprecated HTML/CSS
 - **ID:** H2
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Linter
-- **Nástroj:** stylelint / htmlhint — **ne ESLint**
-- **Problém:** Zastaralé tagy (`<big>`).
-- **Proč:** Deprecated tagy nemusí prohlížeče do budoucna podporovat a nejsou sémantické.
-- **Řešení:** Nahraď třídou (`<span class="text-lg">`).
+- **Severity:** ⚠️ recommended
+- **Owner:** Linter
+- **Tool:** stylelint / htmlhint — **not ESLint**
+- **Problem:** Deprecated tags (`<big>`).
+- **Why:** Browsers may stop supporting deprecated tags and they aren't semantic.
+- **Solution:** Replace with a class (`<span class="text-lg">`).
 
-### H3 — Velikost písma
+### H3 — Font size
 - **ID:** H3
 - **Severity:** 💡 tip
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Příliš malé písmo (11px).
-- **Proč:** Špatně se čte a zhoršuje přístupnost.
-- **Řešení:** Počítej s tím, že Shoptet velikosti písem zvětšuje — drž čitelné minimum.
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Too-small text (11px).
+- **Why:** Hard to read and hurts accessibility.
+- **Solution:** Keep in mind that Shoptet scales font sizes up — hold a readable minimum.
 
 ---
 
-# I. Lokalizace a pojmenování
+# I. Localization and naming
 
-### I1 — Komentáře a identifikátory v angličtině
+### I1 — Comments and identifiers in English
 - **ID:** I1
-- **Severity:** ❌ blokující
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Problém:** Čeština/slovenština v komentářích a názvech.
-- **Proč:** Kód čtou i vývojáři, kteří česky neumí; angličtina je standardní konvence a usnadňuje údržbu.
-- **Řešení:** Veškeré komentáře i identifikátory anglicky. Pozor: někdy jsou české komentáře navíc zavádějící (popisují neexistující proměnné).
+- **Severity:** ❌ blocking
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** Czech/Slovak in comments and names.
+- **Why:** The code is also read by developers who don't speak Czech; English is the standard
+  convention and eases maintenance.
+- **Solution:** All comments and identifiers in English. Careful: sometimes the Czech comments
+  are misleading on top (describing variables that don't exist).
 
-### I2 — Překlady / jazykové mutace
+### I2 — Translations / language mutations
 - **ID:** I2
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** ❌ když má být doplněk vícejazyčný a obsah to znemožňuje, nebo špatný ISO kód láme funkci; ⚠️ u jednojazyčného doplňku (oddělení překladů je pak doporučení).
-- **Problém:** Texty zadrátované v kódu, jen jeden jazyk, špatné ISO kódy.
-- **Proč:** Zadrátované texty znemožňují vícejazyčnost a míchají obsah s logikou (každá změna textu = zásah do kódu).
-- **Řešení:** Překlady do samostatného souboru (odděl obsah od logiky), počítej s vícejazyčností, správné ISO kódy (Slovinsko = `sl`); chybějící přeložené texty (i v `aria-label`) doplň.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** ❌ when the addon is meant to be multilingual and the content makes that
+  impossible, or a wrong ISO code breaks functionality; ⚠️ for a single-language addon
+  (separating translations is then a recommendation).
+- **Problem:** Texts hardwired in the code, a single language only, wrong ISO codes.
+- **Why:** Hardwired texts make multilingual support impossible and mix content with logic
+  (every text change = a code change).
+- **Solution:** Translations into a separate file (separate content from logic), plan for
+  multilingual support, correct ISO codes (Slovenia = `sl`); add the missing translated texts
+  (including in `aria-label`).
 
-### I3 — Naming konvence + smysluplné názvy
+### I3 — Naming conventions + meaningful names
 - **ID:** I3
-- **Severity:** ⚠️ doporučené
-- **Vlastník:** Oba
-- **Nástroj:** ESLint `id-length`, `camelcase` (styl/délka)
-- **Problém:** Nicneříkající názvy (`x`, `v`, `m`, `cnt`, `ifr`), snake_case v JS, zbytečné prefixy/suffixy (`prw`), jméno autora v názvech.
-- **Proč:** Nicneříkající názvy nutí čtenáře dohledávat význam a zvyšují chybovost při úpravách.
-- **Řešení:** Smysluplné názvy (`activeVideo`, `currentContent`, `imageMap`), camelCase, prefixy jen kde je třeba (namespace), nepoužívej jméno autora.
-- **Pozn.:** `id-length`/`camelcase` chytnou délku a styl; smysluplnost posoudí AI.
+- **Severity:** ⚠️ recommended
+- **Owner:** Both
+- **Tool:** ESLint `id-length`, `camelcase` (style/length)
+- **Problem:** Say-nothing names (`x`, `v`, `m`, `cnt`, `ifr`), snake_case in JS, needless
+  prefixes/suffixes (`prw`), the author's name in identifiers.
+- **Why:** Say-nothing names force the reader to hunt for the meaning and raise the error rate
+  during changes.
+- **Solution:** Meaningful names (`activeVideo`, `currentContent`, `imageMap`), camelCase,
+  prefixes only where needed (namespace), don't use the author's name.
+- **Note:** `id-length`/`camelcase` catch length and style; meaningfulness is judged by the AI.
 
-### I4 — Formát ceny / čísla
+### I4 — Price / number format
 - **ID:** I4
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** ❌ když chybné parsování vede k chybné částce / rozbité funkci; ⚠️ u čistě kosmetického formátování bez dopadu na výpočet.
-- **Problém:** Parsování ceny předpokládá jeden formát.
-- **Proč:** Mezinárodní formáty (`1.234,50`, `1,234.50$`, `1 500 Kč`) se rozbijí.
-- **Řešení:** Formátování přebírej od e-shopu / parsuj robustně napříč formáty.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** ❌ when wrong parsing leads to a wrong amount / broken functionality; ⚠️ for purely
+  cosmetic formatting with no impact on the computation.
+- **Problem:** Price parsing assumes a single format.
+- **Why:** International formats (`1.234,50`, `1,234.50$`, `1 500 Kč`) break it.
+- **Solution:** Take the formatting from the e-shop / parse robustly across formats.
 
 ---
 
-# J. Přístupnost
+# J. Accessibility
 
-### J1 — Sémantické tagy
+### J1 — Semantic tags
 - **ID:** J1
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Oba
-- **Nástroj:** runtime (axe nad vyrenderovaným DOMem, zatím mimo scope)
-- **Gate:** ❌ když je interaktivní prvek nepřístupný (klikací `<div>` bez role/klávesnicové obsluhy = porušení WCAG); ⚠️ u čistě sémantického vylepšení (`<h4>` místo `<div>`) bez dopadu na ovládání.
-- **Problém:** Klikací `<div>` místo `<button>`, vizuální nadpis jako `<div>` místo `<h4>`, prázdný `<div>` bez role/tabindex/aria.
-- **Proč:** Bez sémantických tagů prvek nerozpozná čtečka ani klávesnice — nepřístupné a horší SEO.
-- **Řešení:** Akce = `<button>`; nadpis = `<hX>` (čtečka pozná strukturu); interaktivní prvek musí mít roli/tabindex/aria.
-- **Pozn.:** AI dělá statický best-effort; `eslint-plugin-jsx-a11y` na HTML stringech nezabere; reálně axe runtime nad vyrenderovaným DOMem.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Both
+- **Tool:** runtime (axe over the rendered DOM, out of scope for now)
+- **Gate:** ❌ when an interactive element is inaccessible (a clickable `<div>` without
+  a role/keyboard support = a WCAG violation); ⚠️ for a purely semantic improvement (`<h4>`
+  instead of `<div>`) with no impact on operation.
+- **Problem:** A clickable `<div>` instead of `<button>`, a visual heading as a `<div>` instead
+  of `<h4>`, an empty `<div>` without role/tabindex/aria.
+- **Why:** Without semantic tags, neither a screen reader nor a keyboard recognizes the
+  element — inaccessible and worse SEO.
+- **Solution:** An action = `<button>`; a heading = `<hX>` (screen readers see the structure);
+  an interactive element must have a role/tabindex/aria.
+- **Note:** The AI makes a static best effort; `eslint-plugin-jsx-a11y` won't work on HTML
+  strings; in reality axe runtime over the rendered DOM.
 
-### J2 — Čtečky / aria / WCAG
+### J2 — Screen readers / aria / WCAG
 - **ID:** J2
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** Oba
-- **Nástroj:** runtime (axe nad vyrenderovaným DOMem, zatím mimo scope)
-- **Gate:** ❌ když informace nebo ovládání není pro čtečky/klávesnici vůbec dostupné (porušení WCAG úrovně A — např. autoplay bez pause, kritická informace jen vizuálně); ⚠️ u drobných vylepšení aria/popisků.
-- **Problém:** Informace jen vizuálně (unicode hvězdičky), chybějící `aria-label`, autoplay bez pause.
-- **Proč:** Uživatelé čteček se jinak nedostanou k informaci (např. hodnocení) ani neovládnou prvek (autoplay).
-- **Řešení:** Skrytý text pro čtečky (`sr-only`) s číselnou hodnotou; `aria-label` s překladem; u autoplay vizuálně skryté pause tlačítko (WCAG 2.2.2, technika G4); `onblur` validace není přístupná a nedisabluj submit.
-- **Pozn.:** Axe runtime odhalí chybějící `aria-label`, kontrast ap.; AI dělá statický best-effort a část ze statického HTML stringu nezachytí.
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** Both
+- **Tool:** runtime (axe over the rendered DOM, out of scope for now)
+- **Gate:** ❌ when information or an operation is not available to screen readers/keyboard at
+  all (a WCAG level A violation — e.g. autoplay without pause, critical information only
+  visual); ⚠️ for minor aria/label improvements.
+- **Problem:** Information only visual (unicode stars), a missing `aria-label`, autoplay
+  without pause.
+- **Why:** Screen-reader users otherwise can't reach the information (e.g. a rating) or operate
+  the element (autoplay).
+- **Solution:** Hidden text for screen readers (`sr-only`) with the numeric value;
+  an `aria-label` with a translation; for autoplay a visually hidden pause button (WCAG 2.2.2,
+  technique G4); `onblur` validation is not accessible, and don't disable the submit.
+- **Note:** Axe runtime reveals missing `aria-label`s, contrast etc.; the AI makes a static
+  best effort and part of it can't be caught from a static HTML string.
 
-# P. Soukromí / GDPR
+# P. Privacy / GDPR
 
-### P1 — Cookie souhlas pro tracking / analytiku
+### P1 — Cookie consent for tracking / analytics
 - **ID:** P1
-- **Severity:** ❌/⚠️ podmíněné (viz Gate)
-- **Vlastník:** AI
-- **Nástroj:** —
-- **Gate:** Gate otázka (binární): *Ukládá nebo odesílá doplněk data návštěvníka pro
-  analytické/marketingové účely bez ověření souhlasu přes `shoptet.consent`?* ANO → ❌ / NE → ⚠️
-  nebo nic (viz větve). Osa je **účel úložiště/odesílání**:
-  - **Analytika/marketing** = perzistentní identifikátor návštěvníka (UUID v localStorage/cookie),
-    sběr navštívených URL / refereru, odesílání behaviorálních eventů na externí API, pixely.
-    Bez jakékoli consent kontroly → ❌. Kontrola existuje, ale je děravá (jen jednorázově při
-    init bez re-checku v `onAccept`; neověřuje se odvolání souhlasu per-event) → ⚠️.
-  - **Technicky nezbytné** = úložiště nutné pro samotnou funkci doplňku (stav widgetu, obsah
-    košíku, cache konfigurace) **bez identifikace návštěvníka** — mimo pravidlo, nehlásí se.
-  - **Konzervativní default:** když neumíš doložit, že je úložiště technicky nezbytné (ukládá
-    se identifikátor návštěvníka a data někam odcházejí), ber účel jako analytický → gate se
-    aplikuje. Pochybnost hraje ve prospěch soukromí.
-- **Problém:** Doplněk vytváří perzistentní identifikátor návštěvníka nebo odesílá trackingová data (navštívené URL, referer, behaviorální eventy) na externí API bez ověření cookie souhlasu přes `shoptet.consent`.
-- **Proč:** Shoptet po doplňcích **výslovně vyžaduje**, aby analytické/marketingové cookies (a ekvivalentní localStorage tracking) běžely jen se souhlasem návštěvníka — viz [oficiální dokumentace](https://developers.shoptet.com/3rd-party-marketing-and-analytics-cookies-in-add-ons/). Porušení není styl, ale nesplnění podmínek platformy (a GDPR/ePrivacy riziko pro e-shop).
-- **Řešení:** Tracking startovat až po ověření souhlasu; API `shoptet.consent` je v době běhu doplňku vždy dostupné. Pro analytiku `shoptet.config.cookiesConsentOptAnalytics` (pro marketingové cookies analogický opt dle dokumentace výše). Bez souhlasu negenerovat identifikátor, nezapisovat trackingová data do úložiště a nic neodesílat.
-- **Náhrada kódu:**
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** Gate question (binary): *Does the addon store or send visitor data for
+  analytics/marketing purposes without verifying consent via `shoptet.consent`?* YES → ❌ /
+  NO → ⚠️ or nothing (see the branches). The axis is the **purpose of the storage/sending**:
+  - **Analytics/marketing** = a persistent visitor identifier (a UUID in localStorage/cookie),
+    collecting visited URLs / the referrer, sending behavioral events to an external API,
+    pixels. With no consent check at all → ❌. A check exists but is leaky (only once at init
+    with no re-check in `onAccept`; consent revocation isn't verified per event) → ⚠️.
+  - **Technically necessary** = storage required for the addon's own function (widget state,
+    cart contents, configuration cache) **without identifying the visitor** — outside the rule,
+    not reported.
+  - **Conservative default:** when you can't demonstrate that the storage is technically
+    necessary (a visitor identifier is stored and data goes somewhere), treat the purpose as
+    analytical → the gate applies. Doubt plays in favor of privacy.
+- **Problem:** The addon creates a persistent visitor identifier or sends tracking data
+  (visited URLs, referrer, behavioral events) to an external API without verifying cookie
+  consent via `shoptet.consent`.
+- **Why:** Shoptet **explicitly requires** addons to run analytics/marketing cookies (and
+  equivalent localStorage tracking) only with the visitor's consent — see the
+  [official documentation](https://developers.shoptet.com/3rd-party-marketing-and-analytics-cookies-in-add-ons/).
+  A violation is not style, but a breach of the platform's terms (and a GDPR/ePrivacy risk for
+  the e-shop).
+- **Solution:** Start tracking only after verifying consent; the `shoptet.consent` API is
+  always available by the time the addon runs. For analytics
+  `shoptet.config.cookiesConsentOptAnalytics` (for marketing cookies the analogous opt per the
+  documentation above). Without consent don't generate an identifier, don't write tracking data
+  to storage, and send nothing.
+- **Code replacement:**
   ```js
   function hasAnalyticsConsent() {
     return shoptet.consent.isAccepted(shoptet.config.cookiesConsentOptAnalytics);
@@ -736,5 +932,14 @@
     });
   }
   ```
-- **Pozn. (tři neintuitivní detaily API):** (1) `shoptet.consent.isAccepted(...)` vrací `true` i když má e-shop cookie lištu vypnutou — tenhle případ netřeba řešit zvlášť. (2) Callback `onAccept` se volá při **každém** odeslání lišty, včetně odmítnutí — kontrola `hasAnalyticsConsent()` musí být **uvnitř** callbacku, plus guard proti dvojímu spuštění (uživatel může nastavení odeslat opakovaně). (3) Souhlas lze později **odvolat** — ověřovat při každém odeslání eventu (levné čtení cookie), ne jen jednou při inicializaci.
-- **Pozn. (scope):** Pravidlo cílí na tracking **vlastní logikou doplňku** i na inicializaci third-party nástrojů (pixel, analytika) doplňkem. Netýká se úložiště bez identifikace návštěvníka — na `localStorage` bez try/catch je E7, na obecné side-efekty B8.
+- **Note (three unintuitive API details):** (1) `shoptet.consent.isAccepted(...)` returns
+  `true` even when the e-shop has the cookie bar disabled — no need to handle that case
+  separately. (2) The `onAccept` callback fires on **every** submission of the bar, including
+  a rejection — the `hasAnalyticsConsent()` check must be **inside** the callback, plus a guard
+  against double starting (the user can submit the settings repeatedly). (3) Consent can later
+  be **revoked** — verify on every event send (a cheap cookie read), not just once at
+  initialization.
+- **Note (scope):** The rule targets tracking done by **the addon's own logic** as well as the
+  addon initializing third-party tools (a pixel, analytics). It does not concern storage
+  without visitor identification — `localStorage` without try/catch is E7, general side
+  effects are B8.

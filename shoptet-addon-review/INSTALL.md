@@ -1,9 +1,9 @@
-# shoptet-addon-review — instalace a první test
+# shoptet-addon-review — installation and first test
 
-Kolekce (plugin) pro FE code review vizuálních Shoptet doplňků v Claude Code.
-Skill `st-addon-review` reviewuje addon PR nad **naklonovaným repem** proti katalogu pravidel.
+A collection (plugin) for FE code review of Shoptet visual addons in Claude Code.
+The `st-addon-review` skill reviews addon PRs over a **cloned repo** against the rules catalog.
 
-## Struktura
+## Structure
 
 ```
 shoptet-addon-review/
@@ -13,43 +13,44 @@ shoptet-addon-review/
     └── st-addon-review/
         ├── SKILL.md
         └── references/
-            ├── rules-catalog.md      # rubrika (čte agent)
-            ├── shoptet-reference.md  # companion pro B1/B4/B6 (čte agent)
-            └── github-api-notes.md   # mechanika zápisu do GitHubu (čte agent)
+            ├── rules-catalog.md      # rubric (read by the agent)
+            ├── shoptet-reference.md  # companion for B1/B4/B6 (read by the agent)
+            └── github-api-notes.md   # GitHub write mechanics (read by the agent)
 ```
 
-## Zařazení do marketplace `shoptet/skills`
+## Adding to the `shoptet/skills` marketplace
 
-1. Zkopíruj celou složku `shoptet-addon-review/` do `plugins/` v repu `shoptet/skills`.
-2. Zaregistruj plugin v kořenovém `.claude-plugin/marketplace.json` — přidej záznam ve
-   **stejném formátu, jaký mají existující položky** (např. `shoptet-api`). Nekopíruj schéma
-   odsud naslepo; drž se toho, co je v souboru už zavedené.
-3. `plugin.json` je držený minimální — pokud ostatní pluginy mají navíc pole (`author`,
-   `license`, …), doplň je podle nich.
-4. Lokální vývoj: `claude plugin marketplace add /absolutni/cesta/k/shoptet-skills`,
-   pak `/plugin install shoptet-addon-review@shoptet-skills`, a `/reload-plugins`.
-5. Ověř, že se skill auto-loaduje — pusť prompt, který odpovídá `description` (viz níže).
-   Když se nenačte, je to skoro vždy problém formulace `description`, ne kódu.
+1. Copy the whole `shoptet-addon-review/` folder into `plugins/` in the `shoptet/skills` repo.
+2. Register the plugin in the root `.claude-plugin/marketplace.json` — add an entry in the
+   **same format the existing items use** (e.g. `shoptet-api`). Don't copy a schema from here
+   blindly; follow what's already established in that file.
+3. `plugin.json` is kept minimal — if the other plugins carry extra fields (`author`,
+   `license`, …), add them accordingly.
+4. Local development: `claude plugin marketplace add /absolute/path/to/shoptet-skills`,
+   then `/plugin install shoptet-addon-review@shoptet-skills`, and `/reload-plugins`.
+5. Verify the skill auto-loads — run a prompt that matches the `description` (see below).
+   When it doesn't load, it's almost always a wording problem in the `description`, not the code.
 
-## První test (kickoff prompt)
+## First test (kickoff prompt)
 
-Přepni se do **konkrétního addon repa** (mít ho naklonované, ideálně na commitu/PR, který
-chceš reviewovat) a napiš Claude Code něco jako:
+Switch into a **specific addon repo** (have it cloned, ideally at the commit/PR you want
+to review) and tell Claude Code something like:
 
-> Jsi addon reviewer, řiď se skillem `st-addon-review`. Zreviewuj PR #<číslo>
-> (nebo větev `<branch>` / merge commit `<sha>`). Vytáhni si diff přes `gh`/`git`, přečti
-> **dotčené soubory i jejich okolí** v repu, projeď kód proti katalogu a vrať nálezy podle
-> výstupního kontraktu + českou souhrnnou zprávu. **Zápis do GitHubu řídí přepínač
-> `github_review` v `SKILL.md` (default `pending` = draft pod mým `gh` loginem, nesubmituje se —
-> projdu a odešlu ručně). Ať je nastavený jakkoli, výstup vždy vypiš i sem.**
+> You are an addon reviewer; follow the `st-addon-review` skill. Review PR #<number>
+> (or branch `<branch>` / merge commit `<sha>`). Pull the diff via `gh`/`git`, read the
+> **affected files and their surroundings** in the repo, run the code against the catalog
+> and return the findings per the output contract + the Czech summary message. **Writing to
+> GitHub is controlled by the `github_review` switch in `SKILL.md` (default `pending` =
+> a draft under my `gh` login, nothing gets submitted — I'll review and send it manually).
+> Whatever it is set to, always print the output here as well.**
 
-### Na co u prvního běhu koukat
+### What to watch on the first run
 
-- **False positives** — kolik si agent přidal navíc (proti druhému review / realitě kódu).
-  U nás nejdůležitější číslo, a bez člověka za tím o to víc.
-- **B1/B4/B6** — jestli s `shoptet-reference.md` reálně fungují, nebo pořád tápou.
-- **Gate** — jestli správně rozlišuje blokující vs. doporučené u podmíněných pravidel.
-- **ESLint** — na partnerském repu nejspíš zatím **není** shoptet lint config → čekej
-  degradovaný režim (`linter_available: false`). To je v pořádku, jen ať to agent přizná.
-- Vyber PR, který **není čistý** — má aspoň jeden reálný bloker a nějaký hraniční případ.
-  Na čistém PR se false positives neukážou.
+- **False positives** — how much the agent added on top (vs. a second review / the reality
+  of the code). Our most important number, and even more so with no human behind it.
+- **B1/B4/B6** — whether they actually work with `shoptet-reference.md`, or still flounder.
+- **Gate** — whether it correctly distinguishes blocking vs. recommended on conditional rules.
+- **ESLint** — the partner repo most likely has **no** shoptet lint config yet → expect
+  degraded mode (`linter_available: false`). That's fine, just make sure the agent admits it.
+- Pick a PR that is **not clean** — one with at least one real blocker and some borderline
+  case. A clean PR won't surface false positives.

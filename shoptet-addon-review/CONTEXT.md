@@ -1,222 +1,248 @@
-# CONTEXT — AI reviewer Shoptet doplňků
+# CONTEXT — AI reviewer for Shoptet addons
 
-> Kontext pro Claude Code a **jediný zdroj pravdy pro „co platí teď"**: co stavíme, proč, jaká
-> rozhodnutí padla, co je vědomě odloženo, jaké mantinely neodlaďovat zpátky a v jakém režimu
-> běžíme. Není to skill — samotný review řídí `st-addon-review/SKILL.md`. Tohle je mapa okolo.
+> Context for Claude Code and **the single source of truth for "what holds right now"**: what
+> we're building, why, which decisions were made, what is deliberately deferred, which guardrails
+> must not be tuned back out, and what mode we're running in. This is not a skill — the review
+> itself is driven by `st-addon-review/SKILL.md`. This is the map around it.
 
-## Co stavíme a proč
+## What we're building and why
 
-Partneři píšou vizuální (front-end) doplňky pro Shoptet e-shopy. Dnes je manuálně reviewuje
-člověk s doménovou znalostí, což tým brzdí. Cíl: **AI reviewer, který běží před člověkem a
-odbaví rutinní nálezy**, aby člověku zůstaly jen doménové otázky a hraniční případy.
+Partners write visual (front-end) addons for Shoptet e-shops. Today a human with domain
+knowledge reviews them manually, which slows the team down. Goal: **an AI reviewer that runs
+before the human and clears the routine findings**, leaving the human only the domain questions
+and borderline cases.
 
-Hlavní cíl vždy: **nedopustit, aby doplněk rozbil nebo zpomalil e-shop.** Partneři většinou
-nejsou silní programátoři — velké monolitické skripty, často jQuery, testy nikdy.
+The primary goal, always: **never let an addon break or slow down an e-shop.** Partners are
+mostly not strong programmers — large monolithic scripts, often jQuery, never any tests.
 
-## Trojvrstvý model (klíčové rozhodnutí)
+## The three-layer model (key decision)
 
-Nálezy se dělí podle toho, který nástroj je nejlevnější, co je chytí:
+Findings are split by which tool is the cheapest one that catches them:
 
-- **Linter** — mechanické, deterministické (`var`, `===`, `console.log`, mrtvý kód). Řeší
-  ESLint (a spol.: stylelint, jscpd, depcheck, secret-scan). **AI je nepřezkoumává očima** —
-  spustí linter jako nástroj a jeho výstup jen převezme. Tuhle vrstvu staví kolega zvlášť;
-  **zatím není hotová a v addon repech chybí → čekej degradovaný režim** (`linter_available:false`).
-- **AI** — sémantika, kterou linter neumí (XSS, reimplementace Shoptet core, parsování DOMu
-  místo dataLayer, duplicita). Tady je hodnota AI revieweru.
-- **Runtime** — co jde chytit jen za běhu (interference, výkon, většina accessibility).
-  **Mimo záběr** (žádný vlastník `runtime`); počítá se s Playwright/axe/Lighthouse později.
+- **Linter** — mechanical, deterministic (`var`, `===`, `console.log`, dead code). Handled by
+  ESLint (and friends: stylelint, jscpd, depcheck, secret-scan). **The AI does not re-examine
+  these by eye** — it runs the linter as a tool and just adopts its output. This layer is being
+  built separately by a colleague; **it is not finished yet and is missing from the addon repos
+  → expect degraded mode** (`linter_available:false`).
+- **AI** — semantics the linter can't do (XSS, reimplementing Shoptet core, parsing the DOM
+  instead of the dataLayer, duplication). This is where the AI reviewer's value lies.
+- **Runtime** — what can only be caught at runtime (interference, performance, most
+  accessibility). **Out of scope** (no `runtime` owner); Playwright/axe/Lighthouse planned later.
 
-## Rozhodnutí, která platí
+## Decisions that hold
 
-- **Katalog pohání gate.** Blokovat (`blocking`) smí **jen** nález mapovaný na pravidlo
-  z katalogu — gate musí být férový a obhajitelný.
-- **Vlastní úsudek (`judgment`) je ZAPNUTÝ**. Je **nezávazný, nikdy blokující**
-  (strop `recommended`), vždy `source: judgment`. Smí pokrýt jen **konkrétní bug / bezpečnostní /
-  funkční riziko s vysokou jistotou** — žádný vkus ani spekulace. Opakovaný úsudkový nález →
-  `rule_candidate: true` (kandidát na nové pravidlo; katalog edituje jen člověk, ne agent).
-  Jak se judgment prezentuje partnerovi → *Záměrná rozhodnutí › Partnerský výstup* níže.
-- **Přesnost před úplností.** Falešný nález stojí důvěru partnera víc než minutí. Když si AI
-  není jistá záměrem → dotaz (`❓`), ne tvrzení.
-- **Cílové prostředí = review v Claude Code** nad naklonovaným repem (ne CI). Agent si diff
-  vytáhne přes `git`/`gh` a kontext čte z celé pracovní kopie, ne z izolovaného diffu.
-- **Gate ≠ REQUEST_CHANGES.** V autonomním `submit` posílá AI vždy `COMMENT` (neblokující);
-  překlopit PR na Approve/Request changes smí jen člověk v `pending`. Vynucení povinné fáze je
-  věc samostatného required checku (CI vrstva mimo skill) — mechanika je připravená, ale **zatím
-  plošně vypnutá a nepoužívá se** (včetně štítku `human-review`).
-- **AI needituje katalog ani kód.** Opravy jen navrhuje (`suggestion`), nefixuje.
-- **Multi-agent odložen** — start je jeden agent. Změny se týkají **jen nových doplňků**.
+- **The catalog drives the gate.** Only a finding mapped to a catalog rule may block
+  (`blocking`) — the gate must be fair and defensible.
+- **Own judgment (`judgment`) is ON.** It is **non-binding, never blocking**
+  (capped at `recommended`), always `source: judgment`. It may only cover a **concrete bug /
+  security / functional risk with high confidence** — no taste, no speculation. A recurring
+  judgment finding → `rule_candidate: true` (candidate for a new rule; only a human edits the
+  catalog, never the agent). How judgment is presented to the partner → *Deliberate decisions ›
+  Partner-facing output* below.
+- **Precision over completeness.** A false finding costs more partner trust than a miss. When
+  the AI isn't sure about intent → a question (`❓`), not a claim.
+- **Target environment = review in Claude Code** over a cloned repo (not CI). The agent pulls
+  the diff via `git`/`gh` and reads context from the full working copy, not from an isolated diff.
+- **Gate ≠ REQUEST_CHANGES.** In autonomous `submit` the AI always sends `COMMENT`
+  (non-blocking); only a human may flip the PR to Approve/Request changes in `pending`.
+  Enforcing the mandatory phase is the job of a separate required check (a CI layer outside the
+  skill) — the mechanics are ready but **currently disabled across the board and unused**
+  (including the `human-review` label).
+- **The AI edits neither the catalog nor the code.** It only proposes fixes (`suggestion`),
+  never applies them.
+- **Multi-agent deferred** — start with a single agent. Changes concern **new addons only**.
 
-## Aktuální režim běhu
+## Current operating mode
 
-**Reálné review.** Pouštíš to na PR **bez lidského review** — AI je první (a zatím
-jediný) reviewer, tak jak to má fungovat v produkci. Výstup je opravdové review.
+**Real reviews.** You run it on PRs **with no human review** — the AI is the first (and so far
+only) reviewer, exactly as it's meant to work in production. The output is a real review.
 
-- **Judgment: ZAPNUTÝ** (mantinely výše).
-- **Zápis do GitHubu: řízen přepínačem `github_review` v SKILL.md** (sekce „Vracení do GitHubu"),
-  teď **`pending`**. Tři stavy: `off` = jen vypiš; `pending` = vlož jako **draft** review pod
-  loginem člověka (nic se neodešle, dokud člověk nesubmitne) + vypiš do chatu; `submit` =
-  **cílový stav** — review rovnou odešle (`event: COMMENT`, nikdy `REQUEST_CHANGES` ani `APPROVE`)
-  **bez lidské kontroly**. `submit` = ta „poslední brána"; zapnout **až po opakovaně čistém pending výstupu**
-  (výstup, který bys N běhů po sobě, napříč typy PR, submitnul beze změny). Do té doby výchozí
-  `pending`. **Štítky ani gate skill nedělá v žádném stavu** — gate je zvlášť řešená CI vrstva.
-  Přepíná se editací té jedné hodnoty v SKILL.md.
-- **Bez člověka za tím je laťka na falešné nálezy ještě vyšší** — nikdo to po AI nečistí, než
-  se (jednou) pošle. Radši `❓` a zdrženlivost než jisté tvrzení u sporné věci.
+- **Judgment: ON** (guardrails above).
+- **Writing to GitHub: controlled by the `github_review` switch in SKILL.md** ("Writing back to
+  GitHub" section), currently **`pending`**. Three states: `off` = just print; `pending` = insert
+  as a **draft** review under the human's login (nothing is sent until the human submits) + print
+  to chat; `submit` = **target state** — sends the review immediately (`event: COMMENT`, never
+  `REQUEST_CHANGES` or `APPROVE`) **without a human check**. `submit` = the "last gate"; turn it
+  on **only after repeatedly clean pending output** (output you would have submitted unchanged
+  N runs in a row, across PR types). Until then the default is `pending`. **The skill does no
+  labels and no gate in any state** — the gate is a separately handled CI layer. You switch by
+  editing that single value in SKILL.md.
+- **With no human behind it, the bar for false findings is even higher** — nobody cleans up
+  after the AI before it (one day) gets sent. Prefer `❓` and restraint over a confident claim
+  on a disputable point.
 
-## Odkud se vzala důvěra tento krok udělat
+## Where the confidence for this step came from
 
-Předchozí ověřovací běh na 6 reálných PR (jQuery monolity, všechny bez ESLintu): vysoká míra
-záchytu katalogových nálezů, málo falešných nálezů, funkční zdrženlivost (B1 potlačené tam, kde
-partner čte dataLayer správně; žádný B6 falešný nález). Katalog se z toho běhu i doladil:
-- **C1** rozdělené — blokuje **nereviewovatelný monolit** (promíchané odpovědnosti), ne pouhá
-  délka (ta je ⚠️; řádkový práh stejně patří linteru).
-- **A1↔E1** křížový odkaz — `+`-skládání HTML s daty z API je **A1 (XSS, blokující)**, ne jen
-  stylové E1.
+The previous validation run on 6 real PRs (jQuery monoliths, all without ESLint): a high catch
+rate of catalog findings, few false findings, working restraint (B1 suppressed where the partner
+reads the dataLayer correctly; no B6 false positive). The catalog was also fine-tuned from that
+run:
+- **C1 split** — it blocks on an **unreviewable monolith** (mixed responsibilities), not on mere
+  length (that's ⚠️; the line-count threshold belongs to the linter anyway).
+- **A1↔E1 cross-reference** — `+`-concatenated HTML with API data is **A1 (XSS, blocking)**, not
+  just stylistic E1.
 
-## Jak se skill ladí
+## How the skill gets tuned
 
-Nejsilnější nástroj je **dvojí běh**: pustíš `st-addon-review` a vedle něj „obyčejné" Claude Code
-review na **už zreviewovaném** PR, kde máš lidské komentáře jako **referenční měřítko**. Proč
-zrovna tak: nejnebezpečnější chyby skillu jsou **tichá přehlédnutí** — něco, co skill viděl
-a spolkl, nebo vůbec nezkusil. Falešný nález je vidět na první pohled; přehlédnutí nezanechá stopu
-a odhalí ho jen porovnání s druhým reviewem. Bez toho srovnání věta „vypadá to dobře" nic
-neznamená. Každou úpravu proto ověřuj na dalším PR — ideálně opakovaným během na tom, co dřív
-selhalo.
+The strongest tool is the **double run**: run `st-addon-review` and, alongside it, a "plain"
+Claude Code review on an **already-reviewed** PR where the human comments serve as a
+**reference baseline**. Why exactly this: the most dangerous skill failures are **silent
+misses** — something the skill saw and swallowed, or never even attempted. A false finding is
+visible at a glance; a miss leaves no trace and only a comparison with a second review exposes
+it. Without that comparison, "looks good" means nothing. Verify every tweak on another PR —
+ideally by re-running on the one that previously failed.
 
-## Záměrná rozhodnutí (NEODLAĎOVAT zpátky)
+## Deliberate decisions (do NOT tune back out)
 
-Instrukce v SKILL.md, které vypadají „divně", **nejsou samoúčelné** — každá je záplata na reálně
-pozorovanou chybu z běhů. Než něco z toho odladíš zpátky, přečti proč to tam je.
+Instructions in SKILL.md that look "odd" are **not arbitrary** — each one is a patch for a real
+error observed in runs. Before you tune any of them back out, read why it's there.
 
-**Tři opravené kalibrační chyby (z prvních běhů):**
-1. **Špatný nástroj** (prázdné soubory) → u F5 apod. používej správný nástroj/ověření.
-2. **Tiše zahozený ověřitelný lead** (mrtvý kód v `ShkProject` — „možná F2… radši ne", zahodil)
-   → *„Přesnost ≠ mlčení"* + *ověř `grep`em přes celé repo* (F2/C3/B6/D1/D4). `grep` na symbol =
-   0 čtení → potvrzený F2. Levné ověření místo zahození.
-3. **Předčasně uzavřený řádek** (jazykový fallback minut, protože řádek prověřen jen optikou
-   A1/XSS a odškrtnut) → *„jeden řádek spouští víc pravidel"* (po A1 projdi A2/I2/J2) + *„traceuj
-   negativní větev"* u `map[key]` / indexace / parametru bez defaultu / `JSON.parse`.
+**Three fixed calibration errors (from the first runs):**
+1. **Wrong tool** (empty files) → for F5 and the like, use the right tool/verification.
+2. **A silently dropped verifiable lead** (dead code in `ShkProject` — "maybe F2… better not",
+   dropped it) → *"Precision ≠ silence"* + *verify with `grep` across the whole repo*
+   (F2/C3/B6/D1/D4). `grep` on the symbol = 0 reads → confirmed F2. Cheap verification instead
+   of dropping.
+3. **A prematurely closed line** (a language fallback missed because the line was checked only
+   through the A1/XSS lens and ticked off) → *"one line triggers multiple rules"* (after A1,
+   run A2/I2/J2) + *"trace the negative branch"* for `map[key]` / indexing / a parameter without
+   a default / `JSON.parse`.
 
-Meta-vzorec těch chyb: skill zůstával **lokální**, když měl jít **napříč repem / napříč pravidly**,
-a **uzavíral nález o jednu otázku dřív**.
+Meta-pattern of those errors: the skill stayed **local** when it should have gone **across the
+repo / across rules**, and it **closed a finding one question too early**.
 
-**Kalibrace potvrzená napříč běhy:**
-- **Kontrola úplnosti = dvouosá:** šířka (matice soubor × A–J + P) + hloubka (model chování;
-  „reportuju z ověřeného, nebo z ‚myslím, že jsem to protraceoval'?"). **Matice měří šířku, ne
-  hloubku** — velký soubor odškrtnutý přes pár sekcí = falešné razítko → `❓ mělce prošlé`.
-- **A2 Gate:** výjimka, co přeruší init doplňku = **❌** (patří na čelo blokujících), ne ⚠️.
-  A **podmíněnost pádu závažnost nesnižuje** — „*jen když* shop nevloží config" je nízká
-  pravděpodobnost → patří do `confidence`, **ne** do severity. (Model si podmíněnost 2× přeložil
-  na slevu ❌→⚠️; próza je slabá páka, míří proto přímo na ten mechanismus záměny.)
-- **Úzká control-flow osa:** u funkce, co mění DOM / váže handlery, `grep` místa volání + ověř
-  idempotenci. **Neidempotentní funkce volaná z víc lifecycle hooků** je bug z *počtu volání*,
-  není vidět v těle ani v jednom místě volání (E6/B5). Jediná ze zvažovaných mechanických záplat,
-  co se zapsala — protože se vrátila napříč běhy (2/3 monolity).
-- **Doménové „co NENÍ nález":** B5 (globál/core undefined z řazení skriptů) a B1 (class selektor
-  k cílení prvků). U obou drž hranici reálných nálezů — mají protějšek v `shoptet-reference.md`.
-- **Partnerský výstup:** `rule_id`, čísla pravidel **i slovo „katalog"/„mimo katalog"** = interní,
-  nikdy do komentáře/souhrnu. Judgment nálezy jdou v souhrnu do odděleného bloku
-  **„AI navíc upozorňuje (nezávazné)"** (partnerský název; „mimo katalog" je interní). Každý inline
-  komentář začíná značkou (`❌/⚠️/💡/❓`). Souhrn = rozcestník: jen blokující jmenovat,
-  doporučení/tipy **obecně BEZ ČÍSEL** + max 3 témata.
+**Calibration confirmed across runs:**
+- **Completeness check = two axes:** breadth (file × A–J + P matrix) + depth (behavior model;
+  "am I reporting from verified understanding, or from 'I think I traced it'?"). **The matrix
+  measures breadth, not depth** — a large file ticked off via a few sections = a false stamp →
+  `❓ shallowly reviewed`.
+- **A2 Gate:** an exception that interrupts addon init = **❌** (belongs at the top of the
+  blockers), not ⚠️. And **conditionality of the crash does not reduce severity** — "*only if*
+  the shop doesn't insert the config" is low probability → belongs in `confidence`, **not** in
+  severity. (The model twice translated conditionality into a ❌→⚠️ discount; prose is a weak
+  lever, so this targets that exact substitution mechanism directly.)
+- **The narrow control-flow axis:** for a function that mutates the DOM / binds handlers,
+  `grep` the call sites + verify idempotence. **A non-idempotent function called from multiple
+  lifecycle hooks** is a bug born from the *call count* — invisible in the body or in any single
+  call site (E6/B5). The only one of the considered mechanical patches that got written down —
+  because it recurred across runs (2/3 monoliths).
+- **Domain "what is NOT a finding":** B5 (global/core undefined due to script ordering) and B1
+  (class selectors for targeting elements). For both, hold the line on real findings — they
+  have counterparts in `shoptet-reference.md`.
+- **Partner-facing output:** `rule_id`, rule numbers **and the words "catalog" / "outside the
+  catalog"** = internal, never in a comment/summary. Judgment findings go in the summary into
+  a separate block **"AI navíc upozorňuje (nezávazné)"** (the partner-facing name, in Czech —
+  roughly "Additional non-binding AI notes"; "outside the catalog" is internal). Every inline
+  comment starts with a mark (`❌/⚠️/💡/❓`). The summary = a signpost: name only the blockers;
+  recommendations/tips generally, **WITHOUT counts** + max 3 topics.
 
-## Co je vědomě ODLOŽENÉ (ne opomenuté)
+## What is deliberately DEFERRED (not forgotten)
 
-- **Judgment je zatím spíš opatrný.** Cross-file logické bugy chytne, jen když jsou dost jisté;
-  jemnější rizika může minout. Vědomé — neřešit rozvolnění prahu z jednoho PR, hrozí šum.
-- **Mechanické heuristiky (sink heuristika, seznam DOM lookupů, „degenerate-construct" judgment)**
-  vědomě NEZAPSÁNY — generická hloubková osa je nese. Nepřidávej zpětně z jednoho přehlédnutí;
-  ohrozí to přesnost ~0 falešných nálezů, což je nejsilnější aktivum. Zvaž teprve u opakovaně se
-  vracejícího vzoru.
-- **Robustnost napříč populací pořád není „hotová."** Otestováno na dvou monolitech + dvou
-  modulárních PR — pár běhů nejsou statistika. Pokračovat v dvojích bězích.
-- **SCSS do hloubky** skill jen zběžně prochází; z velké části ho pokryje **stylelint** → spadá
-  pod linter vrstvu. Reálná mezera pro AI je jen užší zbytek.
-- **Linter vrstva (ESLint/stylelint/depcheck) není hotová** → všechny běhy jely v degradovaném
-  režimu. Staví ji kolega; patří do boilerplate. Sem míří i plošné kontroly napříč soubory
-  (zakomentovaný mrtvý kód, lockfily, prázdné soubory).
-- **Perzistovaný findings JSON pro re-run není potřeba** — identitu nálezů nesou skryté markery +
-  git srovnání commitů (viz `SKILL.md` › *Re-run*).
-- **TODO (budoucí): eval sada + ukládání běhů.** Zatím **NEEXISTUJE** — žádné běhy se neukládají,
-  nic se proti ničemu neporovnává; jednotlivé výstupy prochází člověk a tak to nějakou dobu
-  zůstane. Až bude potřeba měřit regrese při změnách katalogu/skillu, vznikne takto: z reálných
-  (klidně zavřených) PR se vybere ~5–10 reprezentativních případů; u každého se uchová **vstup**
-  (repo + SHA / diff) a **ručně pročištěný referenční výstup** (tzv. „blessed" baseline) — tj.
-  *jak mělo review vypadat*, ne syrový výstup s dnešními chybami (jinak by se zabetonovaly současné chyby
-  jako cíl). Protože jde o LLM nad volným textem, **neporovnává se JSON 1:1** — z každého případu
-  se vydestiluje krátký seznam **must-find** (nálezy, co MUSÍ padnout, včetně severity),
-  **must-not-flag** (pasti na falešné nálezy) a u podmíněných pravidel očekávaná ❌/⚠️ větev.
-  Regrese = přehrát ty stejné PR upraveným skillem a zkontrolovat, že seznam pořád sedí.
-- **Plně automatický `submit` (bez člověka) je NAPSANÝ, ale NEZVOLENÝ.** Výchozí je `pending`.
-  Zapnout až bude pending výstup opakovaně takový, že bys ho submitnul beze změny. Servisní
-  identita (`shoptet-ai-reviewer`) patří až sem, ne k pending.
-- **Backlog pravidel** (A6–A11, sekce J accessibility = runtime) — parkováno. **P1 (cookie
-  consent pro tracking) z backlogu kodifikováno 2026-07-22** — judgment kanál ho našel naostro
-  (datixo PR #3, perzistentní tracking bez `shoptet.consent`) a jako judgment nemohl blokovat
-  (invariant 3); přesně kodifikační cesta, se kterou design počítá.
+- **Judgment is still rather cautious.** It catches cross-file logic bugs only when they're
+  certain enough; it may miss subtler risks. Deliberate — don't loosen the threshold based on
+  a single PR, that risks noise.
+- **Mechanical heuristics (sink heuristic, DOM-lookup list, "degenerate-construct" judgment)**
+  deliberately NOT written down — the generic depth axis carries them. Don't add them back from
+  a single miss; that endangers the ~0-false-findings precision, the strongest asset. Consider
+  only for a pattern that keeps coming back.
+- **Robustness across the population still isn't "done."** Tested on two monoliths + two
+  modular PRs — a few runs aren't statistics. Keep doing double runs.
+- **Deep SCSS** the skill only skims; **stylelint** will cover most of it → belongs to the
+  linter layer. The real AI gap is only the narrower remainder.
+- **The linter layer (ESLint/stylelint/depcheck) is not finished** → all runs so far were in
+  degraded mode. A colleague is building it; it belongs to the boilerplate. Repo-wide checks
+  across files also point there (commented-out dead code, lockfiles, empty files).
+- **A persisted findings JSON for re-runs is not needed** — finding identity is carried by the
+  hidden markers + the git commit comparison (see `SKILL.md` › *Re-run*).
+- **TODO (future): eval set + run storage.** It **DOES NOT EXIST** yet — no runs are stored,
+  nothing is compared against anything; a human walks through the individual outputs and it will
+  stay that way for a while. Once measuring regressions on catalog/skill changes becomes
+  necessary, it will be built like this: pick ~5–10 representative cases from real (even closed)
+  PRs; for each, keep the **input** (repo + SHA / diff) and a **hand-cleaned reference output**
+  (a "blessed" baseline) — i.e. *what the review should have looked like*, not the raw output
+  with today's errors (otherwise today's errors get cemented in as the target). Because this is
+  an LLM over free text, **JSON is not compared 1:1** — from each case distill a short list of
+  **must-find** (findings that MUST appear, incl. severity), **must-not-flag** (false-positive
+  traps), and for conditional rules the expected ❌/⚠️ branch. Regression = replay the same PRs
+  with the modified skill and check the list still holds.
+- **Fully automatic `submit` (no human) is WRITTEN but NOT CHOSEN.** The default is `pending`.
+  Turn it on once pending output is repeatedly good enough that you'd submit it unchanged. The
+  service identity (`shoptet-ai-reviewer`) belongs to that stage, not to pending.
+- **Rule backlog** (A6–A11, section J accessibility = runtime) — parked. **P1 (cookie consent
+  for tracking) was codified from the backlog on 2026-07-22** — the judgment channel found it in
+  the wild (datixo PR #3, persistent tracking without `shoptet.consent`) and, being judgment, it
+  couldn't block (invariant 3); exactly the codification path the design counts on.
 
-## Pasti, do kterých nespadnout
+## Traps not to fall into
 
-- **„Regular review našel víc → přidejme to do katalogu."** Ne. Rozliš *skill to minul* (patřilo
-  do záběru, oprav) od *skill to správně neřešil* (přesnost TypeScriptu, doménové race conditiony,
-  build nástroje, kosmetika — mimo záběr, patří člověku/jinému nástroji). Zaostřenost je záměr.
-- **„Judgment našel něco mimo katalog!"** Nejdřív ověř, že to není existující pravidlo, které se
-  jen neaktivovalo (XSS-přes-konkatenaci = A1; rozbitý import z prázdného souboru = F5/F2).
-- **Věřit jednomu běhu.** Každá úprava se ověřuje na dalším PR, ideálně opakovaným během na tom, co selhal.
-- **„Generická osa to na jednom PR nechytila → přidejme mechanickou heuristiku."** Ne — ohrozí
-  přesnost ~0 falešných nálezů. Heuristiku zvaž až u opakovaně se vracejícího vzoru.
-- **Zapnout `submit` předčasně.** Je připravený schválně; brzdí ho jen **důvěra ve výstup**
-  (opakovaně čistý pending), ne technika. Přepnutí je jeden znak — ta laťka je celý smysl.
-- **Řešit neviditelný pending souhrn tím, že ho zveřejníš.** Souhrn se během pending čte z výstupu
-  běhu; publikace navíc = ztráta lidské kontroly, přesně to, čemu pending brání.
+- **"The regular review found more → let's add it to the catalog."** No. Distinguish *the skill
+  missed it* (it was in scope, fix it) from *the skill correctly didn't handle it* (TypeScript
+  precision, domain race conditions, build tooling, cosmetics — out of scope, belongs to a human
+  or another tool). The narrow focus is intentional.
+- **"Judgment found something outside the catalog!"** First verify it isn't an existing rule
+  that simply didn't fire (XSS-via-concatenation = A1; a broken import from an empty file =
+  F5/F2).
+- **Trusting a single run.** Every tweak is verified on another PR, ideally by re-running the
+  one that failed.
+- **"The generic axis didn't catch it on one PR → let's add a mechanical heuristic."** No — it
+  endangers the ~0-false-findings precision. Consider a heuristic only for a pattern that keeps
+  coming back.
+- **Turning `submit` on prematurely.** It is ready on purpose; the only brake is **trust in the
+  output** (repeatedly clean pending), not the tech. Flipping it is one character — that bar is
+  the whole point.
+- **"Fixing" the invisible pending summary by publishing it.** During pending, the summary is
+  read from the run output; publishing it separately = losing the human check, exactly what
+  pending protects against.
 
-## Soubory (skill balík)
+## Files (the skill package)
 
 ```
 shoptet-addon-review/
 ├── .claude-plugin/plugin.json
-├── CONTEXT.md                             # tento soubor — stav, rozhodnutí, režim
-├── INSTALL.md                             # instalace + kickoff prompt
+├── CONTEXT.md                             # this file — state, decisions, mode
+├── INSTALL.md                             # installation + kickoff prompt
 └── skills/st-addon-review/
-    ├── SKILL.md                           # proces review (řídí agenta)
+    ├── SKILL.md                           # the review process (drives the agent)
     └── references/
-        ├── rules-catalog.md               # rubrika A–J, P (čte agent)
-        ├── shoptet-reference.md           # companion pro B1/B4/B6 (čte agent)
-        └── github-api-notes.md            # mechanika zápisu do GitHubu (čte agent v kroku 6)
+        ├── rules-catalog.md               # rubric A–J, P (read by the agent)
+        ├── shoptet-reference.md           # companion for B1/B4/B6 (read by the agent)
+        └── github-api-notes.md            # GitHub write mechanics (read by the agent in step 6)
 ```
 
-**Balení pluginu do ZIPu:** vylučuj `-x '*/.DS_Store' '*/__MACOSX/*' '*/.git/*'`, **ne** `*/.*` —
-vzor `*/.*` vyhodí i `.claude-plugin/plugin.json` a balíček je pak rozbitý.
+**Packaging the plugin into a ZIP:** exclude `-x '*/.DS_Store' '*/__MACOSX/*' '*/.git/*'`,
+**not** `*/.*` — the `*/.*` pattern also drops `.claude-plugin/plugin.json` and the package is
+then broken.
 
-## Na co při bězích koukat
+## What to watch during runs
 
-- **Judgment: přínos vs. šum.** Kolik `judgment` nálezů je reálný přínos (bug/riziko, co by
-  katalog minul) a kolik je šum? Ten poměr rozhodne, jestli kanál pustit i do ostrého provozu.
-  Pozor na past: než nález oslavíš jako „mimo katalog", ověř, jestli to není existující pravidlo,
-  které se jen neaktivovalo (jako XSS-přes-konkatenaci = A1).
-- **Falešné nálezy** — pořád nejdůležitější číslo, teď o to víc (bez člověka za tím).
-- **Gate/závažnost** u podmíněných pravidel (C1: dá dlouhému, ale soudržnému souboru ⚠️?).
-- **Degradovaný režim** — ESLint v repu nejspíš není; ať to agent přizná a mechanické věci
-  drží na `confidence: medium`.
-- **Jen pending review, nikdy submit.** Skill vloží nálezy jako draft; projít a odeslat je
-  na člověku. Skill nesmí sám submitnout, měnit štítky ani zapínat gate.
+- **Judgment: value vs. noise.** How many `judgment` findings are real value (a bug/risk the
+  catalog would have missed) and how many are noise? That ratio decides whether the channel goes
+  to full production. Watch the trap: before celebrating a finding as "outside the catalog",
+  verify it isn't an existing rule that simply didn't fire (like XSS-via-concatenation = A1).
+- **False findings** — still the most important number, now more than ever (no human behind it).
+- **Gate/severity** on conditional rules (C1: does it give a long-but-cohesive file a ⚠️?).
+- **Degraded mode** — the repo most likely has no ESLint; make sure the agent admits it and
+  keeps the mechanical findings at `confidence: medium`.
+- **Pending review only, never submit.** The skill inserts the findings as a draft; walking
+  through and sending them is on the human. The skill must not submit on its own, change labels,
+  or enable the gate.
 
-## Partnerský pre-submit checklist (zatím nedoručovaný)
+## Partner pre-submit checklist (not delivered yet)
 
-**K partnerům se zatím nedoručuje** a až se to zavede, půjde to nejspíš jinak — tady je jen
-zaparkovaný jako seed. Je to lidská destilace katalogu, **ne zdroj
-pravdy**: závazná pravidla jsou v `rules-catalog.md`, tohle je jen partnersky formulovaný výtah
-(kdyby se rozešel s katalogem, platí katalog).
+**Not delivered to partners yet**, and once introduced, it will most likely take a different
+form — parked here only as a seed. It is a human distillation of the catalog, **not a source of
+truth**: the binding rules are in `rules-catalog.md`; this is just a partner-phrased digest (if
+it ever diverges from the catalog, the catalog wins).
 
-- [ ] Žádný `console.log` / debug v produkci
-- [ ] Žádný zakomentovaný ani mrtvý kód, prázdné/dummy soubory, `dist`/dev buildy
-- [ ] Kód minifikovaný; vendor knihovny oddělené
-- [ ] Žádné globální proměnné/`var`; namespace + unikátní prefix
-- [ ] Data čtená přes `getShoptetDataLayer()` / `shoptet.config.breakpoints`
-- [ ] Žádné `data-testid` selektory; vázáno na CSS třídy
-- [ ] HTML vkládané bezpečně (žádné XSS); validace vstupů
-- [ ] Doplněk nic neovlivňuje mimo svůj kontejner
-- [ ] Komentáře i identifikátory anglicky; překlady v samostatném souboru
-- [ ] Přístupnost: sémantické tagy, `sr-only`, `aria-label`, pause u autoplay
+- [ ] No `console.log` / debug in production
+- [ ] No commented-out or dead code, empty/dummy files, `dist`/dev builds
+- [ ] Code minified; vendor libraries separated
+- [ ] No global variables/`var`; namespace + unique prefix
+- [ ] Data read via `getShoptetDataLayer()` / `shoptet.config.breakpoints`
+- [ ] No `data-testid` selectors; bind to CSS classes
+- [ ] HTML inserted safely (no XSS); input validation
+- [ ] The addon affects nothing outside its own container
+- [ ] Comments and identifiers in English; translations in a separate file
+- [ ] Accessibility: semantic tags, `sr-only`, `aria-label`, pause for autoplay
 - [ ] `===`, `const`/`let`, template literals, `fetch`+`try/catch`
-- [ ] Init: `DOMContentLoaded` (první load) + `ShoptetDOMContentLoaded` (AJAX, idempotentně); žádné `setTimeout` hacky
+- [ ] Init: `DOMContentLoaded` (first load) + `ShoptetDOMContentLoaded` (AJAX, idempotently); no `setTimeout` hacks

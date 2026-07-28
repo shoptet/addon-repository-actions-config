@@ -1,52 +1,53 @@
-# GitHub API — poznámky pro zápis review
+# GitHub API — notes for writing the review
 
-> Referenční mechanika k **kroku 6** (zápis do GitHubu) a k **re-runu**. Čti až když review
-> reálně zapisuješ; při vlastním průchodu kódem (kroky 0–5) není potřeba. Rozhodovací pravidla
-> („jeden review", „COMMENT-only", zakotvení 0-řádkových nálezů, markery) jsou v `SKILL.md` —
-> tady je jen *jak* to přes API udělat a co ověřeně nefunguje.
+> Reference mechanics for **step 6** (writing to GitHub) and for **re-runs**. Read this only
+> when actually writing the review; it's not needed during the code pass itself (steps 0–5).
+> The decision rules ("one review", "COMMENT-only", anchoring 0-line findings, markers) live in
+> `SKILL.md` — this is only *how* to do it via the API and what verifiably does not work.
 
-## Vytvoření review
+## Creating the review
 
-Jeden review se všemi inline komentáři najednou:
+One review with all inline comments at once:
 
 ```sh
 gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews \
-  -f body='<souhrn>' \
+  -f body='<summary>' \
   -F 'comments[][path]=src/...' -F 'comments[][line]=42' -F 'comments[][body]=<text>'
 ```
 
-- **`pending` (draft):** review vytvoř **bez pole `event`** → zůstane ve stavu `PENDING`. Verdikt
-  (Comment / Approve / Request changes) vybírá až člověk při submitu; skill ho jen doporučí
-  (`recommended_verdict` ve výstupu).
-- **`submit`** (autonomní): přidej **`event=COMMENT`** → publikuje se okamžitě. **Nikdy
-  `REQUEST_CHANGES` ani `APPROVE`** (viz invariant 1 v `SKILL.md`).
-- `suggestion` v těle komentáře = GitHub ` ```suggestion ` blok (oprava na jedno kliknutí).
+- **`pending` (draft):** create the review **without the `event` field** → it stays in the
+  `PENDING` state. The verdict (Comment / Approve / Request changes) is chosen by the human at
+  submit; the skill only recommends it (`recommended_verdict` in the output).
+- **`submit`** (autonomous): add **`event=COMMENT`** → publishes immediately. **Never
+  `REQUEST_CHANGES` or `APPROVE`** (see invariant 1 in `SKILL.md`).
+- A `suggestion` in a comment body = a GitHub ` ```suggestion ` block (one-click fix).
 
-## Pending draft — viditelnost (ověřeno)
+## Pending draft — visibility (verified)
 
-- **Tělo (`body`) pending draftu je v GitHubu neviditelné do submitu** — nezobrazí se v timeline
-  ani se nenačte do submit boxu; vidět jsou jen inline komentáře v „Files changed". → souhrn ke
-  kontrole čti **z výstupu běhu (chat)**, ne z GitHubu.
-- **Pending draft vidí jen účet, který ho založil** → musí vzniknout pod tvým vlastním `gh`
-  loginem (aby sis ho mohl projít a submitnout), ne pod servisní identitou.
-- **Jeden pending review na uživatele a PR** (GitHub limit). Pokud už jeden visí, nový nezakládej
-  — viz guard v `SKILL.md` › *Re-run*.
+- **The `body` of a pending draft is invisible on GitHub until submit** — it shows neither in
+  the timeline nor in the submit box; only the inline comments in "Files changed" are visible.
+  → read the summary for checking **from the run output (chat)**, not from GitHub.
+- **A pending draft is visible only to the account that created it** → it must be created under
+  your own `gh` login (so you can review and submit it), not under the service identity.
+- **One pending review per user per PR** (GitHub limit). If one is already hanging, don't create
+  a new one — see the guard in `SKILL.md` › *Re-run*.
 
-## Nález na souboru bez řádku v diffu (0-řádkový / smazaný / mimo diff)
+## A finding on a file with no line in the diff (0-line / deleted / outside the diff)
 
-- **Do pending draftu nejde komentář „na celý soubor".** `DraftPullRequestReviewComment` vyžaduje
-  `position` v diffu a **nemá `subject_type: "file"`** — API vrátí **422** (ověřeno).
-- File-level komentář jde jen samostatným endpointem, který ale **rovnou publikuje** (notifikuje
-  partnera) → proti pending režimu.
-- Řešení: zakotvi řádkový komentář na **nejbližší související diffovaný soubor** (např. prázdný
-  `yarn.lock` → `package.json`) a v textu odkaž na ten skutečný soubor. Skutečný soubor ulož do
-  markeru (`file`), ne ten, na který kotvíš.
+- **A "whole file" comment cannot go into a pending draft.** `DraftPullRequestReviewComment`
+  requires a diff `position` and **has no `subject_type: "file"`** — the API returns **422**
+  (verified).
+- A file-level comment is only possible via a separate endpoint, which however **publishes
+  immediately** (notifies the partner) → against pending mode.
+- Solution: anchor a line comment on the **nearest related diffed file** (e.g. an empty
+  `yarn.lock` → `package.json`) and reference the real file in the text. Store the real file in
+  the marker (`file`), not the one you anchor to.
 
-## Re-run — git srovnání přes API
+## Re-run — git comparison via the API
 
-- Komentáře nesou SHA commitu, ke kterému patří: **`commit_id` / `original_commit_id`**. Odtud
-  vezmeš `old_sha` minulého běhu.
-- **Outdated komentář** (kód pod ním se změnil) má GitHub automaticky **`position: null`** — levný
-  signál, že se místa nálezu diff dotkl.
-- Po **force-pushi** nemusí být `old_sha` lokálně → dojeď `git fetch origin <old_sha>`.
-- Mapování řádků starý↔nový: `git diff <old_sha>..<new_sha>` a posun přes hunky.
+- Comments carry the SHA of the commit they belong to: **`commit_id` / `original_commit_id`**.
+  That's where you take the previous run's `old_sha` from.
+- **An outdated comment** (the code under it changed) automatically gets **`position: null`**
+  from GitHub — a cheap signal that the diff touched the finding's location.
+- After a **force-push** the `old_sha` may not exist locally → run `git fetch origin <old_sha>`.
+- Old↔new line mapping: `git diff <old_sha>..<new_sha>` and shift via the hunks.
