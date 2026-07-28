@@ -1,5 +1,10 @@
 # Test Cases for Shoptet Addon Review System
 
+> **Pozn.:** starší prototyp. Tenhle ESLint-based nástroj je nezávislý na skillu `st-addon-review`.
+> Číslování „Rule 1–8" níže je jeho vlastní a **neodpovídá aktuálnímu katalogu (A–J, P)**
+> v `shoptet-addon-review/skills/st-addon-review/references/rules-catalog.md`.
+> CI ho konzumuje z větve `review_tool` (viz `checks.workflow.yml`) — změny tady se do CI nepropíší.
+
 This directory contains test cases demonstrating good and bad coding practices according to Shoptet's 8 blocking rules.
 
 ## Structure

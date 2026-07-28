@@ -262,12 +262,12 @@ jeho (i tvoje vlastní) kandidáty ukáznit, aby hloubka nepřinesla šum.
 
 ## Mapování závažnosti
 
-Drž značky z příručky:
+Drž jednotné značky závažnosti (stejné používá katalog):
 
 | Značka | Význam | `severity` v JSON |
 |--------|--------|-------------------|
 | ❌ | blokující — bez opravy se neschvaluje | `blocking` |
-| ⚠️ | velmi doporučené | `recommended` |
+| ⚠️ | doporučené | `recommended` |
 | 💡 | tip / nice-to-have / začištění kódu | `tip` |
 | ❓ | dotaz — nejsi si jistý záměrem | `question` |
 
@@ -287,7 +287,7 @@ Vrať JSON v tomto tvaru:
 ```json
 {
   "summary": "Česká souhrnná zpráva ve formátu šablony níže.",
-  "catalog_version": "2026-07-24",
+  "catalog_version": "2026-07-28",
   "linter_available": true,
   "recommended_verdict": "request_changes",
   "findings": [
@@ -336,6 +336,10 @@ Pravidla pro pole:
   pozorování (řádek + důkaz) s nejasným záměrem — degenerativní konstrukt typu `X && X`, mrtvá
   větev — zvedni jako `severity: question`, nezahazuj. Slot `❓` **není zadní vrátka pro vkus
   ani spekulaci**: nejasný smí být jen záměr, pozorování nikdy.
+- `rule_candidate` (`true`/`false`, volitelné) — jen u `judgment` nálezu: `true`, když se týž
+  úsudkový nález opakuje napříč review a stojí za zvážení jako nové katalogové pravidlo (viz
+  *Scope*). Katalog needituj sám (invariant 4) — příznakem plus zmínkou v souhrnu jen upozorni
+  člověka. U katalogových nálezů vynech.
 - `status` (`new` / `persisting` / `resolved`) — na prvním běhu je vše `new`; na re-runu se
   odvodí z git srovnání minulého a aktuálního commitu (viz *Re-run*). Řídí zápis (nový inline /
   žádný / obecné potvrzení v souhrnu) i gate.
@@ -460,7 +464,7 @@ i `submit`, tedy i na prvním běhu) připoj na **poslední řádek** těla HTML
 neviditelný, přes API čitelný (standardní praxe botů: Dependabot, danger-js):
 
 ```
-<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-07-24"} -->
+<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-07-28"} -->
 ```
 
 - `rule_id` — u `judgment` nálezu nech prázdné.
@@ -566,5 +570,3 @@ sám** (viz *Scope* a *Co NEDĚLAT*) — jen označ `rule_candidate: true`.
 
 - **Mergnutý PR / smazaná větev:** diff vytáhneš přes `gh pr diff <číslo> --repo <org>/<repo>`
   (funguje i po smazání větve), nebo z merge commitu: `git show <merge-sha> -m --first-parent`.
-- **Guide pro lidi:** `references/guide.md` je lidská příručka (proces, značky, checklist pro
-  partnery) — ty ji ke svému review nepotřebuješ, řídíš se katalogem.

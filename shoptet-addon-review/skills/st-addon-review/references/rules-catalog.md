@@ -1,8 +1,8 @@
 # Katalog pravidel — Shoptet doplňky
 
-**`catalog_version: 2026-07-24`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u každého nálezu bylo jasné, proti které verzi pravidel vznikl.
+**`catalog_version: 2026-07-28`** — verze katalogu. Katalog se vyvíjí nezávisle na skillu; při **každé věcné změně pravidel** (přidání/odebrání pravidla, změna severity nebo Gate) tuhle hodnotu zvedni (datum poslední změny). Agent ji **musí opsat do výstupního JSON** jako top-level pole `catalog_version` (viz `SKILL.md`, *Výstupní kontrakt*), aby u každého nálezu bylo jasné, proti které verzi pravidel vznikl.
 
-> Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J, P)**. Lidská část (proces, „typická struktura review", checklist) je v `GUIDE.md`.
+> Strojově čitelný katalog pro review agenta. Obsahuje **jen pravidla (A–J, P)**. Lidská orientace (proces, značky, checklist) → `SKILL.md` a `CONTEXT.md`.
 >
 > **Pravidla B1 / B4 / B6 vyžadují znalost Shoptet prostředí** (dataLayer klíče, vždy dostupné globály, seznam core funkcí). Tu agent dostane z companion souboru **`shoptet-reference.md`**, který se předává spolu s tímto katalogem. Bez něj jsou B1/B4/B6 systematicky slabé.
 
@@ -122,7 +122,10 @@
   const lang = getShoptetDataLayer('language');
   const isProduct = getShoptetDataLayer('pageType') === 'productDetail';
   const { product } = getShoptetDataLayer();
-  const code = product?.codes?.[0]?.code || null; // kód je v poli codes[]; samostatné product.code neexistuje
+  // s variantami je kód jen v codes[]; bez variant existuje i product.code (viz shoptet-reference §1)
+  const code = product?.hasVariants
+    ? product.codes.map(c => c.code)
+    : (product?.code ?? product?.codes?.[0]?.code);
   ```
 
 ### B2 — Breakpointy ze Shoptetu

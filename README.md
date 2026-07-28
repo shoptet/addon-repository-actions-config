@@ -1,9 +1,18 @@
-Reusable workflow for Addon Repository called from each Partners' repository. The pipeline is currently:
-- checkout the latest code
-- minification of CSS, JavaScript
-- creating an artifact
+# Addon Repository — Actions & Review
 
-Addon Repository will upload this artifact to FTP, remove the artifact from GitHub and update custom codes.
+Nástroje pro CI a code review partnerských Shoptet doplňků.
+
+## Co je v repu
+
+- **Reusable workflowy** (`.github/workflows/`) — volané z repa každého partnera:
+  - `default.workflow.yml` / `deploy.workflow.yml` — checkout → minifikace CSS/JS → artifact.
+    Addon Repository artifact nahraje na FTP, z GitHubu ho smaže a aktualizuje custom kódy.
+  - `checks.workflow.yml` — PR checks; mj. spouští `review_tool` (viz níže).
+- **`shoptet-addon-review/`** — AI code-review skill (`st-addon-review`, plugin pro Claude Code)
+  na review addon PR proti katalogu pravidel. Instalace/spuštění → `shoptet-addon-review/INSTALL.md`,
+  stav a rozhodnutí → `shoptet-addon-review/CONTEXT.md`.
+- **`review_tool/`** — starší ESLint-based prototyp (nezávislý na skillu); `checks.workflow.yml`
+  ho konzumuje z větve `review_tool`, ne z `main`.
 
 ## Package managers
 
