@@ -53,8 +53,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: shoptet/addon-repository-actions-config
-          # Branch that contains the linter_review_tool/ directory (matches the paths below).
-          ref: linter-review-tool
+          # Keep in sync with the branch this workflow lives on — the linter code
+          # and rule config (.eslintrc.js, profiles.js) are taken from this ref.
+          ref: fix/large-file-inline-comments
           path: review-tool
           token: ${{ secrets.GITHUB_TOKEN }}
 
