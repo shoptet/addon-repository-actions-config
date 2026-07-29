@@ -35,13 +35,19 @@ jobs:
       env:
         PM_OVERRIDE: ${{ inputs.package_manager }}
       run: |
+        # log annotations reach partners only if they open the job — mirror
+        # every warning onto the run summary page, one click more visible
+        warn() {
+          echo "::warning::$1"
+          echo "- ⚠️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        }
         pm=""
         source=""
         pm_field=""
         if [ -f package.json ]; then
           if ! pm_field=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null); then
             pm_field=""
-            echo "::warning::package.json could not be parsed — the packageManager field (if any) is ignored."
+            warn "package.json could not be parsed — the packageManager field (if any) is ignored."
           fi
         fi
         # keep log messages single-line even if the field contains newlines
@@ -102,10 +108,10 @@ jobs:
         if [ "$pm" != "npm" ] && [ -f package-lock.json ]; then foreign="$foreign package-lock.json"; fi
         foreign="${foreign# }"
         if [ -n "$foreign" ]; then
-          echo "::warning::Multiple lockfiles are committed — the build uses $pm and ignores: $foreign. Remove the lockfile(s) that do not belong to $pm to make the package manager choice unambiguous."
+          warn "Multiple lockfiles are committed — the build uses $pm and ignores: $foreign. Remove the lockfile(s) that do not belong to $pm to make the package manager choice unambiguous."
         fi
         if [ -n "$PM_OVERRIDE" ] && [ -n "$pm_field" ] && [ "${pm_field%%@*}" != "$pm" ]; then
-          echo "::warning::The package_manager workflow input ($pm) overrides the packageManager field in package.json ($pm_field). Align the two to avoid confusion."
+          warn "The package_manager workflow input ($pm) overrides the packageManager field in package.json ($pm_field). Align the two to avoid confusion."
         fi
         # Extract the version pin for the resolved manager from the packageManager
         # field — the single place pins are parsed; later steps only consume it.
@@ -186,6 +192,16 @@ jobs:
         PIN: ${{ steps.package-manager.outputs.pin }}
         YARN_PATH: ${{ steps.package-manager.outputs.yarn_path }}
       run: |
+        # same summary mirroring as in the detect step (separate shell, so
+        # the helpers must be redefined here)
+        warn() {
+          echo "::warning::$1"
+          echo "- ⚠️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        }
+        note() {
+          echo "::notice::$1"
+          echo "- ℹ️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        }
         case "$PM" in
           pnpm)
             if [ -n "$PIN" ]; then
@@ -208,7 +224,7 @@ jobs:
                 6|6.*) version="8" ;;
                 9|9.*)
                   version="10"
-                  echo "::notice::lockfileVersion $lockfile_version is written by both pnpm 9 and pnpm 10 — this build uses pnpm 10, which skips dependency build scripts (postinstall) unless they are allowlisted via onlyBuiltDependencies/allowBuilds. If you develop with pnpm 9 and rely on those scripts, pin your version via the packageManager field in package.json."
+                  note "lockfileVersion $lockfile_version is written by both pnpm 9 and pnpm 10 — this build uses pnpm 10, which skips dependency build scripts (postinstall) unless they are allowlisted via onlyBuiltDependencies/allowBuilds. If you develop with pnpm 9 and rely on those scripts, pin your version via the packageManager field in package.json."
                   ;;
                 *)
                   echo "::error::Unrecognized lockfileVersion '$lockfile_version' in pnpm-lock.yaml — this workflow does not know which pnpm version it needs. Pin your pnpm version via the packageManager field in package.json, or report this so the workflow's version mapping gets extended."
@@ -244,7 +260,7 @@ jobs:
               installed=$(yarn --version)
               echo "yarn $installed (vendored release via yarnPath in .yarnrc.yml)"
               if [ -n "$PIN" ] && [ "$installed" != "$PIN" ]; then
-                echo "::warning::packageManager pins yarn@$PIN but the vendored yarnPath release is yarn@$installed — the vendored release wins at runtime. Align the two to avoid confusion."
+                warn "packageManager pins yarn@$PIN but the vendored yarnPath release is yarn@$installed — the vendored release wins at runtime. Align the two to avoid confusion."
               fi
             elif [ -n "$PIN" ]; then
               # activate the exact pinned Yarn version (classic or Berry) through corepack
@@ -297,6 +313,11 @@ jobs:
       env:
         PM: ${{ steps.package-manager.outputs.pm }}
       run: |
+          # same summary mirroring as in the detect step (separate shell)
+          warn() {
+            echo "::warning::$1"
+            echo "- ⚠️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          }
           case "$PM" in
             npm)
               npm ci
@@ -311,7 +332,7 @@ jobs:
               # classic Yarn does not fail on a drifted lockfile — it silently
               # regenerates it; surface that so the partner can fix the repo
               if ! git diff --quiet -- yarn.lock; then
-                echo "::warning::yarn install updated yarn.lock — the committed lockfile was out of sync with package.json, so this build did not use a fully locked dependency tree. Run 'yarn install' locally and commit the updated yarn.lock."
+                warn "yarn install updated yarn.lock — the committed lockfile was out of sync with package.json, so this build did not use a fully locked dependency tree. Run 'yarn install' locally and commit the updated yarn.lock."
               fi
               yarn build --env production
               ;;
