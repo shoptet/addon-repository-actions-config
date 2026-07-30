@@ -199,12 +199,16 @@ jobs:
             const event = blockers > 0 && !hasRequest ? 'REQUEST_CHANGES' : 'COMMENT';
             let created = 0;
             if (comments.length || (blockers > 0 && !hasRequest)) {
+              const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+              const shown = blockers - overflow; // inline comments visible on the PR (existing + newly posted)
               const body = blockers > 0
-                ? `🤖 Automatický review: **${blockers}** blokujících nálezů na změněných řádcích`
-                  + (overflow > 0 ? ` (zobrazeno prvních ${capped.length}, dalších ${overflow} skryto)` : '')
-                  + `. Po opravě se požadavek automaticky zruší.`
+                ? `🤖 Automatický review: **${blockers}** blokujících nálezů na změněných řádcích. `
+                  + (overflow > 0
+                      ? `V komentářích zobrazujeme **${shown} z ${blockers}** nálezů — kompletní seznam všech je v tabulce na [stránce běhu (Summary)](${runUrl}). `
+                      : `Všechny jsou zobrazené v komentářích u příslušných řádků. `)
+                  + `Po opravě se požadavek automaticky zruší.`
                 : `🤖 Automatický review: ${comments.length} připomínek na změněných řádcích`
-                  + (overflow > 0 ? ` (+${overflow} dalších skryto)` : '') + `.`;
+                  + (overflow > 0 ? ` (zobrazeno ${comments.length - overflow}, kompletní seznam na [stránce běhu](${runUrl}))` : '') + `.`;
               // Retry the single call with backoff on secondary rate limits;
               // never fan out to per-comment calls (that makes the limit worse).
               for (let attempt = 0; attempt < 3; attempt++) {
@@ -238,7 +242,7 @@ jobs:
             } else {
               core.summary.addRaw(
                 `Nalezeno **${blockers}** blokujících nálezů na změněných řádcích` +
-                (overflow > 0 ? ` — inline zobrazeno prvních ${created}, kompletní seznam níže.` : '.'),
+                (overflow > 0 ? ` — v PR komentářích zobrazeno ${blockers - overflow} z ${blockers}, kompletní seznam níže.` : '.'),
                 true
               );
               const rows = [...wanted.values()]
