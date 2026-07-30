@@ -145,7 +145,9 @@ jobs:
               .digest('hex');
             const wanted = new Map();
             for (const d of diagnostics) {
-              if (d.severity !== 'ERROR') continue; // blockers mode: only blockers, no warnings
+              // Warnings are kept: the strict profile already limited findings to
+              // 100%-reliable rules, so recommendations here are trustworthy too.
+              // Only ERROR severity gates the PR (see `blockers` below).
               if (!commentable.has(d.location.path)) continue; // file not part of this PR
               const lines = commentable.get(d.location.path);
               if (lines === null || lines.has(d.location.range.start.line)) wanted.set(fp(d), d);
@@ -162,6 +164,8 @@ jobs:
 
             // Gate on all commentable blockers (independent of how many we post).
             const blockers = [...wanted.values()].filter(d => d.severity === 'ERROR').length;
+            const total = wanted.size;
+            const recommendations = total - blockers;
 
             // New findings (not already commented), blockers first, capped so we
             // never burst hundreds of comments — that trips GitHub's secondary
@@ -200,15 +204,17 @@ jobs:
             let created = 0;
             if (comments.length || (blockers > 0 && !hasRequest)) {
               const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-              const shown = blockers - overflow; // inline comments visible on the PR (existing + newly posted)
+              const shown = total - overflow; // inline comments visible on the PR (existing + newly posted)
+              const counts = `**${blockers}** blokujících nálezů`
+                + (recommendations > 0 ? ` a ${recommendations} doporučení` : '');
               const body = blockers > 0
-                ? `🤖 Automatický review: **${blockers}** blokujících nálezů na změněných řádcích. `
+                ? `🤖 Automatický review: ${counts} na změněných řádcích. `
                   + (overflow > 0
-                      ? `V komentářích zobrazujeme **${shown} z ${blockers}** nálezů — kompletní seznam všech je v tabulce na [stránce běhu (Summary)](${runUrl}). `
+                      ? `V komentářích zobrazujeme **${shown} z ${total}** nálezů (blokující přednostně) — kompletní seznam všech je v tabulce na [stránce běhu (Summary)](${runUrl}). `
                       : `Všechny jsou zobrazené v komentářích u příslušných řádků. `)
-                  + `Po opravě se požadavek automaticky zruší.`
-                : `🤖 Automatický review: ${comments.length} připomínek na změněných řádcích`
-                  + (overflow > 0 ? ` (zobrazeno ${comments.length - overflow}, kompletní seznam na [stránce běhu](${runUrl}))` : '') + `.`;
+                  + `Po opravě blokujících nálezů se požadavek automaticky zruší.`
+                : `🤖 Automatický review: žádné blokující nálezy, ${recommendations} doporučení na změněných řádcích`
+                  + (overflow > 0 ? ` (v komentářích ${shown} z ${total}, kompletní seznam na [stránce běhu (Summary)](${runUrl}))` : '') + `.`;
               // A single review with ~100 comments still trips GitHub's secondary
               // content-creation limit (~25-30 per review is safe), so post in
               // chunks with a pause between them: verdict rides on the first
@@ -250,22 +256,24 @@ jobs:
               }
             }
 
-            // Job Summary: full, uncapped table of every blocker (inline comments
+            // Job Summary: full, uncapped table of every finding (inline comments
             // are capped for readability, but the summary is the complete source
             // of truth — one write, no rate limit).
-            core.summary.addHeading('🔍 Code Review — blockery', 2);
-            if (blockers === 0) {
-              core.summary.addRaw('✅ Žádné blokující nálezy na změněných řádcích.');
+            core.summary.addHeading('🔍 Code Review — nálezy', 2);
+            if (total === 0) {
+              core.summary.addRaw('✅ Žádné nálezy na změněných řádcích.');
             } else {
               core.summary.addRaw(
-                `Nalezeno **${blockers}** blokujících nálezů na změněných řádcích` +
-                (overflow > 0 ? ` — v PR komentářích zobrazeno ${blockers - overflow} z ${blockers}, kompletní seznam níže.` : '.'),
+                `Nalezeno **${blockers}** blokujících (❌) a **${recommendations}** doporučených (⚠️) nálezů na změněných řádcích` +
+                (overflow > 0 ? ` — v PR komentářích zobrazeno ${total - overflow} z ${total}, kompletní seznam níže.` : '.'),
                 true
               );
               const rows = [...wanted.values()]
-                .sort((a, b) => a.location.path.localeCompare(b.location.path)
+                .sort((a, b) => (a.severity === 'ERROR' ? 0 : 1) - (b.severity === 'ERROR' ? 0 : 1)
+                  || a.location.path.localeCompare(b.location.path)
                   || a.location.range.start.line - b.location.range.start.line)
                 .map(d => [
+                  d.severity === 'ERROR' ? '❌' : '⚠️',
                   d.location.path,
                   String(d.location.range.start.line),
                   d.code?.value || '',
@@ -273,6 +281,7 @@ jobs:
                 ]);
               core.summary.addTable([
                 [
+                  { data: '', header: true },
                   { data: 'Soubor', header: true },
                   { data: 'Řádek', header: true },
                   { data: 'Pravidlo', header: true },
@@ -283,7 +292,7 @@ jobs:
             }
             await core.summary.write();
 
-            core.info(`Comments posted: ${created} (+${overflow} hidden) / -${deleted}; ${blockers} blocker(s) on changed lines.`);
+            core.info(`Comments posted: ${created} (+${overflow} hidden) / -${deleted}; ${blockers} blocker(s), ${recommendations} recommendation(s) on changed lines.`);
             if (blockers > 0) core.setFailed(`${blockers} blocking finding(s) on changed lines.`);
 
       # ── Variant "pending": post findings as a PENDING draft review ──
