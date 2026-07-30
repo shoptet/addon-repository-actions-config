@@ -209,19 +209,36 @@ jobs:
                   + `Po opravě se požadavek automaticky zruší.`
                 : `🤖 Automatický review: ${comments.length} připomínek na změněných řádcích`
                   + (overflow > 0 ? ` (zobrazeno ${comments.length - overflow}, kompletní seznam na [stránce běhu](${runUrl}))` : '') + `.`;
-              // Retry the single call with backoff on secondary rate limits;
-              // never fan out to per-comment calls (that makes the limit worse).
-              for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                  await github.rest.pulls.createReview({ owner, repo, pull_number, commit_id, event, body, comments });
-                  created = comments.length;
-                  break;
-                } catch (error) {
-                  const secondary = /secondary rate limit|submitted too quickly|content creation/i.test(error.message);
-                  if (secondary && attempt < 2) { await new Promise(r => setTimeout(r, 45000 * (attempt + 1))); continue; }
-                  core.warning(`Could not post review: ${error.message}`);
-                  break;
+              // A single review with ~100 comments still trips GitHub's secondary
+              // content-creation limit (~25-30 per review is safe), so post in
+              // chunks with a pause between them: verdict rides on the first
+              // chunk, follow-ups are plain COMMENT reviews. Never fan out to
+              // per-comment calls (that makes the limit worse).
+              const CHUNK = 25;
+              const chunks = [];
+              for (let i = 0; i < comments.length; i += CHUNK) chunks.push(comments.slice(i, i + CHUNK));
+              if (!chunks.length) chunks.push([]); // verdict-only review (no new comments)
+              for (let ci = 0; ci < chunks.length; ci++) {
+                const chunkEvent = ci === 0 ? event : 'COMMENT';
+                const chunkBody = ci === 0 ? body
+                  : `🤖 Automatický review — pokračování komentářů (${ci + 1}/${chunks.length}).`;
+                let posted = false;
+                for (let attempt = 0; attempt < 3 && !posted; attempt++) {
+                  try {
+                    await github.rest.pulls.createReview({
+                      owner, repo, pull_number, commit_id,
+                      event: chunkEvent, body: chunkBody, comments: chunks[ci],
+                    });
+                    created += chunks[ci].length;
+                    posted = true;
+                  } catch (error) {
+                    const secondary = /secondary rate limit|submitted too quickly|content creation/i.test(error.message);
+                    if (secondary && attempt < 2) { await new Promise(r => setTimeout(r, 60000 * (attempt + 1))); continue; }
+                    core.warning(`Could not post review chunk ${ci + 1}/${chunks.length}: ${error.message}`);
+                  }
                 }
+                if (!posted) break; // stop hammering the API — the Summary table has the full list
+                if (ci < chunks.length - 1) await new Promise(r => setTimeout(r, 10000));
               }
             }
 
