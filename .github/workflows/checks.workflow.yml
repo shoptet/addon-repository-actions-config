@@ -2,11 +2,6 @@ name: Pull Request Checks
 on:
   workflow_call:
     inputs:
-      run_on_reopened:
-        description: 'Run checks when pull request is reopened'
-        required: false
-        type: boolean
-        default: false
       review_mode:
         description: >-
           Review output variant:
