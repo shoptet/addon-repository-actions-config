@@ -50,7 +50,7 @@ jobs:
           repository: shoptet/addon-repository-actions-config
           # Keep in sync with the branch this workflow lives on — the linter code
           # and rule config (.eslintrc.js, profiles.js) are taken from this ref.
-          ref: linter-review-tool
+          ref: feature/linter-review-tool
           path: review-tool
           token: ${{ secrets.GITHUB_TOKEN }}
 

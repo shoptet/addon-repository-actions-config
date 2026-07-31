@@ -45,7 +45,7 @@ on:
 
 jobs:
   checks:
-    uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@linter-review-tool
+    uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@feature/linter-review-tool
     with:
       review_mode: blockers
     permissions:
