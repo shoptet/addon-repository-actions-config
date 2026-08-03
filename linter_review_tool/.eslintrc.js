@@ -11,8 +11,7 @@ module.exports = {
   plugins: ['shoptet'],
   rules: {
     // ─────────────────────────────────────────────────────────────
-    // Custom Shoptet rules (severity mapped to PRIRUCKA.md marks:
-    //   ❌ → error, ⚠️/💡 → warn)
+    // Custom Shoptet rules (error → blocker, warn → recommendation)
     // ─────────────────────────────────────────────────────────────
     'shoptet/require-cache-path': 'error', // G6
     'shoptet/no-testid-selector': 'error', // B7 ❌

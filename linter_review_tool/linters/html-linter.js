@@ -1,7 +1,6 @@
 /**
- * HTML accessibility linter — covers PRIRUCKA sections J (accessibility),
- * H2 (deprecated tags) and A5 (target="_blank"). Uses parse5 for accurate
- * source positions.
+ * HTML linter — factual DOM checks: missing image alt (a11y) and deprecated
+ * tags. Uses parse5 for accurate source positions.
  */
 
 const fs = require('fs');

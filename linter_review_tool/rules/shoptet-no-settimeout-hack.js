@@ -5,7 +5,7 @@
  * zero (or missing) delay. Such hacks run before the DOM/content is ready and
  * cause race conditions. Hook the proper lifecycle event instead:
  * DOMContentLoaded for the first load, ShoptetDOMContentLoaded (idempotently)
- * for AJAX-loaded content. See shoptet-reference.md §4.
+ * for AJAX-loaded content.
  */
 
 module.exports = {

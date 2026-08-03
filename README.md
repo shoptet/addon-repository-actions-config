@@ -9,10 +9,9 @@ Reusable GitHub Actions workflows for Shoptet addon (partner) repositories.
 Runs the linter review tool (`linter_review_tool/`) over the addon source in `src/`
 and reports findings directly on the pull request.
 
-**Linters:** ESLint (core rules + custom `shoptet/*` rules mapped to the review
-handbook `PRIRUCKA.md`), stylelint (CSS/SCSS/LESS), HTML checks, and a cross-file
-duplicate detector. See `linter_review_tool/COVERAGE.md` and
-`linter_review_tool/rules-catalog.md` for the full rule set.
+**Linters:** ESLint (core rules + custom `shoptet/*` rules), stylelint
+(CSS/SCSS/LESS) and factual HTML checks. The exact set that gates the PR is
+`RELIABLE_RULES` in `linter_review_tool/profiles.js`.
 
 The linter runs the **reliable rule set only** (`linter_review_tool/profiles.js`):
 rules with ~zero false positives. It is a deterministic gate — heuristic /

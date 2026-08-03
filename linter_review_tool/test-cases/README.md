@@ -1,6 +1,9 @@
 # Test Cases for Shoptet Addon Review System
 
-Examples demonstrating good and bad practices according to `PRIRUCKA.md`.
+Examples demonstrating good and bad practices for the linter rules.
+
+> Note: this table predates the rule-set cleanup and still lists removed rules —
+> it is pending a rework into a machine-checked snapshot spec.
 
 ## Structure
 
@@ -21,8 +24,8 @@ Findings map to the handbook marks: `❌` → **blocker** (error, fails CI),
 
 ## Bad cases → rules
 
-| File | Rules triggered | PRIRUCKA |
-|------|-----------------|----------|
+| File | Rules triggered | Section |
+|------|-----------------|---------|
 | `bad-xss.js` | `shoptet/no-xss`, `prefer-template` | A1 |
 | `bad-testid.js` | `shoptet/no-testid-selector` | B7 |
 | `bad-settimeout.js` | `shoptet/no-settimeout-hack`, `shoptet/prefer-shoptet-init` | B5 |

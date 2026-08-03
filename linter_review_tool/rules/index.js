@@ -1,7 +1,6 @@
 /**
  * Shoptet ESLint Plugin
  * Custom rules for Shoptet addon development.
- * Each rule maps to a section of PRIRUCKA.md (the review handbook).
  *
  * Only deterministic (near-zero-false-positive) rules live here — heuristic /
  * contextual checks are handled by the AI review skill, not the linter.

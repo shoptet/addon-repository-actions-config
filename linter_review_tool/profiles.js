@@ -1,18 +1,13 @@
 /**
- * Review profiles — which rules run in which mode.
+ * Reliable rule set — the only rules the linter reports.
  *
- *   full   (default, local): every rule (deterministic + heuristic).
- *   strict (CI / PR gate):   only rules whose POSITIVE finding is trustworthy
- *                            (essentially zero false positives). May miss things
- *                            (false negatives are acceptable for a blocking gate)
- *                            — the human / `full` run catches the rest.
+ * A rule qualifies when a POSITIVE finding is trustworthy (essentially zero
+ * false positives). It may miss things (false negatives are acceptable for a
+ * blocking gate); heuristic / contextual checks are the AI review skill's job.
  *
- * Single source of truth: the set below is matched against `finding.ruleId`
- * exactly as it appears in output (ESLint `no-var` / `shoptet/…`, stylelint
- * `unit-disallowed-list` / `shoptet/…`, HTML `a11y/…` / `html/…`).
- *
- * Categorisation mirrors COVERAGE.md: category A (100 % reliable) → strict;
- * category B (taint/regex/threshold/structural heuristics) → full only.
+ * The set is matched against `finding.ruleId` exactly as it appears in output
+ * (ESLint `no-var` / `shoptet/…`, stylelint `unit-disallowed-list` / `shoptet/…`,
+ * HTML `a11y/…` / `html/…`).
  */
 
 const RELIABLE_RULES = new Set([
