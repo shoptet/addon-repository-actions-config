@@ -23,17 +23,22 @@ jobs:
       - name: Checkout addon code
         uses: actions/checkout@v6
         with:
-          # Full history so we can reconstruct changed lines via `git diff` for
-          # large files whose diff GitHub omits from the API `patch` field.
+          # Check out the PR HEAD (not the default merge ref) so the linter sees
+          # exactly the code that review comments are anchored to — otherwise a
+          # base branch that moved would shift line numbers (wrong-line comments
+          # / 422). Full history so we can reconstruct changed lines via `git diff`
+          # for large files whose diff GitHub omits from the API `patch` field.
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Checkout review tool
         uses: actions/checkout@v6
         with:
           repository: shoptet/addon-repository-actions-config
-          # Keep in sync with the branch this workflow lives on — the linter code
-          # and rule config (.eslintrc.js, profiles.js) are taken from this ref.
-          ref: feature/linter-review-tool
+          # SHA of the commit this reusable workflow was loaded from — the linter
+          # code + rule config always match the workflow version (works for @main,
+          # a tag, or a feature branch), with no manual ref to keep in sync.
+          ref: ${{ github.job_workflow_sha }}
           path: review-tool
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -44,7 +49,8 @@ jobs:
 
       - name: Install review tool dependencies
         working-directory: review-tool/linter_review_tool
-        run: yarn
+        # --frozen-lockfile: reproducible install, fail if yarn.lock is out of date.
+        run: yarn --frozen-lockfile
 
       - name: Run linters
         id: lint
@@ -82,6 +88,14 @@ jobs:
             const pull_number = context.payload.pull_request.number;
             const commit_id = context.payload.pull_request.head.sha;
             const base_sha = context.payload.pull_request.base.sha;
+
+            // We checked out HEAD, so the base commit may not be in local history —
+            // make sure it is before diffing against it (best-effort).
+            try {
+              execFileSync('git', ['fetch', '--no-tags', '--depth=1', 'origin', base_sha], { stdio: 'ignore' });
+            } catch (error) {
+              core.warning(`Could not fetch base ${base_sha.slice(0, 7)} for local diff: ${error.message}`);
+            }
 
             // Parse a unified diff into the set of new-side line numbers that are additions.
             function parseAddedLines(diff) {
@@ -229,6 +243,17 @@ jobs:
                     const secondary = /secondary rate limit|submitted too quickly|content creation/i.test(error.message);
                     if (secondary && attempt < 2) { await new Promise(r => setTimeout(r, 60000 * (attempt + 1))); continue; }
                     core.warning(`Could not post review chunk ${ci + 1}/${chunks.length}: ${error.message}`);
+                    // A bad line anchor makes createReview 422 and drops the whole
+                    // chunk atomically. For chunk 0 that would also lose the verdict,
+                    // so degrade: post the verdict alone (no inline comments) — the
+                    // Summary table still carries every finding.
+                    if (ci === 0 && chunkEvent === 'REQUEST_CHANGES') {
+                      try {
+                        await github.rest.pulls.createReview({ owner, repo, pull_number, event: 'REQUEST_CHANGES', body });
+                      } catch (verdictError) {
+                        core.warning(`Could not post fallback verdict: ${verdictError.message}`);
+                      }
+                    }
                   }
                 }
                 if (!posted) break; // stop hammering the API — the Summary table has the full list
