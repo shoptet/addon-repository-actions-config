@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: ''
+      node_version:
+        description: 'Node.js version used for the build (passed to actions/setup-node).'
+        required: false
+        type: string
+        default: '22'
 
 jobs:
   build:
@@ -24,6 +29,7 @@ jobs:
     uses: ./.github/workflows/default.workflow.yml
     with:
       package_manager: ${{ inputs.package_manager }}
+      node_version: ${{ inputs.node_version }}
     # no-op today (default.workflow.yml declares no secrets) — kept so callers'
     # secrets keep flowing if the build workflow ever starts needing them
     secrets: inherit

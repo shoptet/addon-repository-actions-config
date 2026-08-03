@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ''
+      node_version:
+        description: 'Node.js version used for the build (passed to actions/setup-node).'
+        required: false
+        type: string
+        default: '22'
 
 jobs:
   build:
@@ -287,7 +292,7 @@ jobs:
     - name: Setup project and build
       uses: actions/setup-node@v6
       with:
-        node-version: '22'
+        node-version: ${{ inputs.node_version }}
         cache: ${{ steps.package-manager.outputs.pm }}
 
     - name: Setup npm version
