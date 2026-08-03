@@ -17,6 +17,11 @@ env:
   REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
   # Entries ending with '/' protect the whole directory, anything else an exact file.
   PROTECTED_PATHS: '.github/workflows/'
+  # Partners may merge urgent fixes themselves when the PR comes from a branch
+  # with this prefix AND touches nothing outside HOTFIX_ALLOWED_PATH — such
+  # merges pass the audit and are flagged for retroactive Shoptet review.
+  HOTFIX_BRANCH_PREFIX: 'hotfix/'
+  HOTFIX_ALLOWED_PATH: 'src/'
 
 jobs:
   review:
@@ -78,6 +83,43 @@ jobs:
               return;
             }
 
+            // Hotfix exception: a partner may merge an urgent fix themselves,
+            // provided the branch is named hotfix/* and the diff stays inside
+            // the allowed path. Review happens retroactively.
+            const prefix = process.env.HOTFIX_BRANCH_PREFIX;
+            const allowedPath = process.env.HOTFIX_ALLOWED_PATH;
+            const isHotfixBranch = pr.head.ref.startsWith(prefix);
+            let outsideFiles = [];
+            if (isHotfixBranch) {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              });
+              outsideFiles = [...new Set(files
+                .flatMap(file => file.previous_filename ? [file.filename, file.previous_filename] : [file.filename])
+                .filter(name => !name.startsWith(allowedPath)))];
+            }
+
+            if (isHotfixBranch && outsideFiles.length === 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: [
+                  `🔥 **Hotfix merged by @${mergedBy} without prior Shoptet review** (branch \`${pr.head.ref}\`, changes limited to \`${allowedPath}\`).`,
+                  '',
+                  `${authorized.map(account => '@' + account).join(', ')} please review this change retroactively — if it does not hold up, revert it.`,
+                ].join('\n'),
+              });
+              console.log(`Hotfix merged by ${mergedBy} — flagged for retroactive review.`);
+              return;
+            }
+
+            const reason = isHotfixBranch
+              ? `the branch has the \`${prefix}\` prefix but the PR touches files outside \`${allowedPath}\`: ${outsideFiles.join(', ')} — the hotfix exception covers only changes inside \`${allowedPath}\``
+              : `only hotfixes (branch \`${prefix}*\`, changes limited to \`${allowedPath}\`) may be merged by partners`;
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -85,11 +127,11 @@ jobs:
               body: [
                 `⚠️ **This pull request was merged by @${mergedBy}, who is not a Shoptet reviewer.**`,
                 '',
-                `Addon changes must be reviewed and merged by ${authorized.map(account => '@' + account).join(', ')}.`,
+                `Addon changes must be reviewed and merged by ${authorized.map(account => '@' + account).join(', ')} — ${reason}.`,
                 'This merge has been flagged for Shoptet review — unreviewed changes may be reverted and their deployment may be withheld.',
               ].join('\n'),
             });
-            core.setFailed(`PR #${pr.number} was merged by ${mergedBy} — only Shoptet reviewers may merge.`);
+            core.setFailed(`PR #${pr.number} was merged by ${mergedBy} — only Shoptet reviewers may merge (no qualifying hotfix).`);
 
   files-check:
     name: File Protection Check
