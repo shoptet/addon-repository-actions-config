@@ -15,23 +15,12 @@ module.exports = {
     //   ❌ → error, ⚠️/💡 → warn)
     // ─────────────────────────────────────────────────────────────
     'shoptet/require-cache-path': 'error', // G6
-    'shoptet/no-xss': 'error', // A1 ❌
     'shoptet/no-testid-selector': 'error', // B7 ❌
     'shoptet/no-settimeout-hack': 'error', // B5 ❌
     'shoptet/no-czech-comments': 'error', // I1 ❌
-    'shoptet/no-commented-code': 'error', // F1 ❌
-    'shoptet/no-core-overwrite': 'error', // B6 ❌ (now catches nested shoptet.a.b = …)
-    'shoptet/no-attribute-injection': 'warn', // A1 (attrs)
-    'shoptet/prefer-shoptet-init': 'warn', // B5 ⚠️
+    'shoptet/no-core-overwrite': 'error', // B6 ❌
     'shoptet/prefer-fetch': 'warn', // E2 ⚠️
-    'shoptet/require-response-ok': 'warn', // E8 ⚠️
-    'shoptet/no-target-blank': 'warn', // A5 ⚠️
-    'shoptet/hardcoded-breakpoints': 'warn', // B2 ⚠️
     'shoptet/no-redundant-checks': 'warn', // B4 ⚠️
-    'shoptet/localstorage-try-catch': 'warn', // E7 ⚠️
-    'shoptet/namespace': 'warn', // D4 ⚠️
-    'shoptet/no-czech-strings': 'warn', // I2/I4 ⚠️
-    'shoptet/a11y-html-strings': 'warn', // J/H2 ⚠️
 
     // ─────────────────────────────────────────────────────────────
     // Security & correctness (❌)

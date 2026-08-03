@@ -72,13 +72,9 @@ const RELIABLE_RULES = new Set([
   'html/deprecated-tag',
 ]);
 
-// Everything NOT in the set above is heuristic and runs only in `full`:
-//   shoptet/no-xss, shoptet/no-attribute-injection, shoptet/require-response-ok,
-//   shoptet/no-commented-code, shoptet/a11y-html-strings, shoptet/no-target-blank,
-//   shoptet/no-czech-strings, shoptet/prefer-shoptet-init, shoptet/namespace,
-//   shoptet/no-cross-file-duplicate, shoptet/localstorage-try-catch,
-//   shoptet/hardcoded-breakpoints, a11y/clickable-noninteractive,
-//   a11y/empty-interactive, a11y/autoplay-no-controls, a11y/target-blank
+// Any rule not in the set above (e.g. eslint:recommended rules we don't
+// explicitly gate on) is dropped from the output. Heuristic/contextual checks
+// live in the AI review skill, not here.
 
 function isReliable(ruleId) {
   return RELIABLE_RULES.has(ruleId);

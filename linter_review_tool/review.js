@@ -5,7 +5,6 @@ const { glob } = require('glob');
 const { lintJavaScript } = require('./linters/eslint-linter');
 const { lintStyles } = require('./linters/stylelint-linter');
 const { lintHtml } = require('./linters/html-linter');
-const { lintCrossFile } = require('./linters/crossfile-linter');
 const { isReliable } = require('./profiles');
 
 const PATTERNS = {
@@ -91,8 +90,7 @@ async function main() {
       files.styles.length ? lintStyles(files.styles) : [],
       files.html.length ? lintHtml(files.html) : [],
     ]);
-    const crossFileFindings = files.js.length ? lintCrossFile(files.js) : [];
-    rawFindings.push(...jsFindings, ...styleFindings, ...htmlFindings, ...crossFileFindings);
+    rawFindings.push(...jsFindings, ...styleFindings, ...htmlFindings);
   } catch (error) {
     fail(rdjson, `Review execution failed: ${error.message}`);
   }

@@ -25,30 +25,6 @@ function getAttrs(node) {
   return map;
 }
 
-function getText(node) {
-  let text = '';
-  const stack = [...(node.childNodes || [])];
-  while (stack.length) {
-    const current = stack.pop();
-    if (current.nodeName === '#text') text += current.value;
-    if (current.childNodes) stack.push(...current.childNodes);
-  }
-  return text.trim();
-}
-
-function containsImageWithAlt(node) {
-  const stack = [...(node.childNodes || [])];
-  while (stack.length) {
-    const current = stack.pop();
-    if (current.tagName === 'img') {
-      const attrs = getAttrs(current);
-      if ('alt' in attrs && attrs.alt.trim() !== '') return true;
-    }
-    if (current.childNodes) stack.push(...current.childNodes);
-  }
-  return false;
-}
-
 function location(node) {
   const loc = node.sourceCodeLocation;
   return {
@@ -82,54 +58,6 @@ function checkElement(node, file, findings) {
       findings, file, node, 'a11y/img-alt',
       'Image is missing an alt attribute (use alt="" for decorative images).',
       'blocker'
-    );
-  }
-
-  // J1 — clickable non-interactive element
-  if ((tag === 'div' || tag === 'span') && 'onclick' in attrs) {
-    add(
-      findings, file, node, 'a11y/clickable-noninteractive',
-      `Clickable <${tag}> — use a <button> (or add role + tabindex + keyboard handler).`,
-      'recommend'
-    );
-  }
-
-  // J2 — interactive element without an accessible name
-  if (tag === 'a' || tag === 'button') {
-    const hasName =
-      getText(node) !== '' ||
-      'aria-label' in attrs ||
-      'aria-labelledby' in attrs ||
-      'title' in attrs ||
-      containsImageWithAlt(node);
-    if (!hasName) {
-      add(
-        findings, file, node, 'a11y/empty-interactive',
-        `<${tag}> has no accessible name. Add text content or an aria-label.`,
-        'recommend'
-      );
-    }
-  }
-
-  // A5 — target="_blank" without rel="noopener"
-  if (tag === 'a' && attrs.target === '_blank' && !/noopener/i.test(attrs.rel || '')) {
-    add(
-      findings, file, node, 'a11y/target-blank',
-      'target="_blank" without rel="noopener noreferrer" (window.opener risk).',
-      'recommend'
-    );
-  }
-
-  // J2 — autoplay media without controls (WCAG 2.2.2)
-  if (
-    (tag === 'video' || tag === 'audio') &&
-    'autoplay' in attrs &&
-    !('controls' in attrs)
-  ) {
-    add(
-      findings, file, node, 'a11y/autoplay-no-controls',
-      `<${tag} autoplay> without controls. Provide a pause control (WCAG 2.2.2).`,
-      'recommend'
     );
   }
 }
