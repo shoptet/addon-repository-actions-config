@@ -100,7 +100,8 @@ async function main() {
   const findings = dedupe(rawFindings).filter((f) => isReliable(f.ruleId));
 
   if (rdjson) {
-    // Let reviewdog decide pass/fail via -fail-level, so exit 0 here.
+    // A successful run: emit the diagnostics; the CI reconcile step decides the
+    // PR verdict (blockers gate). Exit 0 so the workflow step counts as success.
     process.stdout.write(JSON.stringify(toRdjson(findings)));
     process.exit(0);
   }
@@ -110,11 +111,12 @@ async function main() {
 }
 
 function fail(rdjson, message) {
-  // rdjson consumers expect valid JSON on stdout even on hard errors.
+  // A hard error (missing src, no reviewable files, linter crash) must NOT look
+  // like a clean run — exit non-zero so the CI step fails and reconcile is
+  // skipped (fail-closed), instead of being read as "0 findings" and wiping the
+  // review state. Still write valid JSON to stdout for any lenient consumer.
   if (rdjson) {
     process.stdout.write(JSON.stringify({ source: { name: SOURCE_NAME }, diagnostics: [] }));
-    console.error(`::error::${message}`);
-    process.exit(0);
   }
   console.error(`::error::${message}`);
   process.exit(1);

@@ -47,22 +47,28 @@ jobs:
         run: yarn
 
       - name: Run linters
+        id: lint
         working-directory: ./
-        # Strict profile: only reliable (near-zero-false-positive) rules; blockers gate the PR.
-        run: node review-tool/linter_review_tool/review.js src --strict --rdjson > review-findings.json
+        # Runs the reliable rule set; emits Diagnostic JSON consumed by the next step.
+        run: node review-tool/linter_review_tool/review.js src --rdjson > review-findings.json
 
       # Reconciled inline PR review comments + gate (GITHUB_TOKEN).
       # Posts findings as inline comments on changed lines, dedupes across pushes
       # (fingerprint marker), deletes comments of resolved findings, keeps one
       # REQUEST_CHANGES verdict, and fails the job (the single gating check) on blockers.
+      #
+      # Guarded on the linter having SUCCEEDED: if it crashes (or finds no source),
+      # review-findings.json is empty/invalid → we must NOT read that as "0 findings"
+      # and wipe existing comments / dismiss the standing REQUEST_CHANGES. On lint
+      # failure this step is skipped and the job stays red (fail-closed).
       - name: Review — reconcile comments & verdict
-        if: ${{ always() && github.event.pull_request }}
+        if: ${{ steps.lint.outcome == 'success' && github.event.pull_request }}
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const crypto = require('crypto');
-            const { execSync } = require('child_process');
+            const { execFileSync } = require('child_process');
             const MARKER = 'shoptet-review-fp';
 
             let diagnostics = [];
@@ -106,8 +112,12 @@ jobs:
                 continue;
               }
               try {
-                const diff = execSync(
-                  `git diff --unified=0 ${base_sha}...${commit_id} -- "${file.filename}"`,
+                // execFileSync (no shell) — `file.filename` is attacker-controlled
+                // (PR author names the file), so it must never reach `/bin/sh -c`.
+                // `--` additionally guards against git option injection.
+                const diff = execFileSync(
+                  'git',
+                  ['diff', '--unified=0', `${base_sha}...${commit_id}`, '--', file.filename],
                   { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }
                 );
                 commentable.set(file.filename, parseAddedLines(diff));
