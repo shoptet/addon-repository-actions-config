@@ -2,29 +2,354 @@ name: Shoptet addon deploy workflow
 
 on:
   workflow_call:
+    inputs:
+      package_manager:
+        description: 'Package manager to use (npm, yarn or pnpm). Overrides which manager is auto-detected; a packageManager version pin for the chosen manager still applies and is still validated.'
+        required: false
+        type: string
+        default: ''
+      node_version:
+        description: 'Node.js version used for the build (passed to actions/setup-node).'
+        required: false
+        type: string
+        default: '22'
 
 jobs:
   build:
     name: 🚀 Build Dev 🚀
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # the build needs nothing but the checkout; never inherit write scopes
+      # from the caller into a job that runs third-party dependency scripts
+      contents: read
+    defaults:
+      run:
+        # explicit bash turns on pipefail, matching how tests/ run these scripts
+        shell: bash
     steps:
     - name: 🚚 Get latest code
       uses: actions/checkout@v6
-    
+      with:
+        # install/build runs untrusted dependency scripts (postinstall hooks) —
+        # do not leave the caller's token in .git/config where they could read it
+        persist-credentials: false
+
+    - name: Detect package manager
+      id: package-manager
+      env:
+        PM_OVERRIDE: ${{ inputs.package_manager }}
+      run: |
+        # log annotations reach partners only if they open the job — mirror
+        # every warning onto the run summary page, one click more visible
+        warn() {
+          echo "::warning::$1"
+          echo "- ⚠️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        }
+        pm=""
+        source=""
+        pm_field=""
+        if [ -f package.json ]; then
+          if ! pm_field=$(node -p "String(require('./package.json').packageManager ?? '')" 2>/dev/null); then
+            pm_field=""
+            warn "package.json could not be parsed — the packageManager field (if any) is ignored."
+          fi
+        fi
+        # keep log messages single-line even if the field contains newlines
+        pm_field="${pm_field//$'\n'/ }"
+        if [ -n "$PM_OVERRIDE" ]; then
+          case "$PM_OVERRIDE" in
+            npm|yarn|pnpm)
+              pm="$PM_OVERRIDE"
+              source="the package_manager workflow input"
+              ;;
+            *)
+              echo "::error::Unsupported package_manager input '$PM_OVERRIDE'. Supported values: npm, yarn, pnpm."
+              exit 1
+              ;;
+          esac
+        else
+          if [ -n "$pm_field" ]; then
+            case "${pm_field%%@*}" in
+              npm|yarn|pnpm)
+                pm="${pm_field%%@*}"
+                source="the packageManager field in package.json ($pm_field)"
+                ;;
+              *)
+                echo "::error::Unsupported package manager '$pm_field' in the packageManager field of package.json. Supported: npm, yarn, pnpm."
+                exit 1
+                ;;
+            esac
+          else
+            lockfiles=""
+            if [ -f pnpm-lock.yaml ]; then lockfiles="$lockfiles pnpm"; fi
+            if [ -f yarn.lock ]; then lockfiles="$lockfiles yarn"; fi
+            if [ -f package-lock.json ]; then lockfiles="$lockfiles npm"; fi
+            lockfiles="${lockfiles# }"
+            if [ -z "$lockfiles" ]; then
+              echo "::error::No supported lockfile found (pnpm-lock.yaml, yarn.lock or package-lock.json). Commit a lockfile or pass the package_manager input (npm, yarn or pnpm) when calling this workflow."
+              exit 1
+            fi
+            pm="${lockfiles%% *}"
+            source="the committed lockfile"
+          fi
+        fi
+        # A production build must be reproducible: the resolved package manager
+        # must have its lockfile committed, no matter how it was resolved.
+        case "$pm" in
+          npm)  lockfile="package-lock.json" ;;
+          yarn) lockfile="yarn.lock" ;;
+          pnpm) lockfile="pnpm-lock.yaml" ;;
+        esac
+        if [ ! -f "$lockfile" ]; then
+          echo "::error::Package manager $pm was selected via $source, but $lockfile is not committed. Commit $lockfile so the production build is reproducible."
+          exit 1
+        fi
+        # Foreign lockfiles are confusing no matter how the manager was resolved
+        # (lockfile priority, packageManager field or the workflow input).
+        foreign=""
+        if [ "$pm" != "pnpm" ] && [ -f pnpm-lock.yaml ]; then foreign="$foreign pnpm-lock.yaml"; fi
+        if [ "$pm" != "yarn" ] && [ -f yarn.lock ]; then foreign="$foreign yarn.lock"; fi
+        if [ "$pm" != "npm" ] && [ -f package-lock.json ]; then foreign="$foreign package-lock.json"; fi
+        foreign="${foreign# }"
+        if [ -n "$foreign" ]; then
+          warn "Multiple lockfiles are committed — the build uses $pm and ignores: $foreign. Remove the lockfile(s) that do not belong to $pm to make the package manager choice unambiguous."
+        fi
+        if [ -n "$PM_OVERRIDE" ] && [ -n "$pm_field" ] && [ "${pm_field%%@*}" != "$pm" ]; then
+          warn "The package_manager workflow input ($pm) overrides the packageManager field in package.json ($pm_field). Align the two to avoid confusion."
+        fi
+        # Extract the version pin for the resolved manager from the packageManager
+        # field — the single place pins are parsed; later steps only consume it.
+        # Honored also when the manager itself came from the input or a lockfile.
+        pin=""
+        case "$pm_field" in
+          "$pm@"?*)
+            pin="${pm_field#*@}"
+            pin="${pin%%+*}"
+            ;;
+        esac
+        # Only an exact version is a valid pin: ranges or tags would make the
+        # build non-reproducible, and the value is passed to installers and
+        # written to GITHUB_OUTPUT, so reject anything else loudly and early.
+        # [[ =~ ]] (not grep) so the anchors span the whole value — a multiline
+        # pin must not slip extra lines into GITHUB_OUTPUT.
+        semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+        if [ -n "$pin" ] && ! [[ "$pin" =~ $semver_re ]]; then
+          echo "::error::The packageManager field in package.json does not pin an exact version. Use an exact semver version, e.g. \"$pm@1.2.3\", so the build is reproducible."
+          exit 1
+        fi
+        # A yarnPath entry must point at a committed file — a gitignored
+        # .yarn/releases would otherwise die much later on a raw node stack trace.
+        yarn_path=""
+        if [ "$pm" = "yarn" ] && [ -f .yarnrc.yml ]; then
+          # tolerate CRLF line endings, quotes and inline YAML comments
+          yarn_path=$(sed -n 's/^yarnPath:[[:space:]]*//p' .yarnrc.yml | head -1 | tr -d "\r\"'" | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//')
+          if [ -n "$yarn_path" ] && [ ! -f "$yarn_path" ]; then
+            echo "::error::.yarnrc.yml sets yarnPath to '$yarn_path', but that file is not committed. Commit the vendored Yarn release (is .yarn/releases in .gitignore?) or remove the yarnPath entry."
+            exit 1
+          fi
+        fi
+        # A Yarn Berry lockfile needs a Berry binary: classic Yarn 1 — whether
+        # unpinned (the runner default) or explicitly pinned to 1.x — cannot
+        # read it and would silently resolve the dependency tree from scratch.
+        # A vendored release via yarnPath is fine: classic Yarn delegates to it.
+        if [ "$pm" = "yarn" ] && grep -q '^__metadata:' yarn.lock; then
+          case "$pin" in
+            ''|1.*)
+              if [ -n "$yarn_path" ]; then
+                echo "Yarn Berry lockfile with a vendored release (yarnPath in .yarnrc.yml) — classic Yarn delegates to it."
+              else
+                echo "::error::yarn.lock is in Yarn Berry (2+) format, but package.json does not pin a Berry-capable Yarn version (found: ${pin:-no pin}) and .yarnrc.yml does not vendor one via yarnPath. Classic Yarn 1 cannot read this lockfile and would silently rebuild the dependency tree. Add e.g. \"packageManager\": \"yarn@4.17.1\" to package.json — or, if Yarn is not the package manager you actually use, remove yarn.lock instead."
+                exit 1
+              fi
+              ;;
+          esac
+        fi
+        # The mirror case: a Berry (2+) pin with a classic v1 lockfile would only
+        # fail later, deep inside the immutable install — fail early instead.
+        # Like the primary guard, a vendored yarnPath release is exempt: it wins
+        # over the pin at runtime (the setup step warns about the mismatch).
+        if [ "$pm" = "yarn" ] && [ -n "$pin" ] && [ -z "$yarn_path" ]; then
+          case "$pin" in
+            1.*) ;;
+            *)
+              if grep -q '^# yarn lockfile v1' yarn.lock; then
+                echo "::error::packageManager pins yarn@$pin (Berry), but yarn.lock is in the classic v1 format, which the pinned Yarn will refuse in CI (immutable install). Regenerate yarn.lock with the pinned Yarn, or pin the classic Yarn you actually use."
+                exit 1
+              fi
+              ;;
+          esac
+        fi
+        if [ -n "$pin" ]; then
+          echo "Using package manager: $pm@$pin (from $source; version pinned via the packageManager field)"
+        else
+          echo "Using package manager: $pm (from $source)"
+        fi
+        {
+          echo "pm=$pm"
+          echo "pin=$pin"
+          echo "yarn_path=$yarn_path"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Setup package manager version
+      env:
+        PM: ${{ steps.package-manager.outputs.pm }}
+        PIN: ${{ steps.package-manager.outputs.pin }}
+        YARN_PATH: ${{ steps.package-manager.outputs.yarn_path }}
+      run: |
+        # same summary mirroring as in the detect step (separate shell, so
+        # the helpers must be redefined here)
+        warn() {
+          echo "::warning::$1"
+          echo "- ⚠️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        }
+        note() {
+          echo "::notice::$1"
+          echo "- ℹ️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        }
+        case "$PM" in
+          pnpm)
+            if [ -n "$PIN" ]; then
+              # activate the exact pinned pnpm through corepack — unlike a plain
+              # npm registry install, corepack also verifies a +sha… integrity
+              # suffix from the packageManager field
+              echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
+              export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+              command -v corepack >/dev/null 2>&1 || npm install -g corepack@0.35.0
+              corepack enable pnpm
+            else
+              # Match the pnpm major version to the committed lockfile format.
+              # When a new pnpm major introduces a new lockfileVersion, add a line here.
+              # 5.x maps to pnpm 7 for the whole family: pnpm 7 frozen-installs
+              # 5.3 lockfiles fine (verified), while pnpm 6 cannot run on modern
+              # Node at all (ERR_INVALID_THIS on registry fetches).
+              lockfile_version=$(grep -m1 -oE "^lockfileVersion: *['\"]?[0-9.]+" pnpm-lock.yaml | grep -oE '[0-9.]+$' || true)
+              case "$lockfile_version" in
+                5|5.*) version="7" ;;
+                6|6.*) version="8" ;;
+                9|9.*)
+                  version="10"
+                  note "lockfileVersion $lockfile_version is written by both pnpm 9 and pnpm 10 — this build uses pnpm 10, which skips dependency build scripts (postinstall) unless they are allowlisted via onlyBuiltDependencies/allowBuilds. If you develop with pnpm 9 and rely on those scripts, pin your version via the packageManager field in package.json."
+                  ;;
+                *)
+                  echo "::error::Unrecognized lockfileVersion '$lockfile_version' in pnpm-lock.yaml — this workflow does not know which pnpm version it needs. Pin your pnpm version via the packageManager field in package.json, or report this so the workflow's version mapping gets extended."
+                  exit 1
+                  ;;
+              esac
+              npm install -g "pnpm@$version"
+            fi
+            installed=$(pnpm --version)
+            echo "pnpm $installed"
+            if [ -n "$PIN" ]; then
+              if [ "$installed" != "$PIN" ]; then
+                echo "::error::Expected pnpm@$PIN (packageManager pin) but 'pnpm --version' reports $installed."
+                exit 1
+              fi
+            else
+              case "$installed" in
+                "$version".*) ;;
+                *)
+                  echo "::error::Expected pnpm major $version (derived from pnpm-lock.yaml lockfileVersion) but 'pnpm --version' reports $installed."
+                  exit 1
+                  ;;
+              esac
+            fi
+            ;;
+          yarn)
+            if [ -n "$YARN_PATH" ]; then
+              # A vendored release always wins at runtime: every yarn binary
+              # (classic or corepack-activated) delegates to yarnPath, so
+              # activating a pin through corepack here would assert against
+              # a version the build will never use. The value comes validated
+              # from the detect step — the single source of truth for yarnPath.
+              installed=$(yarn --version)
+              echo "yarn $installed (vendored release via yarnPath in .yarnrc.yml)"
+              if [ -n "$PIN" ] && [ "$installed" != "$PIN" ]; then
+                warn "packageManager pins yarn@$PIN but the vendored yarnPath release is yarn@$installed — the vendored release wins at runtime. Align the two to avoid confusion."
+              fi
+            elif [ -n "$PIN" ]; then
+              # activate the exact pinned Yarn version (classic or Berry) through corepack
+              echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "$GITHUB_ENV"
+              export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+              # corepack ships with Node 22/24 but was dropped from Node 25 —
+              # install it (pinned) if the runner's default Node no longer bundles it
+              command -v corepack >/dev/null 2>&1 || npm install -g corepack@0.35.0
+              corepack enable yarn
+              # run yarn once now: corepack downloads the pinned version here, in
+              # this step, instead of failing later inside setup-node's cache probe
+              installed=$(yarn --version)
+              echo "yarn $installed"
+              if [ "$installed" != "$PIN" ]; then
+                echo "::error::Expected yarn@$PIN (packageManager pin) but 'yarn --version' reports $installed."
+                exit 1
+              fi
+            fi
+            # without a pin or a vendored yarnPath, the classic Yarn preinstalled on the runner is used
+            ;;
+        esac
+        # npm pins are handled after setup-node — see the "Setup npm version" step
+
     - name: Setup project and build
       uses: actions/setup-node@v6
       with:
-        node-version: '22'
-        cache: 'yarn'
+        node-version: ${{ inputs.node_version }}
+        cache: ${{ steps.package-manager.outputs.pm }}
+
+    - name: Setup npm version
+      if: steps.package-manager.outputs.pm == 'npm'
+      env:
+        PIN: ${{ steps.package-manager.outputs.pin }}
+      run: |
+        if [ -n "$PIN" ]; then
+          # must run after setup-node: the Node toolchain dir prepended to PATH
+          # ships its own npm, which would shadow a pin installed any earlier
+          npm install -g "npm@$PIN"
+          installed=$(npm --version)
+          echo "npm $installed"
+          if [ "$installed" != "$PIN" ]; then
+            echo "::error::Expected npm@$PIN (packageManager pin) but 'npm --version' reports $installed."
+            exit 1
+          fi
+        else
+          npm --version
+        fi
 
     - name: Install dependencies and build
+      env:
+        PM: ${{ steps.package-manager.outputs.pm }}
       run: |
-          yarn
-          yarn build --env production
+          # same summary mirroring as in the detect step (separate shell)
+          warn() {
+            echo "::warning::$1"
+            echo "- ⚠️ $1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          }
+          case "$PM" in
+            npm)
+              npm ci
+              npm run build -- --env production
+              ;;
+            pnpm)
+              pnpm install --frozen-lockfile
+              pnpm run build --env production
+              ;;
+            yarn)
+              yarn
+              # classic Yarn does not fail on a drifted lockfile — it silently
+              # regenerates it; surface that so the partner can fix the repo
+              if ! git diff --quiet -- yarn.lock; then
+                warn "yarn install updated yarn.lock — the committed lockfile was out of sync with package.json, so this build did not use a fully locked dependency tree. Run 'yarn install' locally and commit the updated yarn.lock."
+              fi
+              yarn build --env production
+              ;;
+            *)
+              echo "::error::Unknown package manager '$PM' resolved by the detection step."
+              exit 1
+              ;;
+          esac
           ls -la dist
 
     - name: Save production artifacts
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: build-${{ github.sha }}-${{ github.run_number }}
         path: |
@@ -32,4 +357,3 @@ jobs:
         if-no-files-found: error
         compression-level: 1
         retention-days: 1
-

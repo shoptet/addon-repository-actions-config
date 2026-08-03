@@ -1,35 +1,35 @@
-name: Shoptet addon deploy workflow
+name: Shoptet addon deploy workflow (wrapper)
 
+# Thin wrapper kept for repositories that call deploy.workflow.yml directly.
+# All build logic lives in default.workflow.yml — change it there only, and
+# keep the inputs below in sync with the inputs of default.workflow.yml.
+#
+# Note: nesting renames the check run to "<caller job> / build / 🚀 Build Dev 🚀".
+# A 2026-07 census found no repository calling this file directly (all callers
+# use default.workflow.yml); if you rely on the old check name, either update
+# the required status check or switch to calling default.workflow.yml.
 on:
   workflow_call:
+    inputs:
+      package_manager:
+        description: 'Package manager to use (npm, yarn or pnpm). Overrides which manager is auto-detected; a packageManager version pin for the chosen manager still applies and is still validated.'
+        required: false
+        type: string
+        default: ''
+      node_version:
+        description: 'Node.js version used for the build (passed to actions/setup-node).'
+        required: false
+        type: string
+        default: '22'
 
 jobs:
   build:
-    name: 🚀 Build Dev 🚀
-    runs-on: ubuntu-latest
-    steps:
-    - name: 🚚 Get latest code
-      uses: actions/checkout@v6
-    
-    - name: Setup project and build
-      uses: actions/setup-node@v6
-      with:
-        node-version: '22'
-        cache: 'yarn'
-
-    - name: Install dependencies and build
-      run: |
-          yarn
-          yarn build --env production
-          ls -la dist
-
-    - name: Save production artifacts
-      uses: actions/upload-artifact@v5
-      with:
-        name: build-${{ github.sha }}-${{ github.run_number }}
-        path: |
-            dist/
-        if-no-files-found: error
-        compression-level: 1
-        retention-days: 1
-
+    permissions:
+      contents: read
+    uses: ./.github/workflows/default.workflow.yml
+    with:
+      package_manager: ${{ inputs.package_manager }}
+      node_version: ${{ inputs.node_version }}
+    # no-op today (default.workflow.yml declares no secrets) — kept so callers'
+    # secrets keep flowing if the build workflow ever starts needing them
+    secrets: inherit
