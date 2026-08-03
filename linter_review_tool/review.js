@@ -55,10 +55,8 @@ async function gatherFiles(targetPath, stats) {
 
 async function main() {
   const args = process.argv.slice(2);
-  // rdjson mode emits reviewdog Diagnostic JSON on stdout (for PR comments).
+  // rdjson mode emits Diagnostic JSON on stdout (for PR comments).
   const rdjson = args.includes('--rdjson');
-  // strict = only reliable rules (CI/PR gate); full (default) = everything.
-  const strict = args.includes('--strict');
   const targetPathArg = args.find((arg) => !arg.startsWith('--')) || 'src';
   const targetPath = path.resolve(process.cwd(), targetPathArg);
 
@@ -83,8 +81,7 @@ async function main() {
   const info = rdjson ? console.error : console.log;
   info(
     `🔍 Reviewing ${total} file(s) in: ${targetPath} ` +
-      `(js: ${files.js.length}, styles: ${files.styles.length}, html: ${files.html.length}) ` +
-      `[profile: ${strict ? 'strict' : 'full'}]`
+      `(js: ${files.js.length}, styles: ${files.styles.length}, html: ${files.html.length})`
   );
 
   const rawFindings = [];
@@ -100,9 +97,9 @@ async function main() {
     fail(rdjson, `Review execution failed: ${error.message}`);
   }
 
-  const deduped = dedupe(rawFindings);
-  // strict profile keeps only reliable (near-zero-false-positive) rules.
-  const findings = strict ? deduped.filter((f) => isReliable(f.ruleId)) : deduped;
+  // Keep only reliable (near-zero-false-positive) rules — the linter is a
+  // deterministic gate; heuristic/contextual checks are the AI skill's job.
+  const findings = dedupe(rawFindings).filter((f) => isReliable(f.ruleId));
 
   if (rdjson) {
     // Let reviewdog decide pass/fail via -fail-level, so exit 0 here.

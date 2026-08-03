@@ -14,11 +14,11 @@ handbook `PRIRUCKA.md`), stylelint (CSS/SCSS/LESS), HTML checks, and a cross-fil
 duplicate detector. See `linter_review_tool/COVERAGE.md` and
 `linter_review_tool/rules-catalog.md` for the full rule set.
 
-**Profiles** (`linter_review_tool/profiles.js`):
-- `strict` — only rules with ~zero false positives (used by `review_mode: blockers`)
-- `full` — every rule including heuristics (used by `review_mode: pending`)
+The linter runs the **reliable rule set only** (`linter_review_tool/profiles.js`):
+rules with ~zero false positives. It is a deterministic gate — heuristic /
+contextual checks are handled separately by the AI review skill, not here.
 
-**Behavior in `review_mode: blockers`** (default):
+**Behavior:**
 - ❌ blockers and ⚠️ reliable recommendations are posted as inline PR review
   comments; only blockers gate the PR (`REQUEST_CHANGES` + failing check)
 - comments are reconciled across pushes: fixed findings have their comments
@@ -29,10 +29,6 @@ duplicate detector. See `linter_review_tool/COVERAGE.md` and
   in the job Summary
 - works for large files too (changed lines are reconstructed via `git diff`
   when the GitHub API omits the file patch)
-
-**Behavior in `review_mode: pending`:** all findings (full profile) are posted
-as a PENDING draft review authored via the `reviewer_pat` secret, for a human
-reviewer to curate and submit.
 
 **Caller template** (`.github/workflows/shoptetAddon.workflow.yml` in the
 partner repository):
@@ -46,8 +42,6 @@ on:
 jobs:
   checks:
     uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@feature/linter-review-tool
-    with:
-      review_mode: blockers
     permissions:
       contents: read
       checks: write
@@ -73,6 +67,5 @@ GitHub and update custom codes.
 ```bash
 cd linter_review_tool
 yarn
-node review.js path/to/addon/src            # full profile
-node review.js path/to/addon/src --strict   # strict profile (CI gate)
+node review.js path/to/addon/src   # same reliable rule set as CI
 ```

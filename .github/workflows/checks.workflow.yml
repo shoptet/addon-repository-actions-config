@@ -1,23 +1,6 @@
 name: Pull Request Checks
 on:
   workflow_call:
-    inputs:
-      review_mode:
-        description: >-
-          Review output variant:
-          "blockers" = strict profile, inline comments + REQUEST_CHANGES (blocks the PR);
-          "pending"  = full profile, comments posted as a PENDING draft review for the
-          reviewer to curate & submit (requires the reviewer_pat secret).
-        required: false
-        type: string
-        default: blockers
-    secrets:
-      reviewer_pat:
-        description: >-
-          PAT of the reviewer account. Required only for review_mode=pending —
-          a pending review is visible only to its author, so it must be created
-          as a real user, not the github-actions bot.
-        required: false
 
 concurrency:
   group: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
@@ -65,15 +48,15 @@ jobs:
 
       - name: Run linters
         working-directory: ./
-        # blockers → strict (only reliable rules gate the PR); pending → full (all findings as draft suggestions).
-        run: node review-tool/linter_review_tool/review.js src ${{ inputs.review_mode == 'blockers' && '--strict' || '' }} --rdjson > review-findings.json
+        # Strict profile: only reliable (near-zero-false-positive) rules; blockers gate the PR.
+        run: node review-tool/linter_review_tool/review.js src --strict --rdjson > review-findings.json
 
-      # ── Variant "blockers": reconciled inline PR review comments + gate (GITHUB_TOKEN) ──
+      # Reconciled inline PR review comments + gate (GITHUB_TOKEN).
       # Posts findings as inline comments on changed lines, dedupes across pushes
       # (fingerprint marker), deletes comments of resolved findings, keeps one
       # REQUEST_CHANGES verdict, and fails the job (the single gating check) on blockers.
       - name: Review — reconcile comments & verdict
-        if: ${{ always() && inputs.review_mode == 'blockers' && github.event.pull_request }}
+        if: ${{ always() && github.event.pull_request }}
         uses: actions/github-script@v7
         with:
           script: |
@@ -289,83 +272,6 @@ jobs:
 
             core.info(`Comments posted: ${created} (+${overflow} hidden) / -${deleted}; ${blockers} blocker(s), ${recommendations} recommendation(s) on changed lines.`);
             if (blockers > 0) core.setFailed(`${blockers} blocking finding(s) on changed lines.`);
-
-      # ── Variant "pending": post findings as a PENDING draft review ──
-      - name: Post pending review
-        if: ${{ inputs.review_mode == 'pending' && github.event.pull_request }}
-        uses: actions/github-script@v7
-        env:
-          REVIEWER_PAT: ${{ secrets.reviewer_pat }}
-        with:
-          # Authored by the reviewer PAT so the pending draft is visible to them.
-          github-token: ${{ secrets.reviewer_pat }}
-          script: |
-            const fs = require('fs');
-
-            if (!process.env.REVIEWER_PAT) {
-              core.setFailed('review_mode=pending requires the `reviewer_pat` secret (a pending review is visible only to its author).');
-              return;
-            }
-
-            let diagnostics = [];
-            try {
-              diagnostics = JSON.parse(fs.readFileSync('review-findings.json', 'utf8')).diagnostics || [];
-            } catch (error) {
-              core.warning(`Could not read review-findings.json: ${error.message}`);
-            }
-
-            const { owner, repo } = context.repo;
-            const pull_number = context.payload.pull_request.number;
-
-            // Commentable = new-side line numbers inside the diff hunks.
-            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
-            const commentable = new Map();
-            for (const file of files) {
-              if (!file.patch) continue;
-              const lines = new Set();
-              let newLine = 0;
-              for (const raw of file.patch.split('\n')) {
-                const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
-                if (hunk) { newLine = parseInt(hunk[1], 10); continue; }
-                if (raw.startsWith('+')) { lines.add(newLine); newLine++; }
-                else if (raw.startsWith('-')) { /* old side only */ }
-                else { newLine++; }
-              }
-              commentable.set(file.filename, lines);
-            }
-
-            const comments = [];
-            for (const d of diagnostics) {
-              const path = d.location.path;
-              const line = d.location.range.start.line;
-              if (commentable.get(path)?.has(line)) {
-                const icon = d.severity === 'ERROR' ? '❌' : '⚠️';
-                const rule = d.code?.value ? ` \`${d.code.value}\`` : '';
-                comments.push({ path, line, side: 'RIGHT', body: `${icon}${rule}: ${d.message}` });
-              }
-            }
-
-            if (comments.length === 0) {
-              core.info('No findings on changed lines — no pending review created.');
-              return;
-            }
-
-            // Only one pending review per user/PR — remove a stale one first.
-            const me = await github.rest.users.getAuthenticated();
-            const reviews = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number });
-            for (const r of reviews) {
-              if (r.user?.login === me.data.login && r.state === 'PENDING') {
-                await github.rest.pulls.deletePendingReview({ owner, repo, pull_number, review_id: r.id });
-              }
-            }
-
-            // No `event` → the review stays PENDING (draft) for the reviewer to submit.
-            await github.rest.pulls.createReview({
-              owner, repo, pull_number,
-              body: `🤖 Automatický review Shoptet doplňku — **${comments.length}** připomínek jako **pending draft**. Projdi je a odešli přes „Submit review“.`,
-              comments,
-            });
-            core.info(`Created pending review with ${comments.length} comment(s).`);
 
   merge-check:
     name: Merge Pull Request alert
