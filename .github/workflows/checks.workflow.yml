@@ -8,10 +8,6 @@ on:
         type: boolean
         default: false
 
-concurrency:
-  group: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
-  cancel-in-progress: true
-
 permissions:
   contents: read
   checks: write
@@ -19,12 +15,18 @@ permissions:
 
 env:
   REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
-  PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
+  # Entries ending with '/' protect the whole directory, anything else an exact file.
+  PROTECTED_PATHS: '.github/workflows/'
 
 jobs:
   review:
     name: Review Code
     runs-on: ubuntu-latest
+    # concurrency must sit at job level: GitHub ignores workflow-level
+    # concurrency in a reusable workflow invoked via workflow_call
+    concurrency:
+      group: "pr-checks-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     steps:
       - name: Checkout addon code
         uses: actions/checkout@v6
@@ -53,6 +55,9 @@ jobs:
   merge-check:
     name: Merge Pull Request alert
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-merge-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     steps:
       - name: Get PR author
         id: pr-info
@@ -75,6 +80,9 @@ jobs:
   files-check:
     name: File Protection Check
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-files-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     permissions:
       checks: write
       pull-requests: read
@@ -90,8 +98,14 @@ jobs:
               pull_number: context.payload.pull_request.number
             });
 
+            const rules = process.env.PROTECTED_PATHS.split(',').map(rule => rule.trim()).filter(Boolean);
+            const isProtected = (name) => rules.some(rule =>
+              rule.endsWith('/') ? name.startsWith(rule) : name === rule
+            );
+
+            // previous_filename catches files renamed out of a protected path
             const changedProtectedFiles = files.filter(file =>
-              process.env.PROTECTED_FILES.split(',').map(f => f.trim()).includes(file.filename)
+              isProtected(file.filename) || (file.previous_filename && isProtected(file.previous_filename))
             );
 
             if (changedProtectedFiles.length > 0) {
@@ -104,6 +118,9 @@ jobs:
   collaborators-check:
     name: Shoptet reviewers assigned
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-collaborators-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     permissions:
       checks: write
       pull-requests: read
@@ -121,18 +138,30 @@ jobs:
 
             const requestedReviewers = pr.requested_reviewers.map(reviewer => reviewer.login);
             const requestedTeams = pr.requested_teams?.map(team => team.slug) || [];
-            const allRequestedReviewers = [...requestedReviewers, ...requestedTeams];
+
+            // GitHub removes a reviewer from requested_reviewers the moment they
+            // submit a review, so already-submitted reviews must count too —
+            // otherwise a re-run after an approval fails the check.
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            const submittedReviewers = [...new Set(reviews.map(review => review.user?.login).filter(Boolean))];
+
+            const satisfied = [...requestedReviewers, ...requestedTeams, ...submittedReviewers];
 
             console.log('Required reviewers:', process.env.REQUIRED_REVIEWER);
-            console.log('Requested reviewers:', allRequestedReviewers);
+            console.log('Requested reviewers:', [...requestedReviewers, ...requestedTeams]);
+            console.log('Submitted reviews from:', submittedReviewers);
 
             const missingReviewers = process.env.REQUIRED_REVIEWER.split(',').filter(reviewer =>
-              !allRequestedReviewers.includes(reviewer.trim())
+              !satisfied.includes(reviewer.trim())
             );
 
             if (missingReviewers.length > 0) {
               console.error('Missing required reviewers:', missingReviewers);
               process.exit(1);
             } else {
-              console.log('All required reviewers assigned');
+              console.log('All required reviewers assigned or already reviewed');
             }
