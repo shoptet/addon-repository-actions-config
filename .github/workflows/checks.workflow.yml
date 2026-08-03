@@ -193,16 +193,16 @@ jobs:
             if (comments.length || (blockers > 0 && !hasRequest)) {
               const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
               const shown = total - overflow; // inline comments visible on the PR (existing + newly posted)
-              const counts = `**${blockers}** blokujících nálezů`
-                + (recommendations > 0 ? ` a ${recommendations} doporučení` : '');
+              const counts = `**${blockers}** blocker(s)`
+                + (recommendations > 0 ? ` and ${recommendations} recommendation(s)` : '');
               const body = blockers > 0
-                ? `🤖 Automatický review: ${counts} na změněných řádcích. `
+                ? `🤖 Automated review: ${counts} on changed lines. `
                   + (overflow > 0
-                      ? `V komentářích zobrazujeme **${shown} z ${total}** nálezů (blokující přednostně) — kompletní seznam všech je v tabulce na [stránce běhu (Summary)](${runUrl}). `
-                      : `Všechny jsou zobrazené v komentářích u příslušných řádků. `)
-                  + `Po opravě blokujících nálezů se požadavek automaticky zruší.`
-                : `🤖 Automatický review: žádné blokující nálezy, ${recommendations} doporučení na změněných řádcích`
-                  + (overflow > 0 ? ` (v komentářích ${shown} z ${total}, kompletní seznam na [stránce běhu (Summary)](${runUrl}))` : '') + `.`;
+                      ? `Showing **${shown} of ${total}** findings in comments (blockers first) — the full list is in the run's [Summary](${runUrl}). `
+                      : `All are shown as inline comments on the relevant lines. `)
+                  + `Once the blockers are fixed, this request is dismissed automatically.`
+                : `🤖 Automated review: no blockers, ${recommendations} recommendation(s) on changed lines`
+                  + (overflow > 0 ? ` (${shown} of ${total} shown in comments, full list in the run's [Summary](${runUrl}))` : '') + `.`;
               // A single review with ~100 comments still trips GitHub's secondary
               // content-creation limit (~25-30 per review is safe), so post in
               // chunks with a pause between them: verdict rides on the first
@@ -215,7 +215,7 @@ jobs:
               for (let ci = 0; ci < chunks.length; ci++) {
                 const chunkEvent = ci === 0 ? event : 'COMMENT';
                 const chunkBody = ci === 0 ? body
-                  : `🤖 Automatický review — pokračování komentářů (${ci + 1}/${chunks.length}).`;
+                  : `🤖 Automated review — additional comments (${ci + 1}/${chunks.length}).`;
                 let posted = false;
                 for (let attempt = 0; attempt < 3 && !posted; attempt++) {
                   try {
@@ -239,7 +239,7 @@ jobs:
             // Clear a standing REQUEST_CHANGES once everything is resolved.
             if (blockers === 0) {
               for (const r of reviews.filter(r => r.user && r.user.login === 'github-actions[bot]' && r.state === 'CHANGES_REQUESTED')) {
-                try { await github.rest.pulls.dismissReview({ owner, repo, pull_number, review_id: r.id, message: '✅ Blokující problémy vyřešeny — automaticky odblokováno.' }); }
+                try { await github.rest.pulls.dismissReview({ owner, repo, pull_number, review_id: r.id, message: '✅ All blockers resolved — automatically dismissed.' }); }
                 catch (error) { core.warning(`Could not dismiss review ${r.id}: ${error.message}`); }
               }
             }
@@ -247,13 +247,13 @@ jobs:
             // Job Summary: full, uncapped table of every finding (inline comments
             // are capped for readability, but the summary is the complete source
             // of truth — one write, no rate limit).
-            core.summary.addHeading('🔍 Code Review — nálezy', 2);
+            core.summary.addHeading('🔍 Code Review — findings', 2);
             if (total === 0) {
-              core.summary.addRaw('✅ Žádné nálezy na změněných řádcích.');
+              core.summary.addRaw('✅ No findings on changed lines.');
             } else {
               core.summary.addRaw(
-                `Nalezeno **${blockers}** blokujících (❌) a **${recommendations}** doporučených (⚠️) nálezů na změněných řádcích` +
-                (overflow > 0 ? ` — v PR komentářích zobrazeno ${total - overflow} z ${total}, kompletní seznam níže.` : '.'),
+                `Found **${blockers}** blocker(s) (❌) and **${recommendations}** recommendation(s) (⚠️) on changed lines` +
+                (overflow > 0 ? ` — ${total - overflow} of ${total} shown as PR comments, full list below.` : '.'),
                 true
               );
               const rows = [...wanted.values()]
@@ -270,10 +270,10 @@ jobs:
               core.summary.addTable([
                 [
                   { data: '', header: true },
-                  { data: 'Soubor', header: true },
-                  { data: 'Řádek', header: true },
-                  { data: 'Pravidlo', header: true },
-                  { data: 'Popis', header: true },
+                  { data: 'File', header: true },
+                  { data: 'Line', header: true },
+                  { data: 'Rule', header: true },
+                  { data: 'Message', header: true },
                 ],
                 ...rows,
               ]);
