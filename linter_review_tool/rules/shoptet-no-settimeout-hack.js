@@ -8,6 +8,8 @@
  * for AJAX-loaded content.
  */
 
+const { globalCalleeName } = require('./global-callee');
+
 module.exports = {
   meta: {
     type: 'problem',
@@ -26,10 +28,7 @@ module.exports = {
   create(context) {
     return {
       CallExpression(node) {
-        if (
-          node.callee.type !== 'Identifier' ||
-          node.callee.name !== 'setTimeout'
-        ) {
+        if (globalCalleeName(node.callee) !== 'setTimeout') {
           return;
         }
 

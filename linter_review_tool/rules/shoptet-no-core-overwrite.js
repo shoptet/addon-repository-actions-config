@@ -9,13 +9,26 @@
 
 const CORE_FUNCTIONS = new Set(['initColorBox']);
 
-/** Walk a MemberExpression chain down to its base identifier name. */
-function rootIdentifierName(node) {
+/** Walk a MemberExpression chain down to its base Identifier node. */
+function rootIdentifier(node) {
   let current = node;
   while (current && current.type === 'MemberExpression') {
     current = current.object;
   }
-  return current && current.type === 'Identifier' ? current.name : null;
+  return current && current.type === 'Identifier' ? current : null;
+}
+
+/**
+ * True only when `name` is the GLOBAL binding in this scope — i.e. not declared
+ * anywhere up the scope chain. A partner's own `const shoptet = …` (or a param)
+ * is a local and must not be flagged as overwriting the Shoptet core.
+ */
+function isGlobalBinding(scope, name) {
+  for (let s = scope; s; s = s.upper) {
+    const variable = s.variables.find((v) => v.name === name);
+    if (variable) return variable.defs.length === 0;
+  }
+  return true;
 }
 
 module.exports = {
@@ -46,16 +59,20 @@ module.exports = {
 
     return {
       AssignmentExpression(node) {
-        if (
-          node.left.type === 'MemberExpression' &&
-          rootIdentifierName(node.left) === 'shoptet'
-        ) {
-          context.report({
-            node,
-            messageId: 'shoptetMember',
-            data: { path: sourceCode.getText(node.left) },
-          });
-          return;
+        if (node.left.type === 'MemberExpression') {
+          const root = rootIdentifier(node.left);
+          if (
+            root &&
+            root.name === 'shoptet' &&
+            isGlobalBinding(context.getScope(), 'shoptet')
+          ) {
+            context.report({
+              node,
+              messageId: 'shoptetMember',
+              data: { path: sourceCode.getText(node.left) },
+            });
+            return;
+          }
         }
 
         if (node.left.type === 'Identifier') {

@@ -6,8 +6,11 @@
  * targets the strongest signal — diacritic characters in comments.)
  */
 
-// Czech + Slovak diacritic letters (lower-case; matched case-insensitively).
-const DIACRITICS = /[áäčďéěíĺľňóôŕřšťúůýž]/i;
+// Only Czech/Slovak-distinctive letters (caron + ring). The shared acute vowels
+// (á é í ó ú) and umlauts (ä ö ü) are deliberately excluded — they also occur in
+// Spanish/French/German and in proper names ("café", "José", "Tomáš"), which
+// caused false positives. Trades recall for precision (this rule is now a warning).
+const DIACRITICS = /[ěščřžďťňůľĺŕ]/i;
 
 module.exports = {
   meta: {

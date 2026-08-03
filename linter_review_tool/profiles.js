@@ -44,13 +44,12 @@ const RELIABLE_RULES = new Set([
   'CodeQuality',
 
   // ── Custom Shoptet rules with trustworthy positives ──
-  'shoptet/no-testid-selector', // data-testid literal
+  'shoptet/no-testid-selector', // [data-testid] attribute selector
   'shoptet/no-redundant-checks', // typeof shoptet/dataLayer/screen
   'shoptet/no-settimeout-hack', // setTimeout(fn, 0)
   'shoptet/prefer-fetch', // new XMLHttpRequest
-  'shoptet/no-core-overwrite', // shoptet.* = …
-  'shoptet/require-cache-path', // literal Shoptet URL without /cache/
-  'shoptet/no-czech-comments', // diacritics in a comment
+  'shoptet/no-core-overwrite', // global shoptet.* = …
+  'shoptet/no-czech-comments', // Czech-specific diacritics in a comment
 
   // ── stylelint: factual CSS checks ──
   'unit-disallowed-list',

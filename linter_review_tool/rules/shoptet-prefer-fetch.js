@@ -4,6 +4,8 @@
  * Use fetch + async/await instead of the legacy XMLHttpRequest API.
  */
 
+const { globalCalleeName } = require('./global-callee');
+
 module.exports = {
   meta: {
     type: 'suggestion',
@@ -22,10 +24,7 @@ module.exports = {
   create(context) {
     return {
       NewExpression(node) {
-        if (
-          node.callee.type === 'Identifier' &&
-          node.callee.name === 'XMLHttpRequest'
-        ) {
+        if (globalCalleeName(node.callee) === 'XMLHttpRequest') {
           context.report({ node, messageId: 'preferFetch' });
         }
       },

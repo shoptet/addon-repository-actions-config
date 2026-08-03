@@ -13,11 +13,10 @@ module.exports = {
     // ─────────────────────────────────────────────────────────────
     // Custom Shoptet rules (error → blocker, warn → recommendation)
     // ─────────────────────────────────────────────────────────────
-    'shoptet/require-cache-path': 'error', // G6
     'shoptet/no-testid-selector': 'error', // B7 ❌
     'shoptet/no-settimeout-hack': 'error', // B5 ❌
-    'shoptet/no-czech-comments': 'error', // I1 ❌
     'shoptet/no-core-overwrite': 'error', // B6 ❌
+    'shoptet/no-czech-comments': 'warn', // I1 ⚠️ (heuristic — reduced FP, non-gating)
     'shoptet/prefer-fetch': 'warn', // E2 ⚠️
     'shoptet/no-redundant-checks': 'warn', // B4 ⚠️
 
@@ -49,7 +48,7 @@ module.exports = {
     'max-nested-callbacks': ['error', 3], // C4 ❌
     'max-lines': [
       'error',
-      { max: 200, skipBlankLines: true, skipComments: true },
+      { max: 300, skipBlankLines: true, skipComments: true },
     ], // C1 ❌
     'max-lines-per-function': [
       'warn',

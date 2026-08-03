@@ -3,11 +3,12 @@
  *
  * Shoptet does not guarantee the stability of data-testid attributes and may
  * remove them from production at any time. Addons must bind to regular CSS
- * classes instead. Flags any string/template literal that references
- * `data-testid`.
+ * classes instead. Flags the CSS attribute-selector form `[data-testid…]`
+ * (selecting elements by testid), not a plain `'data-testid'` string — so
+ * setting the attribute or the addon's own markup is not a false positive.
  */
 
-const TESTID_PATTERN = /data-testid/;
+const TESTID_PATTERN = /\[\s*data-testid/i;
 
 module.exports = {
   meta: {

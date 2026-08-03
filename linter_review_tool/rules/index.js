@@ -8,7 +8,6 @@
 
 module.exports = {
   rules: {
-    'require-cache-path': require('./shoptet-require-cache'), // G6 cache
     'no-core-overwrite': require('./shoptet-no-core-overwrite'), // B6
     'no-redundant-checks': require('./shoptet-no-redundant-checks'), // B4
     'no-settimeout-hack': require('./shoptet-no-settimeout-hack'), // B5
