@@ -31,14 +31,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      - name: Debug workflow context
+        run: |
+          echo "job_workflow_sha=[${{ github.job_workflow_sha }}]"
+          echo "workflow_sha=[${{ github.workflow_sha }}]"
+          echo "workflow_ref=[${{ github.workflow_ref }}]"
+
       - name: Checkout review tool
         uses: actions/checkout@v6
         with:
           repository: shoptet/addon-repository-actions-config
-          # SHA of the commit this reusable workflow was loaded from — the linter
-          # code + rule config always match the workflow version (works for @main,
-          # a tag, or a feature branch), with no manual ref to keep in sync.
-          ref: ${{ github.job_workflow_sha }}
+          # Keep in sync with the branch this workflow lives on.
+          ref: feature/linter-review-tool
           path: review-tool
           token: ${{ secrets.GITHUB_TOKEN }}
 
