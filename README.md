@@ -51,6 +51,21 @@ Besides the review job, the workflow also verifies that protected workflow files
 are not modified, that the PR author is an authorized Shoptet reviewer, and that
 the required Shoptet reviewer is assigned.
 
+**Known limitations:**
+- *Line shifts re-create comment threads.* Comments are matched across pushes by
+  a fingerprint of `file | line | rule | message`. When a push inserts or removes
+  lines **above** a finding, the finding's line number — and therefore its
+  fingerprint — changes: the old comment is deleted and a fresh one is posted at
+  the new line. The finding itself is preserved, but **any human replies under
+  the old comment are lost with it**. Discussions worth keeping belong in the PR
+  conversation, not under bot comments. (The line number has to be part of the
+  fingerprint — without it, two identical findings in one file could not be told
+  apart.)
+- *The `REQUEST_CHANGES` verdict body is written once.* Follow-up pushes update
+  the inline comments and the Summary, but the standing verdict text (finding
+  counts) reflects the run that created it; it is dismissed and re-created only
+  after all blockers are resolved and new ones appear.
+
 ### `default.workflow.yml` / `deploy.workflow.yml` — build & artifact
 
 The deploy pipeline called from partner repositories:
