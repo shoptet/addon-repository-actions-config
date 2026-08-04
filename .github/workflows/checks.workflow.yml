@@ -142,6 +142,11 @@ jobs:
             // GitHub removes a reviewer from requested_reviewers the moment they
             // submit a review, so already-submitted reviews must count too —
             // otherwise a re-run after an approval fails the check.
+            // Deliberate consequence: any submitted review (even COMMENTED or a
+            // later-dismissed one) satisfies this check permanently, regardless
+            // of commits pushed afterwards. This check verifies "the reviewer
+            // is in the loop"; merge enforcement itself lives in the merge
+            // audit and the App's deploy gate.
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner: context.repo.owner,
               repo: context.repo.repo,
