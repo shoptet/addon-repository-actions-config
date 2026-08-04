@@ -7,15 +7,17 @@
  *   - (re)defining a known core function name (e.g. initColorBox)
  */
 
+const { GLOBAL_OBJECTS, memberName } = require('./global-callee');
+
 const CORE_FUNCTIONS = new Set(['initColorBox']);
 
-/** Walk a MemberExpression chain down to its base Identifier node. */
-function rootIdentifier(node) {
+/** Innermost MemberExpression of a chain — the one whose `.object` is the base. */
+function innermostMember(node) {
   let current = node;
-  while (current && current.type === 'MemberExpression') {
+  while (current.object && current.object.type === 'MemberExpression') {
     current = current.object;
   }
-  return current && current.type === 'Identifier' ? current : null;
+  return current;
 }
 
 /**
@@ -29,6 +31,20 @@ function isGlobalBinding(scope, name) {
     if (variable) return variable.defs.length === 0;
   }
   return true;
+}
+
+/**
+ * Does this assignment target write into the global Shoptet core object?
+ * Matches `shoptet.x = …` (only if `shoptet` is the global, not a local) and
+ * `window.shoptet.x = …` / `self.…` / `globalThis.…` (incl. computed forms).
+ */
+function targetsGlobalShoptet(memberExpr, scope) {
+  const inner = innermostMember(memberExpr);
+  const base = inner.object;
+  if (!base || base.type !== 'Identifier') return false;
+  if (base.name === 'shoptet') return isGlobalBinding(scope, 'shoptet');
+  if (GLOBAL_OBJECTS.has(base.name)) return memberName(inner) === 'shoptet';
+  return false;
 }
 
 module.exports = {
@@ -59,20 +75,16 @@ module.exports = {
 
     return {
       AssignmentExpression(node) {
-        if (node.left.type === 'MemberExpression') {
-          const root = rootIdentifier(node.left);
-          if (
-            root &&
-            root.name === 'shoptet' &&
-            isGlobalBinding(context.getScope(), 'shoptet')
-          ) {
-            context.report({
-              node,
-              messageId: 'shoptetMember',
-              data: { path: sourceCode.getText(node.left) },
-            });
-            return;
-          }
+        if (
+          node.left.type === 'MemberExpression' &&
+          targetsGlobalShoptet(node.left, context.getScope())
+        ) {
+          context.report({
+            node,
+            messageId: 'shoptetMember',
+            data: { path: sourceCode.getText(node.left) },
+          });
+          return;
         }
 
         if (node.left.type === 'Identifier') {

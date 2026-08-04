@@ -10,6 +10,19 @@
 
 const { globalCalleeName } = require('./global-callee');
 
+/** A delay argument that is (or coerces to) 0: literal 0, '0', -0, +0. */
+function isZeroDelay(node) {
+  if (!node) return false;
+  if (node.type === 'Literal') {
+    if (node.value === 0) return true;
+    return typeof node.value === 'string' && node.value.trim() !== '' && Number(node.value) === 0;
+  }
+  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
+    return isZeroDelay(node.argument);
+  }
+  return false;
+}
+
 module.exports = {
   meta: {
     type: 'problem',
@@ -32,10 +45,10 @@ module.exports = {
           return;
         }
 
-        const delay = node.arguments[1];
+        // Zero (or omitted) delay — including forms that coerce to 0 at runtime
+        // (`'0'`, `-0`, `+0`), so the blocker can't be evaded by respelling.
         const hasZeroDelay =
-          node.arguments.length === 1 ||
-          (delay && delay.type === 'Literal' && delay.value === 0);
+          node.arguments.length === 1 || isZeroDelay(node.arguments[1]);
 
         if (hasZeroDelay) {
           context.report({ node, messageId: 'zeroTimeout' });

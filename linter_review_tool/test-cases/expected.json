@@ -5,6 +5,7 @@
   "bad/bad-czech-comments.js": ["no-unused-vars", "shoptet/no-czech-comments"],
   "bad/bad-dead-code.js": ["no-console", "no-unreachable", "no-unused-vars", "prefer-const"],
   "bad/bad-deep-nesting.js": ["max-depth", "no-unused-vars"],
+  "bad/bad-global-bypass.js": ["shoptet/no-core-overwrite", "shoptet/no-settimeout-hack"],
   "bad/bad-legacy-script.js": ["no-console", "no-implicit-globals", "no-var", "shoptet/es-module-required"],
   "bad/bad-markup.html": ["a11y/img-alt", "html/deprecated-tag"],
   "bad/bad-misc-practices.js": ["eqeqeq", "no-param-reassign", "no-unused-vars", "shoptet/no-redundant-checks"],
