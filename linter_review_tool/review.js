@@ -158,8 +158,7 @@ function dedupe(findings) {
   return unique;
 }
 
-function report(rawFindings) {
-  const findings = dedupe(rawFindings);
+function report(findings) {
   let blockerCount = 0;
   let recommendCount = 0;
 

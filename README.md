@@ -36,7 +36,7 @@ partner repository):
 name: Shoptet Addon PR
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   checks:
