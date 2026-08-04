@@ -1,0 +1,32 @@
+name: Linter self-test
+# CI for this repository itself (NOT the reusable partner workflow): verifies
+# the rule set against the fixtures in linter_review_tool/test-cases via
+# test/selftest.js, so a rule regression can't ship to partners unnoticed.
+on:
+  push:
+    paths:
+      - 'linter_review_tool/**'
+      - '.github/workflows/selftest.yml'
+  pull_request:
+    paths:
+      - 'linter_review_tool/**'
+      - '.github/workflows/selftest.yml'
+
+jobs:
+  selftest:
+    name: Rule-set snapshot test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: linter_review_tool
+        run: yarn --frozen-lockfile
+
+      - name: Run self-test
+        working-directory: linter_review_tool
+        run: npm test

@@ -3,7 +3,8 @@
   "version": "2.0.0",
   "description": "Automated code review system for Shoptet addons using ESLint with custom rules",
   "scripts": {
-    "review": "node review.js"
+    "review": "node review.js",
+    "test": "node test/selftest.js"
   },
   "keywords": ["shoptet", "addon", "review", "eslint"],
   "author": "",
