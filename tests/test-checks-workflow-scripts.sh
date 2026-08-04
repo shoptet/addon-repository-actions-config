@@ -25,14 +25,19 @@ File.write(collab_js, grab.call("collaborators-check", "Check required reviewers
 
 PASS=0
 FAIL=0
-run_case() { # name script fixture expected_exit
-  local name="$1" script="$2" fixture="$3" expected="$4" actual
-  if node "$RUNNER" "$script" "$fixture" >"$TMP/out.log" 2>&1; then actual=0; else actual=1; fi
-  if [ "$actual" = "$expected" ]; then
-    echo "PASS: $name"; PASS=$((PASS + 1))
-  else
-    echo "FAIL: $name (exit $actual, expected $expected)"; sed 's/^/    /' "$TMP/out.log"; FAIL=$((FAIL + 1))
+run_case() { # name script fixture expected_exit [expected_log_pattern]
+  # The exact exit code matters: the runner exits 2 on a script crash, so a
+  # crash can never satisfy an expected_exit=1 (policy failure) case. The
+  # optional pattern pins down *why* a deny case failed.
+  local name="$1" script="$2" fixture="$3" expected="$4" pattern="${5:-}" actual
+  node "$RUNNER" "$script" "$fixture" >"$TMP/out.log" 2>&1; actual=$?
+  if [ "$actual" != "$expected" ]; then
+    echo "FAIL: $name (exit $actual, expected $expected)"; sed 's/^/    /' "$TMP/out.log"; FAIL=$((FAIL + 1)); return
   fi
+  if [ -n "$pattern" ] && ! grep -q "$pattern" "$TMP/out.log"; then
+    echo "FAIL: $name — log does not contain: $pattern"; sed 's/^/    /' "$TMP/out.log"; FAIL=$((FAIL + 1)); return
+  fi
+  echo "PASS: $name"; PASS=$((PASS + 1))
 }
 
 ### files-check — directory prefix + exact-file rules, renames
@@ -49,21 +54,21 @@ cat > "$TMP/f2.json" <<'EOF'
   "pr": { "number": 1 },
   "files": [ { "filename": ".github/workflows/brand-new.yml" } ] }
 EOF
-run_case "new file inside protected directory fails" "$TMP/files.js" "$TMP/f2.json" 1
+run_case "new file inside protected directory fails" "$TMP/files.js" "$TMP/f2.json" 1 'Protected files changed'
 
 cat > "$TMP/f3.json" <<'EOF'
 { "env": { "PROTECTED_PATHS": ".github/workflows/" },
   "pr": { "number": 1 },
   "files": [ { "filename": "renamed-elsewhere.yml", "previous_filename": ".github/workflows/shoptetAddon.workflow.yml" } ] }
 EOF
-run_case "rename out of protected directory fails" "$TMP/files.js" "$TMP/f3.json" 1
+run_case "rename out of protected directory fails" "$TMP/files.js" "$TMP/f3.json" 1 'Protected files changed'
 
 cat > "$TMP/f4.json" <<'EOF'
 { "env": { "PROTECTED_PATHS": ".github/workflows/, config.json" },
   "pr": { "number": 1 },
   "files": [ { "filename": "config.json" } ] }
 EOF
-run_case "exact-file rule fails on that file" "$TMP/files.js" "$TMP/f4.json" 1
+run_case "exact-file rule fails on that file" "$TMP/files.js" "$TMP/f4.json" 1 'Protected files changed'
 
 cat > "$TMP/f5.json" <<'EOF'
 { "env": { "PROTECTED_PATHS": ".github/workflows/, config.json" },
@@ -86,7 +91,7 @@ cat > "$TMP/c2.json" <<'EOF'
   "pr": { "number": 1, "requested_reviewers": [], "requested_teams": [] },
   "reviews": [] }
 EOF
-run_case "no request and no review fails" "$TMP/collab.js" "$TMP/c2.json" 1
+run_case "no request and no review fails" "$TMP/collab.js" "$TMP/c2.json" 1 'Missing required reviewers'
 
 cat > "$TMP/c3.json" <<'EOF'
 { "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer" },
@@ -101,7 +106,7 @@ cat > "$TMP/c4.json" <<'EOF'
   "reviews": [ { "user": { "login": "someone-else" }, "state": "APPROVED" },
                { "user": null, "state": "COMMENTED" } ] }
 EOF
-run_case "review by someone else does not count" "$TMP/collab.js" "$TMP/c4.json" 1
+run_case "review by someone else does not count" "$TMP/collab.js" "$TMP/c4.json" 1 'Missing required reviewers'
 
 cat > "$TMP/c5.json" <<'EOF'
 { "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer, second-reviewer" },

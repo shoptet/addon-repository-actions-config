@@ -10,8 +10,10 @@
 //   files    — array returned when the script paginates pulls.listFiles
 //   reviews  — array returned when the script paginates pulls.listReviews
 //
-// The exit code is the test result: scripts signal failure via process.exit(1)
-// or core.setFailed, success by finishing normally.
+// The exit code is the test result: 0 = the script finished normally,
+// 1 = the script signalled a policy failure (process.exit(1) / core.setFailed),
+// 2 = the script crashed (thrown error) — a crash must never satisfy a test
+// that expects a policy failure.
 const fs = require('fs');
 
 const [, , scriptPath, fixturePath] = process.argv;
@@ -51,4 +53,4 @@ const core = {
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 new AsyncFunction('github', 'context', 'core', script)(github, context, core)
-  .catch((error) => { console.error(error.message); process.exit(1); });
+  .catch((error) => { console.error(error.stack ?? error.message); process.exit(2); });
