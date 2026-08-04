@@ -44,6 +44,7 @@ const RELIABLE_RULES = new Set([
   'CodeQuality',
 
   // ── Custom Shoptet rules with trustworthy positives ──
+  'shoptet/es-module-required', // file parses as script but not as ES module
   'shoptet/no-testid-selector', // [data-testid] attribute selector
   'shoptet/no-redundant-checks', // typeof shoptet/dataLayer/screen
   'shoptet/no-settimeout-hack', // setTimeout(fn, 0)

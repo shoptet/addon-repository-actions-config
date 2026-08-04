@@ -26,6 +26,8 @@ Findings map to the handbook marks: `❌` → **blocker** (error, fails CI),
 
 | File | Rules triggered | Section |
 |------|-----------------|---------|
+| `bad-legacy-script.js` | `shoptet/es-module-required`, `no-var`, `no-implicit-globals`, `no-console` | D1 |
+| `bad-syntax-error.js` | `CodeQuality` (parse error in both module and script mode) | — |
 | `bad-xss.js` | `shoptet/no-xss`, `prefer-template` | A1 |
 | `bad-testid.js` | `shoptet/no-testid-selector` | B7 |
 | `bad-settimeout.js` | `shoptet/no-settimeout-hack`, `shoptet/prefer-shoptet-init` | B5 |
