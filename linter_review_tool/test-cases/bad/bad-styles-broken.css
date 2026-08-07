@@ -1,0 +1,2 @@
+/* Unclosed block — must gate as CssSyntaxError, not pass silently. */
+.addon-box { color: red;

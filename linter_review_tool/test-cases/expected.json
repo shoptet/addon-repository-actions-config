@@ -11,6 +11,7 @@
   "bad/bad-misc-practices.js": ["eqeqeq", "no-param-reassign", "no-unused-vars", "shoptet/no-redundant-checks"],
   "bad/bad-settimeout.js": ["shoptet/no-settimeout-hack"],
   "bad/bad-shoptet-overwrite.js": ["no-unused-vars", "shoptet/no-core-overwrite"],
+  "bad/bad-styles-broken.css": ["CssSyntaxError"],
   "bad/bad-styles-overrides.scss": ["declaration-no-important", "no-duplicate-selectors", "shoptet/max-z-index"],
   "bad/bad-styles.css": ["shoptet/min-font-size", "unit-disallowed-list"],
   "bad/bad-styles.less": ["shoptet/min-font-size", "unit-disallowed-list"],

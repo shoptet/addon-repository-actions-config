@@ -29,6 +29,11 @@ async function runStylelint(files, customSyntax, findings) {
       });
     }
 
+    // Note: ordinary syntax errors surface as regular warnings with rule
+    // 'CssSyntaxError' (handled above; severity error → blocker). This
+    // result.parseErrors channel is a separate, rarely-populated postcss
+    // mechanism — kept for completeness and made a blocker too, so no parse
+    // failure can pass the gate.
     for (const parseError of result.parseErrors || []) {
       findings.push({
         file: result.source,
@@ -36,7 +41,7 @@ async function runStylelint(files, customSyntax, findings) {
         column: parseError.column || 1,
         message: parseError.text,
         ruleId: 'stylelint/parse-error',
-        severity: 'recommend',
+        severity: 'blocker',
       });
     }
   }

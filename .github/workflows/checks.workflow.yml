@@ -105,7 +105,12 @@ jobs:
               for (const raw of diff.split('\n')) {
                 const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
                 if (hunk) { newLine = parseInt(hunk[1], 10); continue; }
-                if (raw.startsWith('+++') || raw.startsWith('---')) continue;
+                // "\ No newline at end of file" — a marker, not a line; must not shift the counter.
+                if (raw.startsWith('\\')) continue;
+                // File headers always have a space after the sigils ("+++ b/path").
+                // Without it, an added line whose content starts with "++" (e.g. "+++i;")
+                // would be swallowed as a header and shift everything after it.
+                if (raw.startsWith('+++ ') || raw.startsWith('--- ')) continue;
                 if (raw.startsWith('+')) { lines.add(newLine); newLine++; }
                 else if (raw.startsWith('-')) { /* old side only */ }
                 else { newLine++; }
