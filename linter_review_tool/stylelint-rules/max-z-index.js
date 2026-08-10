@@ -23,7 +23,7 @@ const ruleFunction = (primary) => (root, result) => {
   if (!validOptions) return;
 
   root.walkDecls(/^z-index$/i, (decl) => {
-    const value = parseInt(decl.value, 10);
+    const value = parseFloat(decl.value); // parseInt would read '1e9' as 1
     if (!Number.isNaN(value) && value > max) {
       stylelint.utils.report({
         result,

@@ -71,6 +71,19 @@ the required Shoptet reviewer is assigned.
   ones on lines the PR did not touch — but no inline comments are attempted for
   it (off-diff anchors would be rejected); such findings appear only in the run
   Summary.
+- *Non-PR callers gate on the whole `src/`, not changed lines.* When the
+  workflow is triggered by something other than a pull_request event (push,
+  schedule, dispatch), the fail-safe gate runs the linter over all of `src/` —
+  stricter than the PR gate, which only counts findings on changed lines.
+- *Some LESS syntax errors pass.* Broken CSS/SCSS gates via `CssSyntaxError`,
+  but `postcss-less` tolerates certain malformed LESS input without reporting
+  a parse failure.
+- *Exotic core-mutation forms are not gated.* `shoptet/no-core-overwrite`
+  covers assignments, `delete`, updates, for-of/in targets, destructuring
+  targets and `Object.assign`/`defineProperty` — but not `Reflect.set(...)`,
+  `Object.setPrototypeOf(...)`, `Object.defineProperty(window, 'shoptet', …)`
+  or multi-hop global chains (`window.window.shoptet…`). Accepted false
+  negatives for a reliable-rules gate; the AI review covers the intent.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see

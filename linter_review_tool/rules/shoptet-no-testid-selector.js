@@ -8,7 +8,9 @@
  * setting the attribute or the addon's own markup is not a false positive.
  */
 
-const TESTID_PATTERN = /\[\s*data-testid/i;
+// Boundary: [data-testid] / [data-testid=…] yes; [data-testid-mine] is a
+// different (partner-owned) attribute and must not match.
+const TESTID_PATTERN = /\[\s*data-testid(?![\w-])/i;
 
 module.exports = {
   meta: {

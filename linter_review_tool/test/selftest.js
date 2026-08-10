@@ -95,6 +95,11 @@ const parserCases = [
     expect: [2, 3, 4],
   },
   {
+    name: 'added line starting with "++ " (space) inside a hunk is content too',
+    diff: '@@ -1,1 +1,3 @@\n keep();\n+++ x;\n+realBlocker();',
+    expect: [2, 3],
+  },
+  {
     name: 'real file headers (with space) are skipped',
     diff: '--- a/f.js\n+++ b/f.js\n@@ -1 +1,2 @@\n+line1\n+line2',
     expect: [1, 2],

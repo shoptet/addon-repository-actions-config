@@ -30,11 +30,23 @@ async function collect(targetPath, pattern) {
   return glob(pattern, { nodir: true, cwd: targetPath, absolute: true, ignore: IGNORE });
 }
 
-/** Files matching the review patterns that the IGNORE list excludes. */
+/** Does a path match the IGNORE conventions? (single-file mode + skip listing) */
+function isIgnoredPath(filePath) {
+  return (
+    /(^|\/)(node_modules|dist|vendor)\//.test(filePath) ||
+    /\.(min|bundle)\.(js|css|scss|less)$/i.test(filePath)
+  );
+}
+
+/**
+ * Files matching the review patterns that the IGNORE list excludes. node_modules
+ * trees are not enumerated (walking thousands of vendored files just to label
+ * them "skipped" is pure cost) — dist/, vendor/ and *.min/*.bundle files are.
+ */
 async function collectSkipped(targetPath) {
   const patterns = Object.values(PATTERNS);
   const [all, kept] = await Promise.all([
-    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true }))),
+    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'] }))),
     Promise.all(patterns.map((p) => collect(targetPath, p))),
   ]);
   const keptSet = new Set(kept.flat());
@@ -62,6 +74,11 @@ async function gatherFiles(targetPath, stats) {
 
   const kind = classifyFile(targetPath);
   if (!kind) return null;
+  // Single-file mode honors the same IGNORE conventions as directory mode —
+  // otherwise `review.js dist/app.min.js` would lint what the CI never does.
+  if (isIgnoredPath(targetPath)) {
+    return { js: [], styles: [], html: [], skipped: [targetPath] };
+  }
   return { js: [], styles: [], html: [], skipped: [], [kind]: [targetPath] };
 }
 

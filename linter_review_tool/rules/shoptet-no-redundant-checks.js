@@ -5,6 +5,8 @@
  * them with `typeof x === 'undefined'` style checks is dead defensive code.
  */
 
+const { isGlobalBinding } = require('./global-callee');
+
 const ALWAYS_DEFINED = new Set(['shoptet', 'dataLayer', 'screen']);
 
 module.exports = {
@@ -28,7 +30,10 @@ module.exports = {
         if (
           node.operator === 'typeof' &&
           node.argument.type === 'Identifier' &&
-          ALWAYS_DEFINED.has(node.argument.name)
+          ALWAYS_DEFINED.has(node.argument.name) &&
+          // A local variable/parameter named e.g. `screen` is not the global —
+          // guarding it is legitimate, not redundant.
+          isGlobalBinding(context.getScope(), node.argument.name)
         ) {
           context.report({
             node,

@@ -61,13 +61,17 @@ function checkElement(node, file, findings) {
   }
 }
 
-function walk(node, file, findings) {
-  if (node.tagName) checkElement(node, file, findings);
-  // parse5 stores <template> children on node.content (a DocumentFragment),
-  // not childNodes — without this, template markup would escape all checks.
-  if (node.content) walk(node.content, file, findings);
-  for (const child of node.childNodes || []) {
-    walk(child, file, findings);
+// Iterative (explicit stack) — recursion would overflow on pathologically deep
+// markup and crash the whole run.
+function walk(root, file, findings) {
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.pop();
+    if (node.tagName) checkElement(node, file, findings);
+    // parse5 stores <template> children on node.content (a DocumentFragment),
+    // not childNodes — without this, template markup would escape all checks.
+    if (node.content) stack.push(node.content);
+    for (const child of node.childNodes || []) stack.push(child);
   }
 }
 
@@ -78,6 +82,15 @@ function lintHtml(files) {
     try {
       html = fs.readFileSync(file, 'utf8');
     } catch (error) {
+      // Fail closed: an unreadable file must not silently pass as clean.
+      findings.push({
+        file,
+        line: 1,
+        column: 1,
+        message: `Could not read file: ${error.message}`,
+        ruleId: 'CodeQuality',
+        severity: 'blocker',
+      });
       continue;
     }
     const document = parse5.parse(html, { sourceCodeLocationInfo: true });

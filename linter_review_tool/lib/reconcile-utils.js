@@ -14,17 +14,23 @@ const crypto = require('crypto');
  * - "\ No newline at end of file" is a marker, not a line — it must not shift
  *   the counter, otherwise a finding on the last edited line of a file without
  *   a trailing newline silently stops gating.
- * - File headers always have a space after the sigils ("+++ b/path"); an added
- *   line whose content starts with "++" (e.g. "+++i;") is content, not a header.
+ * - File headers ("+++ b/path") are recognized only before the first hunk;
+ *   inside hunks, lines starting with "+++"/"---" are added/removed CONTENT
+ *   (e.g. an added "++ x;" renders as "+++ x;").
  */
 function parseAddedLines(diff) {
   const lines = new Set();
   let newLine = 0;
+  let inHunk = false;
   for (const raw of diff.split('\n')) {
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
-    if (hunk) { newLine = parseInt(hunk[1], 10); continue; }
+    if (hunk) { newLine = parseInt(hunk[1], 10); inHunk = true; continue; }
     if (raw.startsWith('\\')) continue; // "\ No newline at end of file"
-    if (raw.startsWith('+++ ') || raw.startsWith('--- ')) continue; // file headers
+    // File headers ("+++ b/path") appear only BEFORE the first hunk. Inside a
+    // hunk, a line starting with "+++ " is an ADDED line whose content starts
+    // with "++ " (e.g. "++ x;") — skipping it there would shift every anchor
+    // after it, silently un-gating findings.
+    if (!inHunk && (raw.startsWith('+++') || raw.startsWith('---'))) continue;
     if (raw.startsWith('+')) { lines.add(newLine); newLine++; }
     else if (raw.startsWith('-')) { /* old side only */ }
     else { newLine++; }

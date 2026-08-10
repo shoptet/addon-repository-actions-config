@@ -34,4 +34,17 @@ function globalCalleeName(callee) {
   return null;
 }
 
-module.exports = { globalCalleeName, GLOBAL_OBJECTS, memberName };
+/**
+ * True only when `name` is the GLOBAL binding in this scope — i.e. not declared
+ * anywhere up the scope chain. A local variable/parameter of the same name must
+ * not be treated as the browser/Shoptet global.
+ */
+function isGlobalBinding(scope, name) {
+  for (let s = scope; s; s = s.upper) {
+    const variable = s.variables.find((v) => v.name === name);
+    if (variable) return variable.defs.length === 0;
+  }
+  return true;
+}
+
+module.exports = { globalCalleeName, GLOBAL_OBJECTS, memberName, isGlobalBinding };

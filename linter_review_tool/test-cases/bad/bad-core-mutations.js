@@ -5,3 +5,5 @@ Shoptet.custom = 1;                 // shoptet/no-core-overwrite (capital-S core
 shoptet.counter++;                  // shoptet/no-core-overwrite
 for (shoptet.current of [1]) { /* noop */ }  // shoptet/no-core-overwrite
 shoptet = {};                       // no-global-assign (whole-object replacement)
+Object.assign(shoptet.config, { b: 2 });  // shoptet/no-core-overwrite (into a sub-object)
+[shoptet.first] = [1];                    // shoptet/no-core-overwrite (destructuring)

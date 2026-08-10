@@ -13,7 +13,9 @@ const messages = stylelint.utils.ruleMessages(ruleName, {
     'Do not bind styles to data-testid — its stability is not guaranteed. Use a regular CSS class instead.',
 });
 
-const TESTID_PATTERN = /\[\s*data-testid/i;
+// Boundary: [data-testid] / [data-testid=…] yes; [data-testid-mine] is a
+// different (partner-owned) attribute and must not match.
+const TESTID_PATTERN = /\[\s*data-testid(?![\w-])/i;
 
 const ruleFunction = (primary) => (root, result) => {
   const validOptions = stylelint.utils.validateOptions(result, ruleName, {

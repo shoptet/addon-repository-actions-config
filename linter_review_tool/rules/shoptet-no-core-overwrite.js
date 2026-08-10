@@ -11,7 +11,7 @@
  * (`shoptet = {}` — replacing the whole object — is gated by no-global-assign.)
  */
 
-const { GLOBAL_OBJECTS, memberName } = require('./global-callee');
+const { GLOBAL_OBJECTS, memberName, isGlobalBinding } = require('./global-callee');
 
 const CORE_FUNCTIONS = new Set(['initColorBox']);
 
@@ -25,19 +25,6 @@ function innermostMember(node) {
     current = current.object;
   }
   return current;
-}
-
-/**
- * True only when `name` is the GLOBAL binding in this scope — i.e. not declared
- * anywhere up the scope chain. A partner's own `const shoptet = …` (or a param)
- * is a local and must not be flagged as overwriting the Shoptet core.
- */
-function isGlobalBinding(scope, name) {
-  for (let s = scope; s; s = s.upper) {
-    const variable = s.variables.find((v) => v.name === name);
-    if (variable) return variable.defs.length === 0;
-  }
-  return true;
 }
 
 /**
@@ -166,9 +153,32 @@ module.exports = {
           callee.object.name === 'Object' &&
           ['assign', 'defineProperty', 'defineProperties'].includes(memberName(callee)) &&
           node.arguments[0] &&
-          isGlobalShoptetRef(node.arguments[0], context.getScope())
+          (isGlobalShoptetRef(node.arguments[0], context.getScope()) ||
+            // …including writes INTO a core sub-object: Object.assign(shoptet.config, …)
+            (node.arguments[0].type === 'MemberExpression' &&
+              targetsGlobalShoptet(node.arguments[0], context.getScope())))
         ) {
           report(node, node.arguments[0]);
+        }
+      },
+
+      // Destructuring writes: [shoptet.x] = […], ({a: shoptet.y} = {…}),
+      // for ([shoptet.x] of list). Walk the pattern for member targets.
+      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(node) {
+        const scope = context.getScope();
+        const stack = [node.left];
+        while (stack.length) {
+          const current = stack.pop();
+          if (!current || typeof current.type !== 'string') continue;
+          if (current.type === 'MemberExpression') {
+            if (targetsGlobalShoptet(current, scope)) report(node, current);
+            continue; // don't descend into the member chain
+          }
+          if (current.type === 'ArrayPattern') stack.push(...current.elements);
+          else if (current.type === 'ObjectPattern') stack.push(...current.properties);
+          else if (current.type === 'Property') stack.push(current.value);
+          else if (current.type === 'AssignmentPattern') stack.push(current.left);
+          else if (current.type === 'RestElement') stack.push(current.argument);
         }
       },
     };

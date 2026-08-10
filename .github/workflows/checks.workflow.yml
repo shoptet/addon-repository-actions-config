@@ -162,7 +162,10 @@ jobs:
             }
 
             // Existing bot comments we manage (carry our marker).
-            const markerRe = new RegExp(`<!-- ${MARKER}:([0-9a-f]+) -->`);
+            // Anchored to the END of the body: finding messages embed file content, so
+            // a PR author could plant a fake marker earlier in the text and corrupt
+            // the reconcile bookkeeping if we took the first match.
+            const markerRe = new RegExp(`<!-- ${MARKER}:([0-9a-f]+) -->\\s*$`);
             const existing = await github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number });
             const mine = new Map();
             for (const c of existing) {

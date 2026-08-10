@@ -46,10 +46,12 @@ module.exports = {
     // ─────────────────────────────────────────────────────────────
     'max-depth': ['error', 4], // C4 ❌
     'max-nested-callbacks': ['error', 3], // C4 ❌
+    // C1 ⚠️ per the catalog: length alone does not block — the monolith call
+    // (cohesion, structure) belongs to the AI/human pass.
     'max-lines': [
-      'error',
-      { max: 300, skipBlankLines: true, skipComments: true },
-    ], // C1 ❌
+      'warn',
+      { max: 400, skipBlankLines: true, skipComments: true },
+    ],
     'max-lines-per-function': [
       'warn',
       { max: 50, skipBlankLines: true, skipComments: true },
@@ -72,6 +74,11 @@ module.exports = {
     'no-empty': 'off',
     'no-mixed-spaces-and-tabs': 'warn',
     'no-unexpected-multiline': 'off',
+    // Deliberately off despite catalog D1: detection is deterministic, but a
+    // positive finding is only as true as the globals list below — and the
+    // Shoptet runtime injects globals (core functions, per-template) that we
+    // cannot enumerate exhaustively. That breaks the zero-false-positive bar
+    // required for this profile ("too many undefs" — original main).
     'no-undef': 'off',
     'no-extend-native': 'warn', // B6-ish
     // B6 ❌ — `shoptet = {}` (replacing the whole core object) must gate just

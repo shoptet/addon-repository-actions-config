@@ -3,3 +3,8 @@
   border: 1px solid #cccccc;
   line-height: 1.4;
 }
+
+/* Partner-owned attribute — must NOT match the testid rule boundary. */
+[data-testid-mine="own"] {
+  color: green;
+}

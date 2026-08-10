@@ -2,7 +2,7 @@
  * JavaScript linter — runs ESLint with the local Shoptet plugin and returns
  * findings in the shared review format.
  *
- * Files are parsed as ES modules (the required addon format). When a file
+ * Files are parsed as ES modules (the format addon reviews assume). When a file
  * fails to parse as a module, it is re-parsed as a classic script to tell two
  * very different situations apart:
  *   - parses as a script → valid legacy JS that merely isn't a module: emit an
@@ -78,8 +78,9 @@ async function lintJavaScript(files) {
         line: (parseError && parseError.line) || 1,
         column: (parseError && parseError.column) || 1,
         message:
-          'This file is not a valid ES module — Shoptet addons must use ES module ' +
-          'syntax (import/export). It parses as a legacy script; please convert it. ' +
+          'This file fails to parse as an ES module (it only parses as a legacy ' +
+          'script), so it was linted in script mode. Addons are reviewed as ES ' +
+          'modules — please convert it to module-compatible syntax. ' +
           `(Module parse error: ${parseError ? parseError.message : 'unknown'})`,
         ruleId: 'shoptet/es-module-required',
         severity: 'blocker',
