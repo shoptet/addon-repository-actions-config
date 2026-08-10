@@ -2,8 +2,11 @@ module.exports = {
   plugins: [
     './stylelint-rules/min-font-size',
     './stylelint-rules/max-z-index',
+    './stylelint-rules/no-testid-selector',
   ],
   rules: {
+    // B7 ❌ — binding styles to Shoptet testids (blocker, mirrors the ESLint rule)
+    'shoptet/no-testid-selector': true,
     // H1 — consistent units: disallow pt, prefer px
     'unit-disallowed-list': [['pt'], { severity: 'warning' }],
     // H3 — keep text readable

@@ -87,8 +87,6 @@ The deploy pipeline called from partner repositories:
 Addon Repository will upload this artifact to FTP, remove the artifact from
 GitHub and update custom codes.
 
-Addon Repository will upload this artifact to FTP, remove the artifact from GitHub and update custom codes.
-
 ## Package managers
 
 The build workflow supports **npm, Yarn and pnpm**. The package manager is resolved in this order:

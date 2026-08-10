@@ -63,6 +63,9 @@ function checkElement(node, file, findings) {
 
 function walk(node, file, findings) {
   if (node.tagName) checkElement(node, file, findings);
+  // parse5 stores <template> children on node.content (a DocumentFragment),
+  // not childNodes — without this, template markup would escape all checks.
+  if (node.content) walk(node.content, file, findings);
   for (const child of node.childNodes || []) {
     walk(child, file, findings);
   }

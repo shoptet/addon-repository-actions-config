@@ -10,15 +10,20 @@
 
 const { globalCalleeName } = require('./global-callee');
 
-/** A delay argument that is (or coerces to) 0: literal 0, '0', -0, +0. */
+/**
+ * A delay argument that is (or coerces to) 0 at runtime:
+ * 0, '0', '', ' ', null, false, undefined, void 0, -0, +0.
+ */
 function isZeroDelay(node) {
   if (!node) return false;
   if (node.type === 'Literal') {
-    if (node.value === 0) return true;
-    return typeof node.value === 'string' && node.value.trim() !== '' && Number(node.value) === 0;
+    if (node.value === 0 || node.value === null || node.value === false) return true;
+    return typeof node.value === 'string' && Number(node.value) === 0;
   }
-  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
-    return isZeroDelay(node.argument);
+  if (node.type === 'Identifier' && node.name === 'undefined') return true;
+  if (node.type === 'UnaryExpression') {
+    if (node.operator === 'void') return true; // void <anything> → undefined → 0
+    if (node.operator === '-' || node.operator === '+') return isZeroDelay(node.argument);
   }
   return false;
 }
@@ -45,8 +50,15 @@ module.exports = {
           return;
         }
 
+        // setTimeout(...args) — the single argument is a spread, not a callback
+        // with an omitted delay; the real delay is unknown, so don't flag.
+        if (node.arguments[0] && node.arguments[0].type === 'SpreadElement') {
+          return;
+        }
+
         // Zero (or omitted) delay — including forms that coerce to 0 at runtime
-        // (`'0'`, `-0`, `+0`), so the blocker can't be evaded by respelling.
+        // ('0', '', null, false, undefined, void 0, -0), so the blocker can't
+        // be evaded by respelling.
         const hasZeroDelay =
           node.arguments.length === 1 || isZeroDelay(node.arguments[1]);
 

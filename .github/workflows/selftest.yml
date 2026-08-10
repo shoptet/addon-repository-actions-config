@@ -4,6 +4,9 @@ name: Linter self-test
 # test/selftest.js, so a rule regression can't ship to partners unnoticed.
 on:
   push:
+    # main only — feature branches are covered by their PRs; without the filter
+    # every same-repo PR would run the suite twice (push + pull_request).
+    branches: [main]
     paths:
       - 'linter_review_tool/**'
       - '.github/workflows/selftest.yml'

@@ -45,6 +45,9 @@
     "no-unused-vars@blocker",
     "shoptet/no-redundant-checks@recommend"
   ],
+  "bad/bad-settimeout-coercions.js": [
+    "shoptet/no-settimeout-hack@blocker"
+  ],
   "bad/bad-settimeout.js": [
     "shoptet/no-settimeout-hack@blocker"
   ],
@@ -77,6 +80,13 @@
   ],
   "bad/bad-tdz.js": [
     "no-use-before-define@blocker"
+  ],
+  "bad/bad-template-markup.html": [
+    "a11y/img-alt@blocker",
+    "html/deprecated-tag@recommend"
+  ],
+  "bad/bad-testid-styles.css": [
+    "shoptet/no-testid-selector@blocker"
   ],
   "bad/bad-testid.js": [
     "shoptet/no-testid-selector@blocker"

@@ -6,12 +6,16 @@
     "review": "node review.js",
     "test": "node test/selftest.js"
   },
-  "keywords": ["shoptet", "addon", "review", "eslint"],
+  "keywords": [
+    "shoptet",
+    "addon",
+    "review",
+    "eslint"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "eslint": "^8.57.0",
-    "espree": "^9.6.1",
     "glob": "^10.3.0",
     "parse5": "^6.0.1",
     "postcss-less": "^6.0.0",
