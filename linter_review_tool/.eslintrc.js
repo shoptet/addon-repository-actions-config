@@ -74,7 +74,9 @@ module.exports = {
     'no-unexpected-multiline': 'off',
     'no-undef': 'off',
     'no-extend-native': 'warn', // B6-ish
-    'no-global-assign': 'warn',
+    // B6 ❌ — `shoptet = {}` (replacing the whole core object) must gate just
+    // like overwriting a single property does (shoptet/no-core-overwrite).
+    'no-global-assign': 'error',
   },
   globals: {
     Shoptet: 'readonly',

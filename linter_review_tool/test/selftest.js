@@ -38,7 +38,10 @@ function groupRulesByFile(diagnostics) {
     // paths come back relative to cwd (linter_review_tool) → strip test-cases/
     const key = d.location.path.replace(/^test-cases\//, '');
     if (!byFile.has(key)) byFile.set(key, new Set());
-    byFile.get(key).add(d.code.value);
+    // Severity is part of the snapshot: only blockers gate the PR, so a silent
+    // error→warn downgrade must fail this suite, not just a ruleId change.
+    const severity = d.severity === 'ERROR' ? 'blocker' : 'recommend';
+    byFile.get(key).add(`${d.code.value}@${severity}`);
   }
   return byFile;
 }
@@ -75,6 +78,43 @@ for (const file of goodFilesOnDisk) {
   if (rules && rules.size) fail(`${file}: expected clean but got [${[...rules].sort().join(', ')}]`);
   else pass(`${file}: clean`);
 }
+
+// ── 4: reconcile-utils — the diff parser and fingerprint the CI workflow
+//       require()s from this tool (silent-failure territory, so unit-pinned) ──
+console.log('reconcile-utils:');
+const { parseAddedLines, findingFingerprint } = require('../lib/reconcile-utils');
+const parserCases = [
+  {
+    name: 'no-newline marker must not shift the counter',
+    diff: '@@ -3 +3 @@\n-const x = oldLast;\n\\ No newline at end of file\n+const x = newLast;',
+    expect: [3],
+  },
+  {
+    name: 'added lines starting with ++/-- are content, not headers',
+    diff: '@@ -1,0 +2,3 @@\n+++i;\n+--i;\n+console.log(i);',
+    expect: [2, 3, 4],
+  },
+  {
+    name: 'real file headers (with space) are skipped',
+    diff: '--- a/f.js\n+++ b/f.js\n@@ -1 +1,2 @@\n+line1\n+line2',
+    expect: [1, 2],
+  },
+  {
+    name: 'context and removed lines advance/hold the counter correctly',
+    diff: '@@ -10,3 +10,3 @@\n ctx\n-removed\n+added\n ctx2',
+    expect: [11],
+  },
+];
+for (const c of parserCases) {
+  const got = [...parseAddedLines(c.diff)].sort((a, b) => a - b);
+  if (JSON.stringify(got) === JSON.stringify(c.expect)) pass(c.name);
+  else fail(`${c.name}: expected ${JSON.stringify(c.expect)}, got ${JSON.stringify(got)}`);
+}
+const mkDiag = (line) => ({ location: { path: 'a.js', range: { start: { line } } }, code: { value: 'no-console' }, message: 'x' });
+if (findingFingerprint(mkDiag(5)) === findingFingerprint(mkDiag(5))) pass('fingerprint is deterministic');
+else fail('fingerprint is not deterministic');
+if (findingFingerprint(mkDiag(5)) !== findingFingerprint(mkDiag(6))) pass('fingerprint distinguishes lines');
+else fail('fingerprint does not include the line');
 
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

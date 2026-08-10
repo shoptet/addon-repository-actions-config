@@ -1,15 +1,22 @@
 /**
  * B6. Do not overwrite Shoptet core
  *
- * Flags re-implementing or overwriting core functions/objects:
- *   - assigning to ANY property path rooted at the global `shoptet` object
- *     (shoptet.x = …, shoptet.menu.splitMenu = …, shoptet.a.b.c = …)
+ * Flags re-implementing or mutating core functions/objects — for both the
+ * lowercase `shoptet` and capital `Shoptet` globals, written bare or through
+ * the global object (`window.shoptet.x`, incl. computed forms):
+ *   - property assignment: shoptet.x = …, shoptet.a.b ||= …
+ *   - delete shoptet.x, shoptet.counter++, for (shoptet.x of …)
+ *   - Object.assign(shoptet, …) / Object.defineProperty(shoptet, …)
  *   - (re)defining a known core function name (e.g. initColorBox)
+ * (`shoptet = {}` — replacing the whole object — is gated by no-global-assign.)
  */
 
 const { GLOBAL_OBJECTS, memberName } = require('./global-callee');
 
 const CORE_FUNCTIONS = new Set(['initColorBox']);
+
+// Both casings are Shoptet core globals (both are declared readonly in .eslintrc.js).
+const SHOPTET_GLOBALS = new Set(['shoptet', 'Shoptet']);
 
 /** Innermost MemberExpression of a chain — the one whose `.object` is the base. */
 function innermostMember(node) {
@@ -42,8 +49,23 @@ function targetsGlobalShoptet(memberExpr, scope) {
   const inner = innermostMember(memberExpr);
   const base = inner.object;
   if (!base || base.type !== 'Identifier') return false;
-  if (base.name === 'shoptet') return isGlobalBinding(scope, 'shoptet');
-  if (GLOBAL_OBJECTS.has(base.name)) return memberName(inner) === 'shoptet';
+  if (SHOPTET_GLOBALS.has(base.name)) return isGlobalBinding(scope, base.name);
+  if (GLOBAL_OBJECTS.has(base.name)) return SHOPTET_GLOBALS.has(memberName(inner));
+  return false;
+}
+
+/** Is this expression a direct reference to the global shoptet/Shoptet object? */
+function isGlobalShoptetRef(node, scope) {
+  if (node.type === 'Identifier' && SHOPTET_GLOBALS.has(node.name)) {
+    return isGlobalBinding(scope, node.name);
+  }
+  if (
+    node.type === 'MemberExpression' &&
+    node.object.type === 'Identifier' &&
+    GLOBAL_OBJECTS.has(node.object.name)
+  ) {
+    return SHOPTET_GLOBALS.has(memberName(node));
+  }
   return false;
 }
 
@@ -73,6 +95,14 @@ module.exports = {
       }
     }
 
+    function report(node, targetExpr) {
+      context.report({
+        node,
+        messageId: 'shoptetMember',
+        data: { path: sourceCode.getText(targetExpr) },
+      });
+    }
+
     return {
       AssignmentExpression(node) {
         if (
@@ -94,6 +124,52 @@ module.exports = {
 
       FunctionDeclaration(node) {
         if (node.id) reportCoreFunction(node, node.id.name);
+      },
+
+      // delete shoptet.x
+      UnaryExpression(node) {
+        if (
+          node.operator === 'delete' &&
+          node.argument.type === 'MemberExpression' &&
+          targetsGlobalShoptet(node.argument, context.getScope())
+        ) {
+          report(node, node.argument);
+        }
+      },
+
+      // shoptet.counter++ / --shoptet.x
+      UpdateExpression(node) {
+        if (
+          node.argument.type === 'MemberExpression' &&
+          targetsGlobalShoptet(node.argument, context.getScope())
+        ) {
+          report(node, node.argument);
+        }
+      },
+
+      // for (shoptet.current of list) / for (shoptet.key in obj)
+      'ForOfStatement, ForInStatement'(node) {
+        if (
+          node.left.type === 'MemberExpression' &&
+          targetsGlobalShoptet(node.left, context.getScope())
+        ) {
+          report(node, node.left);
+        }
+      },
+
+      // Object.assign(shoptet, …) / Object.defineProperty(shoptet, …)
+      CallExpression(node) {
+        const callee = node.callee;
+        if (
+          callee.type === 'MemberExpression' &&
+          callee.object.type === 'Identifier' &&
+          callee.object.name === 'Object' &&
+          ['assign', 'defineProperty', 'defineProperties'].includes(memberName(callee)) &&
+          node.arguments[0] &&
+          isGlobalShoptetRef(node.arguments[0], context.getScope())
+        ) {
+          report(node, node.arguments[0]);
+        }
       },
     };
   },

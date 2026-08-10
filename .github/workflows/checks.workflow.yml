@@ -74,16 +74,27 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const crypto = require('crypto');
             const { execFileSync } = require('child_process');
+            // Shared, self-tested logic (diff parsing + fingerprinting) lives in
+            // the checked-out tool so it is covered by the linter self-test.
+            const { parseAddedLines, findingFingerprint: fp } = require(
+              `${process.env.GITHUB_WORKSPACE}/review-tool/linter_review_tool/lib/reconcile-utils.js`
+            );
             const MARKER = 'shoptet-review-fp';
 
-            let diagnostics = [];
+            // Fail closed on an unreadable/corrupt findings file. The lint step
+            // exited 0, so an invalid JSON here is NOT "0 findings" — treating it
+            // that way would wipe existing comments and dismiss the standing
+            // REQUEST_CHANGES. (Invariant: review.js rdjson stdout is pure JSON.)
+            let payload;
             try {
-              diagnostics = JSON.parse(fs.readFileSync('review-findings.json', 'utf8')).diagnostics || [];
+              payload = JSON.parse(fs.readFileSync('review-findings.json', 'utf8'));
             } catch (error) {
-              core.warning(`Could not read review-findings.json: ${error.message}`);
+              core.setFailed(`review-findings.json is missing or invalid (${error.message}) — refusing to treat it as a clean run.`);
+              return;
             }
+            const diagnostics = payload.diagnostics || [];
+            const skippedFiles = payload.skipped || [];
 
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
@@ -98,32 +109,15 @@ jobs:
               core.warning(`Could not fetch base ${base_sha.slice(0, 7)} for local diff: ${error.message}`);
             }
 
-            // Parse a unified diff into the set of new-side line numbers that are additions.
-            function parseAddedLines(diff) {
-              const lines = new Set();
-              let newLine = 0;
-              for (const raw of diff.split('\n')) {
-                const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
-                if (hunk) { newLine = parseInt(hunk[1], 10); continue; }
-                // "\ No newline at end of file" — a marker, not a line; must not shift the counter.
-                if (raw.startsWith('\\')) continue;
-                // File headers always have a space after the sigils ("+++ b/path").
-                // Without it, an added line whose content starts with "++" (e.g. "+++i;")
-                // would be swallowed as a header and shift everything after it.
-                if (raw.startsWith('+++ ') || raw.startsWith('--- ')) continue;
-                if (raw.startsWith('+')) { lines.add(newLine); newLine++; }
-                else if (raw.startsWith('-')) { /* old side only */ }
-                else { newLine++; }
-              }
-              return lines;
-            }
-
-            // Commentable = new-side line numbers of additions per file.
+            // Commentable = new-side line numbers of additions per file
+            // (parseAddedLines comes from the self-tested reconcile-utils module).
             // GitHub omits `patch` for large files, so fall back to a local
             // `git diff` (needs fetch-depth: 0) — the fix that lets large files
             // get inline comments and gate the PR. Value semantics:
             //   Set  → only these lines are commentable
-            //   null → couldn't determine (post best-effort, don't silently drop)
+            //   null → couldn't determine — findings still GATE and appear in the
+            //          Summary, but no inline comments are attempted for them
+            //          (an off-diff anchor would 422 and poison a whole chunk)
             const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
             const commentable = new Map();
             for (const file of files) {
@@ -143,22 +137,28 @@ jobs:
                 commentable.set(file.filename, parseAddedLines(diff));
               } catch (error) {
                 core.warning(`No API patch and git diff failed for ${file.filename}: ${error.message}`);
-                commentable.set(file.filename, null); // best-effort: allow posting
+                commentable.set(file.filename, null); // gate, but don't attempt comments
               }
             }
 
-            // Findings on changed lines only (off-diff lines are not commentable), keyed by fingerprint.
-            const fp = (d) => crypto.createHash('sha1')
-              .update([d.location.path, d.location.range.start.line, d.code?.value || '', d.message].join('\n'))
-              .digest('hex');
+            // Findings on changed lines only (off-diff lines are not commentable),
+            // keyed by fingerprint. Findings from `null` files gate but are marked
+            // unanchored — never posted inline (they'd 422), Summary carries them.
             const wanted = new Map();
+            const unanchored = new Set();
             for (const d of diagnostics) {
               // Warnings are kept: the strict profile already limited findings to
               // 100%-reliable rules, so recommendations here are trustworthy too.
               // Only ERROR severity gates the PR (see `blockers` below).
               if (!commentable.has(d.location.path)) continue; // file not part of this PR
               const lines = commentable.get(d.location.path);
-              if (lines === null || lines.has(d.location.range.start.line)) wanted.set(fp(d), d);
+              if (lines === null) {
+                const key = fp(d);
+                wanted.set(key, d);
+                unanchored.add(key);
+              } else if (lines.has(d.location.range.start.line)) {
+                wanted.set(fp(d), d);
+              }
             }
 
             // Existing bot comments we manage (carry our marker).
@@ -181,8 +181,9 @@ jobs:
             // human reviewer anyway. The overflow count is surfaced in the body.
             const MAX_COMMENTS = 100;
             const fresh = [...wanted.entries()]
-              .filter(([key]) => !mine.has(key))
+              .filter(([key]) => !mine.has(key) && !unanchored.has(key))
               .sort((a, b) => (a[1].severity === 'ERROR' ? 0 : 1) - (b[1].severity === 'ERROR' ? 0 : 1));
+            const unanchoredCount = [...unanchored].filter((key) => !mine.has(key)).length;
             const capped = fresh.slice(0, MAX_COMMENTS);
             const overflow = fresh.length - capped.length;
             const comments = capped.map(([key, d]) => {
@@ -212,17 +213,20 @@ jobs:
             let created = 0;
             if (comments.length || (blockers > 0 && !hasRequest)) {
               const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-              const shown = total - overflow; // inline comments visible on the PR (existing + newly posted)
+              const shown = total - overflow - unanchoredCount; // inline comments visible on the PR
               const counts = `**${blockers}** blocker(s)`
                 + (recommendations > 0 ? ` and ${recommendations} recommendation(s)` : '');
-              const body = blockers > 0
+              let body = blockers > 0
                 ? `🤖 Automated review: ${counts} on changed lines. `
-                  + (overflow > 0
+                  + (overflow > 0 || unanchoredCount > 0
                       ? `Showing **${shown} of ${total}** findings in comments (blockers first) — the full list is in the run's [Summary](${runUrl}). `
                       : `All are shown as inline comments on the relevant lines. `)
                   + `Once the blockers are fixed, this request is dismissed automatically.`
                 : `🤖 Automated review: no blockers, ${recommendations} recommendation(s) on changed lines`
-                  + (overflow > 0 ? ` (${shown} of ${total} shown in comments, full list in the run's [Summary](${runUrl}))` : '') + `.`;
+                  + (overflow > 0 || unanchoredCount > 0 ? ` (${shown} of ${total} shown in comments, full list in the run's [Summary](${runUrl}))` : '') + `.`;
+              if (unanchoredCount > 0) {
+                body += ` ${unanchoredCount} finding(s) are in files whose changed lines could not be resolved and appear only in the Summary.`;
+              }
               // A single review with ~100 comments still trips GitHub's secondary
               // content-creation limit (~25-30 per review is safe), so post in
               // chunks with a pause between them: verdict rides on the first
@@ -260,6 +264,9 @@ jobs:
                         core.warning(`Could not post fallback verdict: ${verdictError.message}`);
                       }
                     }
+                    // Non-retryable (e.g. 422) — retrying would just repeat the same
+                    // failure and post the fallback verdict again. Handle once, stop.
+                    break;
                   }
                 }
                 if (!posted) break; // stop hammering the API — the Summary table has the full list
@@ -309,10 +316,30 @@ jobs:
                 ...rows,
               ]);
             }
+            // Surface files the linter deliberately skipped (minified/vendored),
+            // so a human reviewer can see when the gate's coverage was partial.
+            if (skippedFiles.length) {
+              const list = skippedFiles.slice(0, 20).map((f) => `\`${f}\``).join(', ');
+              const more = skippedFiles.length > 20 ? ` … and ${skippedFiles.length - 20} more` : '';
+              core.summary.addRaw(
+                `\n⏭️ **${skippedFiles.length} file(s) skipped** as minified/vendored/generated (not linted): ${list}${more}`,
+                true
+              );
+            }
             await core.summary.write();
 
             core.info(`Comments posted: ${created} (+${overflow} hidden) / -${deleted}; ${blockers} blocker(s), ${recommendations} recommendation(s) on changed lines.`);
             if (blockers > 0) core.setFailed(`${blockers} blocking finding(s) on changed lines.`);
+
+      # Fail-safe for callers not triggered by a pull_request event (push,
+      # schedule, workflow_dispatch, …): the reconcile step above is skipped
+      # there, and review.js in rdjson mode always exits 0 — which would turn
+      # any blocker into a green check. Re-run in plain mode, which exits 1 on
+      # blockers, so the gate holds regardless of the triggering event.
+      - name: Gate on blockers (non-PR event)
+        if: ${{ steps.lint.outcome == 'success' && !github.event.pull_request }}
+        working-directory: ./
+        run: node review-tool/linter_review_tool/review.js src
 
   merge-check:
     name: Merge Pull Request alert

@@ -14,12 +14,13 @@ const PATTERNS = {
 };
 
 // Skip minified/generated files and vendored dependencies — reviewing them is
-// noise (they are not the author's source).
+// noise (they are not the author's source). This is a naming-convention blind
+// spot by design; skipped files are reported in the output (and surfaced in the
+// CI run Summary) so partial coverage is visible, and it is documented in the
+// README known limitations.
 const IGNORE = [
-  '**/*.min.js',
-  '**/*.min.css',
-  '**/*.min.scss',
-  '**/*.bundle.js',
+  '**/*.min.{js,css,scss,less}',
+  '**/*.bundle.{js,css,scss,less}',
   '**/node_modules/**',
   '**/dist/**',
   '**/vendor/**',
@@ -27,6 +28,17 @@ const IGNORE = [
 
 async function collect(targetPath, pattern) {
   return glob(pattern, { nodir: true, cwd: targetPath, absolute: true, ignore: IGNORE });
+}
+
+/** Files matching the review patterns that the IGNORE list excludes. */
+async function collectSkipped(targetPath) {
+  const patterns = Object.values(PATTERNS);
+  const [all, kept] = await Promise.all([
+    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true }))),
+    Promise.all(patterns.map((p) => collect(targetPath, p))),
+  ]);
+  const keptSet = new Set(kept.flat());
+  return all.flat().filter((f) => !keptSet.has(f)).sort();
 }
 
 function classifyFile(filePath) {
@@ -39,17 +51,18 @@ function classifyFile(filePath) {
 
 async function gatherFiles(targetPath, stats) {
   if (stats.isDirectory()) {
-    const [js, styles, html] = await Promise.all([
+    const [js, styles, html, skipped] = await Promise.all([
       collect(targetPath, PATTERNS.js),
       collect(targetPath, PATTERNS.styles),
       collect(targetPath, PATTERNS.html),
+      collectSkipped(targetPath),
     ]);
-    return { js, styles, html };
+    return { js, styles, html, skipped };
   }
 
   const kind = classifyFile(targetPath);
   if (!kind) return null;
-  return { js: [], styles: [], html: [], [kind]: [targetPath] };
+  return { js: [], styles: [], html: [], skipped: [], [kind]: [targetPath] };
 }
 
 async function main() {
@@ -99,13 +112,18 @@ async function main() {
   // deterministic gate; heuristic/contextual checks are the AI skill's job.
   const findings = dedupe(rawFindings).filter((f) => isReliable(f.ruleId));
 
+  const skipped = files.skipped.map((f) => path.relative(process.cwd(), f));
+
   if (rdjson) {
     // A successful run: emit the diagnostics; the CI reconcile step decides the
     // PR verdict (blockers gate). Exit 0 so the workflow step counts as success.
-    process.stdout.write(JSON.stringify(toRdjson(findings)));
+    process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped }));
     process.exit(0);
   }
 
+  if (skipped.length) {
+    info(`⏭️  ${skipped.length} file(s) skipped as minified/vendored: ${skipped.join(', ')}`);
+  }
   const { blockerCount } = report(findings);
   process.exit(blockerCount > 0 ? 1 : 0);
 }

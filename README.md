@@ -65,6 +65,17 @@ the required Shoptet reviewer is assigned.
   the inline comments and the Summary, but the standing verdict text (finding
   counts) reflects the run that created it; it is dismissed and re-created only
   after all blockers are resolved and new ones appear.
+- *Files whose changed lines cannot be resolved gate on all findings.* When both
+  the GitHub API patch and the local `git diff` fallback fail for a file, its
+  **every** finding counts toward the gate (fail-closed) — including pre-existing
+  ones on lines the PR did not touch — but no inline comments are attempted for
+  it (off-diff anchors would be rejected); such findings appear only in the run
+  Summary.
+- *Minified/vendored naming conventions are a deliberate blind spot.* Files
+  matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
+  are never linted — a partner can place code there and the gate will not see
+  it. Skipped files are listed in the run Summary so a human reviewer can see
+  when coverage of a change was partial.
 
 ### `default.workflow.yml` / `deploy.workflow.yml` — build & artifact
 
