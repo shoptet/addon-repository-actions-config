@@ -51,6 +51,7 @@ const RELIABLE_RULES = new Set([
   'shoptet/prefer-fetch', // new XMLHttpRequest
   'shoptet/no-core-overwrite', // global shoptet.* = …
   'shoptet/no-czech-comments', // Czech-specific diacritics in a comment
+  'shoptet/no-global-console', // window./globalThis./self.console access
 
   // ── stylelint: factual CSS checks ──
   'unit-disallowed-list',

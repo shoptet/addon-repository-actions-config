@@ -14,5 +14,6 @@ module.exports = {
     'no-testid-selector': require('./shoptet-no-testid-selector'), // B7
     'prefer-fetch': require('./shoptet-prefer-fetch'), // E2
     'no-czech-comments': require('./shoptet-no-czech-comments'), // I1
+    'no-global-console': require('./shoptet-no-global-console'), // F3 (window.console bypass)
   },
 };

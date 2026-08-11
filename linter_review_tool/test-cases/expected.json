@@ -29,6 +29,9 @@
     "shoptet/no-core-overwrite@blocker",
     "shoptet/no-settimeout-hack@blocker"
   ],
+  "bad/bad-global-console.js": [
+    "shoptet/no-global-console@blocker"
+  ],
   "bad/bad-legacy-script.js": [
     "no-console@blocker",
     "no-implicit-globals@blocker",

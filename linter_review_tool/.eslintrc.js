@@ -29,6 +29,8 @@ module.exports = {
     'no-param-reassign': ['error', { props: false }], // A3
     'eqeqeq': ['error', 'always'], // E4
     'no-console': 'error', // F3
+    // F3 ❌ — window./globalThis./self.console would bypass core no-console
+    'shoptet/no-global-console': 'error',
     'no-unused-vars': [
       'error',
       { vars: 'all', args: 'after-used', ignoreRestSiblings: false },
