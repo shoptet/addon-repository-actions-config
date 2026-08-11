@@ -96,15 +96,4 @@ module.exports = {
     $: 'readonly',
     jQuery: 'readonly',
   },
-  overrides: [
-    {
-      files: ['*.config.js', 'webpack.config.js'],
-      env: {
-        node: true,
-      },
-      rules: {
-        'no-console': 'off',
-      },
-    },
-  ],
 };

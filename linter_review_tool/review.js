@@ -8,7 +8,7 @@ const { lintHtml } = require('./linters/html-linter');
 const { isReliable } = require('./profiles');
 
 const PATTERNS = {
-  js: '**/*.js',
+  js: '**/*.{js,mjs,cjs}',
   styles: '**/*.{css,scss,less}',
   html: '**/*.{html,htm}',
 };
@@ -19,8 +19,8 @@ const PATTERNS = {
 // CI run Summary) so partial coverage is visible, and it is documented in the
 // README known limitations.
 const IGNORE = [
-  '**/*.min.{js,css,scss,less}',
-  '**/*.bundle.{js,css,scss,less}',
+  '**/*.min.{js,mjs,cjs,css,scss,less}',
+  '**/*.bundle.{js,mjs,cjs,css,scss,less}',
   '**/node_modules/**',
   '**/dist/**',
   '**/vendor/**',
@@ -34,7 +34,7 @@ async function collect(targetPath, pattern) {
 function isIgnoredPath(filePath) {
   return (
     /(^|\/)(node_modules|dist|vendor)\//.test(filePath) ||
-    /\.(min|bundle)\.(js|css|scss|less)$/i.test(filePath)
+    /\.(min|bundle)\.(js|mjs|cjs|css|scss|less)$/i.test(filePath)
   );
 }
 
@@ -55,7 +55,7 @@ async function collectSkipped(targetPath) {
 
 function classifyFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.js') return 'js';
+  if (ext === '.js' || ext === '.mjs' || ext === '.cjs') return 'js';
   if (ext === '.css' || ext === '.scss' || ext === '.less') return 'styles';
   if (ext === '.html' || ext === '.htm') return 'html';
   return null;
@@ -103,7 +103,7 @@ async function main() {
 
   const total = files.js.length + files.styles.length + files.html.length;
   if (total === 0) {
-    fail(rdjson, `No reviewable files (.js/.css/.scss/.html) found in ${targetPath}`);
+    fail(rdjson, `No reviewable files (.js/.mjs/.cjs/.css/.scss/.less/.html) found in ${targetPath}`);
   }
 
   // In rdjson mode stdout must stay pure JSON, so log to stderr.

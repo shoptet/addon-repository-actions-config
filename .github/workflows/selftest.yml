@@ -10,10 +10,15 @@ on:
     paths:
       - 'linter_review_tool/**'
       - '.github/workflows/selftest.yml'
+      # The reconcile github-script require()s lib/reconcile-utils.js from the
+      # tool — run the suite when the workflow changes too, so at least the
+      # shared-module contract is exercised (full script harness = follow-up).
+      - '.github/workflows/checks.workflow.yml'
   pull_request:
     paths:
       - 'linter_review_tool/**'
       - '.github/workflows/selftest.yml'
+      - '.github/workflows/checks.workflow.yml'
 
 jobs:
   selftest:

@@ -4,6 +4,9 @@
     "no-console@blocker",
     "no-unused-vars@blocker"
   ],
+  "bad/bad-console.mjs": [
+    "no-console@blocker"
+  ],
   "bad/bad-core-mutations.js": [
     "no-global-assign@blocker",
     "shoptet/no-core-overwrite@blocker"

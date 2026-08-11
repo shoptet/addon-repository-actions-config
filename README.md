@@ -84,6 +84,9 @@ the required Shoptet reviewer is assigned.
   `Object.setPrototypeOf(...)`, `Object.defineProperty(window, 'shoptet', …)`
   or multi-hop global chains (`window.window.shoptet…`). Accepted false
   negatives for a reliable-rules gate; the AI review covers the intent.
+- *A non-retryable posting failure on the first chunk suppresses that run's
+  remaining inline comments.* The verdict, the failing check and the complete
+  Summary table are unaffected; the next push posts the missing comments.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see

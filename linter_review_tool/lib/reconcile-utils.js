@@ -43,6 +43,9 @@ function parseAddedLines(diff) {
  * review comments. Includes the line number on purpose: two identical findings
  * in one file could not be told apart without it (the cost — line shifts
  * re-create threads — is documented in the README known limitations).
+ * The column is deliberately NOT included: two same-rule/same-message findings
+ * on one line collapse into a single comment, which is one actionable item for
+ * the author, not a lost finding (gating is unaffected).
  */
 function findingFingerprint(d) {
   return crypto

@@ -272,6 +272,11 @@ jobs:
                     break;
                   }
                 }
+                // NOTE: aborting here after a chunk-0 non-retryable failure also
+                // suppresses all remaining chunks for this run — a deliberate
+                // trade-off (documented in README): the gate (setFailed) and the
+                // complete Summary table are unaffected, and retrying subsequent
+                // chunks after a systemic 4xx would likely fail the same way.
                 if (!posted) break; // stop hammering the API — the Summary table has the full list
                 if (ci < chunks.length - 1) await new Promise(r => setTimeout(r, 10000));
               }
