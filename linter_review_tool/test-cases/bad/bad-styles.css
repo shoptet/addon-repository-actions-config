@@ -3,3 +3,8 @@
   border: 1pt solid #cccccc;
   line-height: 14pt;
 }
+
+/* rem/em below the 16px-root minimum must be flagged too (round 5). */
+.tiny-rem {
+  font-size: 0.5rem;
+}
