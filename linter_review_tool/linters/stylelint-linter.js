@@ -3,6 +3,7 @@
  * findings in the shared review format. SCSS files use the postcss-scss syntax.
  */
 
+const os = require('os');
 const path = require('path');
 const stylelint = require('stylelint');
 
@@ -11,7 +12,11 @@ const CONFIG_FILE = path.join(__dirname, '..', '.stylelintrc.js');
 async function runStylelint(files, customSyntax, findings) {
   if (!files.length) return;
 
-  const options = { files, configFile: CONFIG_FILE };
+  // ignorePath: devNull neutralizes a repo-level .stylelintignore — otherwise a
+  // partner could silently drop src/*.css from the gate without it showing in
+  // the Summary's skipped list (symmetric with useEslintrc:false on the ESLint
+  // side; ESLint additionally runs with cwd = the tool, not the repo).
+  const options = { files, configFile: CONFIG_FILE, ignorePath: os.devNull };
   if (customSyntax) options.customSyntax = customSyntax;
 
   const { results } = await stylelint.lint(options);

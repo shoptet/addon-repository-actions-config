@@ -2,10 +2,13 @@
  * F3. Zero-console policy — global-object counterpart of core `no-console`.
  *
  * ESLint's `no-console` matches only the bare `console` global, so
- * `window.console.log(...)`, `globalThis['console'].warn(...)` or aliasing
- * `const c = window.console` would bypass the blocker. This rule flags ANY
- * reference to `console` reached through a global object (dotted or computed),
- * closing the same bypass class handled by global-callee for other rules.
+ * `window.console.log(...)` or `globalThis['console'].warn(...)` would bypass
+ * the blocker. This rule flags member ACCESS on a console reached through a
+ * global object (dotted or computed) — mirroring core no-console semantics:
+ * a bare reference (feature detection `if (window.console)`) produces no
+ * output and is not flagged, and aliasing the console object itself
+ * (`const c = window.console`) is an accepted false negative on both sides
+ * (core no-console does not catch `const c = console` either).
  */
 
 const { GLOBAL_OBJECTS, memberName } = require('./global-callee');
@@ -33,12 +36,16 @@ module.exports = {
         if (
           node.object.type === 'Identifier' &&
           GLOBAL_OBJECTS.has(node.object.name) &&
-          memberName(node) === 'console'
+          memberName(node) === 'console' &&
+          // Only property/method access ON the console (window.console.log —
+          // called or not); a bare reference is a read, not output.
+          node.parent.type === 'MemberExpression' &&
+          node.parent.object === node
         ) {
           context.report({
-            node,
+            node: node.parent,
             messageId: 'globalConsole',
-            data: { path: sourceCode.getText(node) },
+            data: { path: sourceCode.getText(node.parent) },
           });
         }
       },

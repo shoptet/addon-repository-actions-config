@@ -27,7 +27,9 @@ module.exports = {
     'no-implied-eval': 'error', // A1
     'no-script-url': 'error', // A1
     'no-param-reassign': ['error', { props: false }], // A3
-    'eqeqeq': ['error', 'always'], // E4
+    // E4 ❌ — but `x == null` is the deliberate, safe nullish guard (matches
+    // exactly null/undefined, no coercion surprises) and must not gate.
+    'eqeqeq': ['error', 'always', { null: 'ignore' }],
     'no-console': 'error', // F3
     // F3 ❌ — window./globalThis./self.console would bypass core no-console
     'shoptet/no-global-console': 'error',
