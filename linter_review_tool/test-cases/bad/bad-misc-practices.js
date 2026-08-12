@@ -2,8 +2,9 @@ function buildLink(url, target) {
   // A5: target="_blank" without rel
   const html = `<a href="${url}" target="_blank">link</a>`;
 
-  // E4: loose equality
-  if (target == null) {
+  // E4: loose equality — a DANGEROUS compare ('' == 0 is true); `== null` is
+  // the allowed nullish-guard exception and must NOT be used here.
+  if (target == '') {
     return html;
   }
 
