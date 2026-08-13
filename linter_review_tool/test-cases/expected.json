@@ -35,6 +35,17 @@
   "bad/bad-global-console.js": [
     "shoptet/no-global-console@blocker"
   ],
+  "bad/bad-js-practices.js": [
+    "camelcase@recommend",
+    "no-extend-native@recommend",
+    "no-mixed-spaces-and-tabs@recommend",
+    "no-redeclare@blocker",
+    "no-unused-expressions@blocker",
+    "no-useless-concat@recommend",
+    "no-var@blocker",
+    "prefer-template@recommend",
+    "radix@recommend"
+  ],
   "bad/bad-legacy-script.js": [
     "no-console@blocker",
     "no-implicit-globals@blocker",
@@ -46,11 +57,19 @@
     "a11y/img-alt@blocker",
     "html/deprecated-tag@recommend"
   ],
+  "bad/bad-max-lines.js": [
+    "max-lines@recommend"
+  ],
   "bad/bad-misc-practices.js": [
     "eqeqeq@blocker",
     "no-param-reassign@blocker",
     "no-unused-vars@blocker",
     "shoptet/no-redundant-checks@recommend"
+  ],
+  "bad/bad-security.js": [
+    "no-eval@blocker",
+    "no-implied-eval@blocker",
+    "no-script-url@blocker"
   ],
   "bad/bad-settimeout-coercions.js": [
     "shoptet/no-settimeout-hack@blocker"
@@ -61,8 +80,18 @@
   "bad/bad-shoptet-overwrite.js": [
     "shoptet/no-core-overwrite@blocker"
   ],
+  "bad/bad-structure.js": [
+    "complexity@recommend",
+    "max-lines-per-function@recommend",
+    "max-nested-callbacks@blocker",
+    "max-statements@recommend"
+  ],
   "bad/bad-styles-broken.css": [
     "CssSyntaxError@blocker"
+  ],
+  "bad/bad-styles-invalid.css": [
+    "color-no-invalid-hex@blocker",
+    "no-duplicate-at-import-rules@recommend"
   ],
   "bad/bad-styles-overrides.scss": [
     "declaration-no-important@recommend",
@@ -71,15 +100,15 @@
   ],
   "bad/bad-styles.css": [
     "shoptet/min-font-size@recommend",
-    "unit-disallowed-list@recommend"
+    "shoptet/no-pt-unit@recommend"
   ],
   "bad/bad-styles.less": [
     "shoptet/min-font-size@recommend",
-    "unit-disallowed-list@recommend"
+    "shoptet/no-pt-unit@recommend"
   ],
   "bad/bad-styles.scss": [
     "shoptet/min-font-size@recommend",
-    "unit-disallowed-list@recommend"
+    "shoptet/no-pt-unit@recommend"
   ],
   "bad/bad-syntax-error.js": [
     "CodeQuality@blocker"
@@ -97,8 +126,14 @@
   "bad/bad-testid.js": [
     "shoptet/no-testid-selector@blocker"
   ],
+  "bad/bad-upper.JS": [
+    "no-console@blocker"
+  ],
   "bad/bad-var-usage.js": [
     "no-unused-vars@blocker",
     "no-var@blocker"
+  ],
+  "bad/bad-xhr.js": [
+    "shoptet/prefer-fetch@recommend"
   ]
 }

@@ -1,11 +1,10 @@
 /**
- * B5. Lifecycle / race conditions — no setTimeout(fn, 0) hacks
+ * B5. Zero-delay setTimeout is banned in addons — period.
  *
- * Initialization must not bypass the Shoptet lifecycle via setTimeout with a
- * zero (or missing) delay. Such hacks run before the DOM/content is ready and
- * cause race conditions. Hook the proper lifecycle event instead:
- * DOMContentLoaded for the first load, ShoptetDOMContentLoaded (idempotently)
- * for AJAX-loaded content.
+ * A deterministic rule cannot tell a lifecycle hack from a "harmless" deferral,
+ * so the policy is a blanket ban (confirmed decision, review round 7): for
+ * init, hook the lifecycle events; to defer work until after render, use
+ * requestAnimationFrame. Both alternatives are named in the message.
  */
 
 const { globalCalleeName } = require('./global-callee');
@@ -43,7 +42,7 @@ module.exports = {
     },
     messages: {
       zeroTimeout:
-        'Avoid setTimeout(fn, 0) lifecycle hacks. Hook the proper lifecycle event instead — DOMContentLoaded for first load, ShoptetDOMContentLoaded (idempotently) for AJAX content (B5).',
+        'Zero-delay setTimeout is not allowed in addons. For initialization hook the lifecycle — DOMContentLoaded for first load, ShoptetDOMContentLoaded (idempotently) for AJAX content; to defer work until after render use requestAnimationFrame (B5).',
     },
     schema: [],
   },

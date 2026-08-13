@@ -3,12 +3,15 @@ module.exports = {
     './stylelint-rules/min-font-size',
     './stylelint-rules/max-z-index',
     './stylelint-rules/no-testid-selector',
+    './stylelint-rules/no-pt-unit',
   ],
   rules: {
     // B7 ❌ — binding styles to Shoptet testids (blocker, mirrors the ESLint rule)
     'shoptet/no-testid-selector': true,
-    // H1 — consistent units: disallow pt, prefer px
-    'unit-disallowed-list': [['pt'], { severity: 'warning' }],
+    // H1 — consistent units: no pt outside @media print (custom rule — the
+    // stock unit-disallowed-list cannot scope by media and false-positives
+    // on legitimate print styles)
+    'shoptet/no-pt-unit': [true, { severity: 'warning' }],
     // H3 — keep text readable
     'shoptet/min-font-size': [12, { severity: 'warning' }],
     // H1 — avoid z-index wars

@@ -48,9 +48,12 @@ function parseAddedLines(diff) {
  * the author, not a lost finding (gating is unaffected).
  */
 function findingFingerprint(d) {
+  // JSON.stringify, not join('\n'): a field containing a newline (paths are
+  // partner-controlled, messages are raw linter output) must not make two
+  // different findings collide in `wanted` and silently drop one.
   return crypto
     .createHash('sha1')
-    .update([d.location.path, d.location.range.start.line, d.code?.value || '', d.message].join('\n'))
+    .update(JSON.stringify([d.location.path, d.location.range.start.line, d.code?.value || '', d.message]))
     .digest('hex');
 }
 

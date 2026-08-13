@@ -22,8 +22,15 @@ const ruleFunction = (primary) => (root, result) => {
   });
   if (!validOptions) return;
 
+  // Compare only when the WHOLE value is numeric — parseFloat would read just
+  // the leading number of SCSS/LESS arithmetic ('200 - 150' → 200) and
+  // false-positive on expressions that compute below the max.
+  const NUMERIC_VALUE = /^[+-]?\d*\.?\d+(e\d+)?$/i;
+
   root.walkDecls(/^z-index$/i, (decl) => {
-    const value = parseFloat(decl.value); // parseInt would read '1e9' as 1
+    const raw = decl.value.trim();
+    if (!NUMERIC_VALUE.test(raw)) return;
+    const value = parseFloat(raw);
     if (!Number.isNaN(value) && value > max) {
       stylelint.utils.report({
         result,

@@ -27,7 +27,9 @@ const IGNORE = [
 ];
 
 async function collect(targetPath, pattern) {
-  return glob(pattern, { nodir: true, cwd: targetPath, absolute: true, ignore: IGNORE });
+  // nocase: uppercase extensions (Foo.JS) must not silently escape the linter
+  // on the case-sensitive CI filesystem (isIgnoredPath is case-insensitive too).
+  return glob(pattern, { nodir: true, cwd: targetPath, absolute: true, ignore: IGNORE, nocase: true });
 }
 
 /** Does a path match the IGNORE conventions? (single-file mode + skip listing) */
@@ -46,7 +48,7 @@ function isIgnoredPath(filePath) {
 async function collectSkipped(targetPath) {
   const patterns = Object.values(PATTERNS);
   const [all, kept] = await Promise.all([
-    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'] }))),
+    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'], nocase: true }))),
     Promise.all(patterns.map((p) => collect(targetPath, p))),
   ]);
   const keptSet = new Set(kept.flat());

@@ -54,7 +54,7 @@ const RELIABLE_RULES = new Set([
   'shoptet/no-global-console', // window./globalThis./self.console access
 
   // ── stylelint: factual CSS checks ──
-  'unit-disallowed-list',
+  'shoptet/no-pt-unit', // pt outside @media print
   'declaration-no-important',
   'no-duplicate-selectors',
   'no-duplicate-at-import-rules',
