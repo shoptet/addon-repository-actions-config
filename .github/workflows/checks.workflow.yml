@@ -170,7 +170,16 @@ jobs:
             const mine = new Map();
             for (const c of existing) {
               const m = markerRe.exec(c.body || '');
-              if (m && c.user && c.user.login === 'github-actions[bot]') mine.set(m[1], c.id);
+              if (!m || !c.user || c.user.login !== 'github-actions[bot]') continue;
+              if (mine.has(m[1])) {
+                // Duplicate fingerprint (e.g. two runs racing through the
+                // cancel-in-progress window). Overwriting the map entry would
+                // orphan the older comment forever — delete the duplicate now.
+                try { await github.rest.pulls.deleteReviewComment({ owner, repo, comment_id: c.id }); }
+                catch (error) { core.warning(`Could not delete duplicate comment ${c.id}: ${error.message}`); }
+                continue;
+              }
+              mine.set(m[1], c.id);
             }
 
             // Gate on all commentable blockers (independent of how many we post).

@@ -11,18 +11,23 @@
 const { globalCalleeName } = require('./global-callee');
 
 /**
- * A delay argument that is (or coerces to) 0 at runtime:
- * 0, '0', '', ' ', null, false, undefined, void 0, -0, +0.
+ * A delay argument that effectively runs at 0 at runtime: numeric values < 1
+ * (browsers floor sub-1ms and clamp negatives to 0), '0'/'' strings, null,
+ * false, undefined, void 0, empty array (ToNumber([]) === 0).
  */
 function isZeroDelay(node) {
   if (!node) return false;
   if (node.type === 'Literal') {
-    if (node.value === 0 || node.value === null || node.value === false) return true;
-    return typeof node.value === 'string' && Number(node.value) === 0;
+    if (node.value === null || node.value === false) return true;
+    if (typeof node.value === 'number') return node.value < 1;
+    return typeof node.value === 'string' && Number(node.value) < 1 && !Number.isNaN(Number(node.value));
   }
   if (node.type === 'Identifier' && node.name === 'undefined') return true;
+  if (node.type === 'ArrayExpression' && node.elements.length === 0) return true; // ToNumber([]) → 0
   if (node.type === 'UnaryExpression') {
     if (node.operator === 'void') return true; // void <anything> → undefined → 0
+    // Any negated numeric literal is clamped to 0 by the browser.
+    if (node.operator === '-' && node.argument.type === 'Literal' && typeof node.argument.value === 'number') return true;
     if (node.operator === '-' || node.operator === '+') return isZeroDelay(node.argument);
   }
   return false;
@@ -46,7 +51,7 @@ module.exports = {
   create(context) {
     return {
       CallExpression(node) {
-        if (globalCalleeName(node.callee) !== 'setTimeout') {
+        if (globalCalleeName(node.callee, context.getScope()) !== 'setTimeout') {
           return;
         }
 

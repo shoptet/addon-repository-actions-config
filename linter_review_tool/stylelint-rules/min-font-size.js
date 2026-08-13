@@ -33,8 +33,8 @@ const ruleFunction = (primary) => (root, result) => {
   });
   if (!validOptions) return;
 
-  root.walkDecls(/^font-size$/i, (decl) => {
-    const match = SIZE_VALUE.exec(decl.value.trim());
+  function checkSize(decl, rawValue) {
+    const match = SIZE_VALUE.exec(rawValue);
     if (!match) return;
 
     const unit = match[2].toLowerCase();
@@ -44,9 +44,25 @@ const ruleFunction = (primary) => (root, result) => {
         result,
         ruleName,
         node: decl,
-        word: decl.value,
-        message: messages.tooSmall(decl.value.trim(), min),
+        word: rawValue,
+        message: messages.tooSmall(rawValue, min),
       });
+    }
+  }
+
+  root.walkDecls(/^font-size$/i, (decl) => {
+    checkSize(decl, decl.value.trim());
+  });
+
+  // The `font` shorthand sets the size too (`font: 8px Arial`) — the size is
+  // the first length token, optionally with a /line-height suffix.
+  root.walkDecls(/^font$/i, (decl) => {
+    for (const token of decl.value.trim().split(/\s+/)) {
+      const sizePart = token.split('/')[0];
+      if (SIZE_VALUE.test(sizePart)) {
+        checkSize(decl, sizePart);
+        break;
+      }
     }
   });
 };

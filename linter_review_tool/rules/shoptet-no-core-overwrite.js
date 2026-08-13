@@ -37,7 +37,9 @@ function targetsGlobalShoptet(memberExpr, scope) {
   const base = inner.object;
   if (!base || base.type !== 'Identifier') return false;
   if (SHOPTET_GLOBALS.has(base.name)) return isGlobalBinding(scope, base.name);
-  if (GLOBAL_OBJECTS.has(base.name)) return SHOPTET_GLOBALS.has(memberName(inner));
+  if (GLOBAL_OBJECTS.has(base.name)) {
+    return isGlobalBinding(scope, base.name) && SHOPTET_GLOBALS.has(memberName(inner));
+  }
   return false;
 }
 
@@ -49,7 +51,8 @@ function isGlobalShoptetRef(node, scope) {
   if (
     node.type === 'MemberExpression' &&
     node.object.type === 'Identifier' &&
-    GLOBAL_OBJECTS.has(node.object.name)
+    GLOBAL_OBJECTS.has(node.object.name) &&
+    isGlobalBinding(scope, node.object.name)
   ) {
     return SHOPTET_GLOBALS.has(memberName(node));
   }

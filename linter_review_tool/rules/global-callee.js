@@ -21,13 +21,18 @@ function memberName(node) {
   return null;
 }
 
-function globalCalleeName(callee) {
+function globalCalleeName(callee, scope) {
   if (!callee) return null;
-  if (callee.type === 'Identifier') return callee.name;
+  // A local binding shadowing the name (const self = this, a local setTimeout
+  // helper, …) is NOT the global — scope-check both branches.
+  if (callee.type === 'Identifier') {
+    return isGlobalBinding(scope, callee.name) ? callee.name : null;
+  }
   if (
     callee.type === 'MemberExpression' &&
     callee.object.type === 'Identifier' &&
-    GLOBAL_OBJECTS.has(callee.object.name)
+    GLOBAL_OBJECTS.has(callee.object.name) &&
+    isGlobalBinding(scope, callee.object.name)
   ) {
     return memberName(callee);
   }

@@ -11,7 +11,7 @@
  * (core no-console does not catch `const c = console` either).
  */
 
-const { GLOBAL_OBJECTS, memberName } = require('./global-callee');
+const { GLOBAL_OBJECTS, memberName, isGlobalBinding } = require('./global-callee');
 
 module.exports = {
   meta: {
@@ -36,6 +36,8 @@ module.exports = {
         if (
           node.object.type === 'Identifier' &&
           GLOBAL_OBJECTS.has(node.object.name) &&
+          // const self = this — a local binding is not the global object
+          isGlobalBinding(context.getScope(), node.object.name) &&
           memberName(node) === 'console' &&
           // Only property/method access ON the console (window.console.log —
           // called or not); a bare reference is a read, not output.

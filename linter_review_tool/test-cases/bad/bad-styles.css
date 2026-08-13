@@ -8,3 +8,8 @@
 .tiny-rem {
   font-size: 0.5rem;
 }
+
+/* The font shorthand sets the size too (round 6). */
+.shorthand {
+  font: 8px Arial;
+}

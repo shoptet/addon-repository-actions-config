@@ -24,7 +24,7 @@ module.exports = {
   create(context) {
     return {
       NewExpression(node) {
-        if (globalCalleeName(node.callee) === 'XMLHttpRequest') {
+        if (globalCalleeName(node.callee, context.getScope()) === 'XMLHttpRequest') {
           context.report({ node, messageId: 'preferFetch' });
         }
       },

@@ -4,3 +4,6 @@ setTimeout(initB, false);
 setTimeout(initC, '');
 setTimeout(initD, undefined);
 setTimeout(initE, void 0);
+setTimeout(initF, []);
+setTimeout(initG, 0.4);
+setTimeout(initH, -1);
