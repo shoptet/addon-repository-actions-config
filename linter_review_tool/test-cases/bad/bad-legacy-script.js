@@ -6,3 +6,5 @@ var settings = { mode: 'legacy' };
 with (settings) {
   console.log(mode);
 }
+function initColorBox() { return conf; }
+initColorBox();

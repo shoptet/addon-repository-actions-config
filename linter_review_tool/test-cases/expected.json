@@ -39,7 +39,8 @@
     "no-console@blocker",
     "no-implicit-globals@blocker",
     "no-var@blocker",
-    "shoptet/es-module-required@blocker"
+    "shoptet/es-module-required@blocker",
+    "shoptet/no-core-overwrite@blocker"
   ],
   "bad/bad-markup.html": [
     "a11y/img-alt@blocker",
@@ -58,7 +59,6 @@
     "shoptet/no-settimeout-hack@blocker"
   ],
   "bad/bad-shoptet-overwrite.js": [
-    "no-unused-vars@blocker",
     "shoptet/no-core-overwrite@blocker"
   ],
   "bad/bad-styles-broken.css": [

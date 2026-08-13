@@ -107,13 +107,25 @@ module.exports = {
           return;
         }
 
-        if (node.left.type === 'Identifier') {
+        if (
+          node.left.type === 'Identifier' &&
+          // A partner's own local of the same name (let initColorBox; …) cannot
+          // overwrite the global — only an undeclared/global binding gates.
+          isGlobalBinding(context.getScope(), node.left.name)
+        ) {
           reportCoreFunction(node, node.left.name);
         }
       },
 
       FunctionDeclaration(node) {
-        if (node.id) reportCoreFunction(node, node.id.name);
+        if (!node.id) return;
+        // The declaration's binding lives in the ENCLOSING scope. Only the true
+        // global scope (script-mode top level) can overwrite the core — a
+        // module-scope or nested declaration is the partner's own function.
+        const enclosing = context.getScope().upper;
+        if (enclosing && enclosing.type === 'global') {
+          reportCoreFunction(node, node.id.name);
+        }
       },
 
       // delete shoptet.x
