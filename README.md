@@ -87,6 +87,14 @@ the required Shoptet reviewer is assigned.
 - *A non-retryable posting failure on the first chunk suppresses that run's
   remaining inline comments.* The verdict, the failing check and the complete
   Summary table are unaffected; the next push posts the missing comments.
+- *Two blockers encode a documented assumption rather than a pure fact.*
+  `shoptet/no-testid-selector` treats any string literal containing the
+  attribute-selector form `[data-testid` as selector binding — a prose string
+  that merely quotes it (e.g. an error message) also gates. `a11y/img-alt`
+  requires an `alt` attribute on every `<img>`, including decorative ones
+  marked `role="presentation"`/`aria-hidden="true"` (use `alt=""` there — a
+  cheap, always-valid fix). Both detections are deterministic; the false-positive
+  surface is tiny and accepted deliberately.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see
