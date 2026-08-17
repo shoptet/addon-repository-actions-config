@@ -38,9 +38,14 @@ module.exports = {
       { vars: 'all', args: 'after-used', ignoreRestSiblings: false },
     ], // F2
     'no-unreachable': 'error', // F2
-    'no-unused-expressions': 'error', // F2
-    // TDZ / use-before-define (catches ReferenceError on const/let/class used early)
-    'no-use-before-define': ['error', { functions: false, classes: true, variables: true }],
+    // F2 ❌ — but the everyday callback idioms `cb && cb()` and
+    // `cond ? a() : b()` must not gate; genuinely dead expressions still do.
+    'no-unused-expressions': ['error', { allowShortCircuit: true, allowTernary: true }],
+    // TDZ / use-before-define (catches ReferenceError on const/let/class used early).
+    // variables: false is the right cut — a reference from a NESTED scope (the
+    // "function above its config" pattern) cannot throw at runtime and must not
+    // gate; a genuine same-scope TDZ still does.
+    'no-use-before-define': ['error', { functions: false, classes: true, variables: false }],
     'no-var': 'error', // D1
     'no-implicit-globals': 'error', // D1
     'no-redeclare': 'error', // D1
