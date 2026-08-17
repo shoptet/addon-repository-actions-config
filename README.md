@@ -99,7 +99,16 @@ the required Shoptet reviewer is assigned.
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see
   it. Skipped files are listed in the run Summary so a human reviewer can see
-  when coverage of a change was partial.
+  when coverage of a change was partial. When **every** candidate file is
+  skipped, the run fails closed with a message saying so (not a green pass).
+- *Inline disable comments are honored.* `/* eslint-disable */` and
+  `/* stylelint-disable */` comments (file-wide, block or per-line) remove the
+  affected code from coverage with no trace in the findings or the Summary —
+  including unintentionally, e.g. inside snippets copied from vendor code.
+  Deliberate for now (fighting disables is a policy question, not a linting
+  one), but reviewers should treat a `-disable` comment appearing in a diff as
+  a signal worth reading. `reportUnusedDisableDirectives` is deliberately not
+  enabled: its reports carry no rule id and would map to a gating blocker.
 
 ### `default.workflow.yml` / `deploy.workflow.yml` — build & artifact
 

@@ -9,7 +9,7 @@
  * Deliberately out of scope (documented, not accidental): `em` (for font-size
  * it resolves against the PARENT's size — a fixed root assumption produces
  * false positives, e.g. 0.5em under a 40px parent is 20px), percentages and
- * keywords (parent-relative too). `pt` is caught by unit-disallowed-list.
+ * keywords (parent-relative too). `pt` is caught by shoptet/no-pt-unit.
  */
 
 const stylelint = require('stylelint');

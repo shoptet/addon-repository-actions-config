@@ -13,3 +13,10 @@
 .shorthand {
   font: 8px Arial;
 }
+
+/* "not print" targets everything EXCEPT print — no exemption (round 8). */
+@media not print {
+  .no-exemption {
+    line-height: 14pt;
+  }
+}

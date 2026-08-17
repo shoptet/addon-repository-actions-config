@@ -8,8 +8,9 @@
 
 // Only Czech/Slovak-distinctive letters (caron + ring). The shared acute vowels
 // (á é í ó ú) and umlauts (ä ö ü) are deliberately excluded — they also occur in
-// Spanish/French/German and in proper names ("café", "José", "Tomáš"), which
-// caused false positives. Trades recall for precision (this rule is now a warning).
+// Spanish/French/German and in proper names ("café", "José"), which caused false
+// positives. Note: caron-bearing names ("Tomáš") still match — an accepted
+// trade-off. Trades recall for precision (this rule is a warning).
 const DIACRITICS = /[ěščřžďťňůľĺŕ]/i;
 
 module.exports = {

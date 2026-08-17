@@ -16,16 +16,20 @@ const messages = stylelint.utils.ruleMessages(ruleName, {
 // A number immediately followed by the pt unit (12pt, .5pt, 1.25pt).
 const PT_VALUE = /(^|[\s,(/])[+-]?\d*\.?\d+pt(?![\w])/i;
 
-function isInsidePrintMedia(decl) {
+// A media query targets print only when a clause starts with (optionally
+// "only") print — "not print" targets everything EXCEPT print and must not
+// exempt anything.
+function targetsPrint(params) {
+  return (params || '').split(',').some((clause) => /^\s*(only\s+)?print\b/i.test(clause));
+}
+
+function isInsidePrintContext(decl) {
   for (let node = decl.parent; node; node = node.parent) {
-    if (
-      node.type === 'atrule' &&
-      typeof node.name === 'string' &&
-      node.name.toLowerCase() === 'media' &&
-      /\bprint\b/i.test(node.params || '')
-    ) {
-      return true;
-    }
+    if (node.type !== 'atrule' || typeof node.name !== 'string') continue;
+    const name = node.name.toLowerCase();
+    // @page is inherently a print context — pt is the conventional unit there.
+    if (name === 'page') return true;
+    if (name === 'media' && targetsPrint(node.params)) return true;
   }
   return false;
 }
@@ -38,8 +42,10 @@ const ruleFunction = (primary) => (root, result) => {
   if (!validOptions) return;
 
   root.walkDecls((decl) => {
-    if (!PT_VALUE.test(decl.value)) return;
-    if (isInsidePrintMedia(decl)) return;
+    // Strings and url() tokens are prose/filenames, not measurements.
+    const measurable = decl.value.replace(/"[^"]*"|'[^']*'|url\(\s*[^)]*\)/gi, ' ');
+    if (!PT_VALUE.test(measurable)) return;
+    if (isInsidePrintContext(decl)) return;
     stylelint.utils.report({
       result,
       ruleName,

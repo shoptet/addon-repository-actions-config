@@ -29,7 +29,13 @@ function runReview(target) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   });
-  return JSON.parse(stdout).diagnostics;
+  const payload = JSON.parse(stdout);
+  // A fixture misdetected as minified/vendored would pass "clean" vacuously —
+  // assert nothing in test-cases/ is ever skipped (round 8).
+  if ((payload.skipped || []).length) {
+    throw new Error(`${target}: fixtures unexpectedly skipped: ${payload.skipped.join(', ')}`);
+  }
+  return payload.diagnostics;
 }
 
 function groupRulesByFile(diagnostics) {
@@ -121,6 +127,16 @@ for (const c of parserCases) {
   if (JSON.stringify(got) === JSON.stringify(c.expect)) pass(c.name);
   else fail(`${c.name}: expected ${JSON.stringify(c.expect)}, got ${JSON.stringify(got)}`);
 }
+// parseAddedLines is single-file by contract — a concatenated multi-file diff
+// must throw, not silently mis-anchor (round 8).
+try {
+  parseAddedLines('diff --git a/a.js b/a.js\n@@ -0,0 +1 @@\n+x\ndiff --git a/b.js b/b.js\n@@ -0,0 +1 @@\n+y');
+  fail('parseAddedLines: multi-file diff should throw');
+} catch (e) {
+  if (/single-file/.test(e.message)) pass('parseAddedLines: multi-file diff throws (contract enforced)');
+  else fail(`parseAddedLines: threw the wrong error: ${e.message}`);
+}
+
 const mkFp = (path2, line, rule, message) => findingFingerprint({ location: { path: path2, range: { start: { line } } }, code: { value: rule }, message });
 const mkDiag = (line) => ({ location: { path: 'a.js', range: { start: { line } } }, code: { value: 'no-console' }, message: 'x' });
 if (findingFingerprint(mkDiag(5)) === findingFingerprint(mkDiag(5))) pass('fingerprint is deterministic');

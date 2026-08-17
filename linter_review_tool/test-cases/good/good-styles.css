@@ -8,3 +8,14 @@
 [data-testid-mine="own"] {
   color: green;
 }
+
+/* pt is the CORRECT unit in print contexts — the exemption is pinned here. */
+@media print {
+  .invoice {
+    font-size: 12pt;
+  }
+}
+@page {
+  margin: 2cm 1.5cm;
+  padding-top: 10pt;
+}

@@ -54,9 +54,11 @@ async function runStylelint(files, customSyntax, findings) {
 
 async function lintStyles(files) {
   const findings = [];
-  const cssFiles = files.filter((file) => file.endsWith('.css'));
-  const scssFiles = files.filter((file) => file.endsWith('.scss'));
-  const lessFiles = files.filter((file) => file.endsWith('.less'));
+  // toLowerCase: the glob collects with nocase, so styles.CSS must not slip
+  // through these filters unlinted (the styles half of the round-7 nocase fix).
+  const cssFiles = files.filter((file) => file.toLowerCase().endsWith('.css'));
+  const scssFiles = files.filter((file) => file.toLowerCase().endsWith('.scss'));
+  const lessFiles = files.filter((file) => file.toLowerCase().endsWith('.less'));
 
   await runStylelint(cssFiles, null, findings);
   await runStylelint(scssFiles, 'postcss-scss', findings);

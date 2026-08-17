@@ -1,0 +1,5 @@
+/* Uppercase extension: the nocase glob collects this file, and the stylelint
+   extension filters must still route it (round 8). */
+.elevate-upper {
+  color: #12ez45;
+}

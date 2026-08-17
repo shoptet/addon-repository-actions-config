@@ -8,7 +8,10 @@
 const crypto = require('crypto');
 
 /**
- * Parse a unified diff into the set of new-side line numbers that are additions.
+ * Parse a SINGLE-FILE unified diff into the set of new-side line numbers that
+ * are additions. Both callers honor this contract (one API `file.patch`, one
+ * single-path `git diff`); a concatenated multi-file diff throws — silently
+ * mis-anchoring every finding after the second file header would be worse.
  *
  * Edge cases covered (each pinned by the self-test):
  * - "\ No newline at end of file" is a marker, not a line — it must not shift
@@ -24,6 +27,9 @@ function parseAddedLines(diff) {
   let inHunk = false;
   for (const raw of diff.split('\n')) {
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+    if (raw.startsWith('diff --git ')) {
+      throw new Error('parseAddedLines expects a single-file diff (got a multi-file diff)');
+    }
     if (hunk) { newLine = parseInt(hunk[1], 10); inHunk = true; continue; }
     if (raw.startsWith('\\')) continue; // "\ No newline at end of file"
     // File headers ("+++ b/path") appear only BEFORE the first hunk. Inside a

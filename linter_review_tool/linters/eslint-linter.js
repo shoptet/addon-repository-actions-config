@@ -87,6 +87,10 @@ async function lintJavaScript(files) {
       });
       // Full findings from the script parse — the author gets the complete
       // picture in one run instead of fixing one parse error per push.
+      // Except no-unused-vars: in script mode a top-level function is a global
+      // whose callers (HTML onclick handlers) ESLint cannot see, so its
+      // positives are not trustworthy there. The module pass keeps the rule.
+      scriptResult.messages = scriptResult.messages.filter((m) => m.ruleId !== 'no-unused-vars');
       pushMessages(findings, scriptResult);
     }
   }

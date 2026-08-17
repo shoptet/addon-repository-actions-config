@@ -126,6 +126,9 @@
   "bad/bad-testid.js": [
     "shoptet/no-testid-selector@blocker"
   ],
+  "bad/bad-upper.CSS": [
+    "color-no-invalid-hex@blocker"
+  ],
   "bad/bad-upper.JS": [
     "no-console@blocker"
   ],

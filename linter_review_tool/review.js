@@ -105,7 +105,12 @@ async function main() {
 
   const total = files.js.length + files.styles.length + files.html.length;
   if (total === 0) {
-    fail(rdjson, `No reviewable files (.js/.mjs/.cjs/.css/.scss/.less/.html) found in ${targetPath}`);
+    // Fail closed either way — but say WHY: "all candidates skipped" is a very
+    // different situation from "nothing matched at all".
+    const message = files.skipped.length
+      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped as minified/vendored — nothing lintable.`
+      : `No reviewable files (.js/.mjs/.cjs/.css/.scss/.less/.html) found in ${targetPath}`;
+    fail(rdjson, message, files.skipped.map((f) => path.relative(process.cwd(), f)));
   }
 
   // In rdjson mode stdout must stay pure JSON, so log to stderr.
@@ -147,13 +152,14 @@ async function main() {
   process.exit(blockerCount > 0 ? 1 : 0);
 }
 
-function fail(rdjson, message) {
+function fail(rdjson, message, skipped = []) {
   // A hard error (missing src, no reviewable files, linter crash) must NOT look
   // like a clean run — exit non-zero so the CI step fails and reconcile is
   // skipped (fail-closed), instead of being read as "0 findings" and wiping the
-  // review state. Still write valid JSON to stdout for any lenient consumer.
+  // review state. Still write valid JSON to stdout for any lenient consumer,
+  // including the skipped list so the "why" is machine-readable too.
   if (rdjson) {
-    process.stdout.write(JSON.stringify({ source: { name: SOURCE_NAME }, diagnostics: [] }));
+    process.stdout.write(JSON.stringify({ source: { name: SOURCE_NAME }, diagnostics: [], skipped }));
   }
   console.error(`::error::${message}`);
   process.exit(1);
