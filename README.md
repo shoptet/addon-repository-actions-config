@@ -84,6 +84,11 @@ the required Shoptet reviewer is assigned.
   `Object.setPrototypeOf(...)`, `Object.defineProperty(window, 'shoptet', …)`
   or multi-hop global chains (`window.window.shoptet…`). Accepted false
   negatives for a reliable-rules gate; the AI review covers the intent.
+- *Files with more than ~20,000 changed lines cannot receive inline comments
+  at all.* GitHub's review API rejects comment anchors in such files ("diff
+  entry is too large"), and a single such anchor voids the whole comment chunk.
+  The workflow treats these files as unanchored up front: their findings still
+  gate and appear in the Summary, but no inline comments are attempted.
 - *A non-retryable posting failure on the first chunk suppresses that run's
   remaining inline comments.* The verdict, the failing check and the complete
   Summary table are unaffected; the next push posts the missing comments.

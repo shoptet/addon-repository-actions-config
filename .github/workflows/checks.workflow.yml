@@ -121,6 +121,16 @@ jobs:
             const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
             const commentable = new Map();
             for (const file of files) {
+              // GitHub refuses inline comments on files whose diff exceeds its
+              // ~20k-line render ceiling — the createReview call 422s ("diff
+              // entry is too large") and voids the WHOLE chunk. Measured
+              // empirically: 20,001 changed lines rejected, 5,001 accepted.
+              // Treat such files as unanchored up front: gate + Summary only.
+              if (file.changes > 20000) {
+                core.warning(`${file.filename}: ${file.changes} changed lines exceed GitHub's per-file comment ceiling — findings gate but appear only in the Summary.`);
+                commentable.set(file.filename, null);
+                continue;
+              }
               if (file.patch) {
                 commentable.set(file.filename, parseAddedLines(file.patch));
                 continue;
@@ -198,6 +208,9 @@ jobs:
             const unanchoredCount = [...unanchored].filter((key) => !mine.has(key)).length;
             const capped = fresh.slice(0, MAX_COMMENTS);
             const overflow = fresh.length - capped.length;
+            // ONE definition of "shown" for both the verdict body and the
+            // Summary header — the two must never disagree (round 9 nit).
+            const shown = total - overflow - unanchoredCount;
             const comments = capped.map(([key, d]) => {
               const icon = d.severity === 'ERROR' ? '❌' : '⚠️';
               const rule = d.code?.value ? ` \`${d.code.value}\`` : '';
@@ -225,7 +238,6 @@ jobs:
             let created = 0;
             if (comments.length || (blockers > 0 && !hasRequest)) {
               const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-              const shown = total - overflow - unanchoredCount; // inline comments visible on the PR
               const counts = `**${blockers}** blocker(s)`
                 + (recommendations > 0 ? ` and ${recommendations} recommendation(s)` : '');
               let body = blockers > 0
@@ -308,7 +320,11 @@ jobs:
             } else {
               core.summary.addRaw(
                 `Found **${blockers}** blocker(s) (❌) and **${recommendations}** recommendation(s) (⚠️) on changed lines` +
-                (overflow > 0 ? ` — ${total - overflow} of ${total} shown as PR comments, full list below.` : '.'),
+                (overflow > 0 || unanchoredCount > 0
+                  ? ` — ${shown} of ${total} shown as PR comments` +
+                    (unanchoredCount > 0 ? ` (${unanchoredCount} unanchored — inline comments not possible for their files)` : '') +
+                    `, full list below.`
+                  : '.'),
                 true
               );
               const rows = [...wanted.values()]

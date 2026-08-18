@@ -186,14 +186,17 @@ function dedupe(findings) {
   const seen = new Set();
   const unique = [];
   for (const finding of findings) {
-    const key = [
+    // JSON.stringify, not join('|') — same hardening as findingFingerprint:
+    // a message containing the separator must never make two different
+    // findings collide and silently drop one before the gate.
+    const key = JSON.stringify([
       finding.file,
       finding.line,
       finding.column,
       finding.ruleId,
       finding.message,
       finding.severity,
-    ].join('|');
+    ]);
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(finding);
