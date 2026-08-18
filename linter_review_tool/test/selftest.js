@@ -92,6 +92,34 @@ console.log('reconcile-utils:');
 const { parseAddedLines, findingFingerprint } = require('../lib/reconcile-utils');
 const parserCases = [
   {
+    // The round-9 regression pin: raw single-path `git diff` output carries
+    // exactly ONE `diff --git` header and MUST parse (the large-file fallback
+    // feeds it verbatim) — round 8 threw on it.
+    name: 'real git diff shape (one header + index + file headers) parses',
+    diff: 'diff --git a/src/app.js b/src/app.js\nindex 1234abc..5678def 100644\n--- a/src/app.js\n+++ b/src/app.js\n@@ -1,2 +1,3 @@\n ctx\n+added\n ctx2',
+    expect: [2],
+  },
+  {
+    name: 'git diff --unified=0 shape (no context) parses',
+    diff: 'diff --git a/f.js b/f.js\nindex 1111111..2222222 100644\n--- a/f.js\n+++ b/f.js\n@@ -0,0 +1,2 @@\n+one\n+two\n@@ -9 +11 @@\n-old\n+new',
+    expect: [1, 2, 11],
+  },
+  {
+    name: 'new-file diff (mode lines, /dev/null header) parses',
+    diff: 'diff --git a/n.js b/n.js\nnew file mode 100644\nindex 0000000..3333333\n--- /dev/null\n+++ b/n.js\n@@ -0,0 +1,2 @@\n+a\n+b',
+    expect: [1, 2],
+  },
+  {
+    name: 'ADDED content that looks like a diff header is not a header',
+    diff: '@@ -1,1 +1,3 @@\n keep();\n+diff --git a/x b/x\n+realBlocker();',
+    expect: [2, 3],
+  },
+  {
+    name: 'rename-only diff (header, no hunks) parses to an empty set',
+    diff: 'diff --git a/old.js b/new.js\nsimilarity index 100%\nrename from old.js\nrename to new.js',
+    expect: [],
+  },
+  {
     name: 'no-newline marker must not shift the counter',
     diff: '@@ -3 +3 @@\n-const x = oldLast;\n\\ No newline at end of file\n+const x = newLast;',
     expect: [3],

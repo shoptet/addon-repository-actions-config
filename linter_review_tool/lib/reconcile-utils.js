@@ -9,9 +9,12 @@ const crypto = require('crypto');
 
 /**
  * Parse a SINGLE-FILE unified diff into the set of new-side line numbers that
- * are additions. Both callers honor this contract (one API `file.patch`, one
- * single-path `git diff`); a concatenated multi-file diff throws — silently
- * mis-anchoring every finding after the second file header would be worse.
+ * are additions. The two callers pass different shapes of "single-file": an
+ * API `file.patch` carries NO `diff --git` header, raw single-path `git diff`
+ * output carries exactly ONE. Both must parse; a SECOND header means a
+ * concatenated multi-file diff and throws — silently mis-anchoring every
+ * finding after the second file header would be worse. (Round 8 threw on the
+ * first header, which killed the large-file `git diff` fallback — round 9.)
  *
  * Edge cases covered (each pinned by the self-test):
  * - "\ No newline at end of file" is a marker, not a line — it must not shift
@@ -25,11 +28,15 @@ function parseAddedLines(diff) {
   const lines = new Set();
   let newLine = 0;
   let inHunk = false;
+  let headers = 0;
   for (const raw of diff.split('\n')) {
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+    // Only a bare header counts: added/removed/context lines that CONTAIN
+    // "diff --git" start with +/-/space and never match here.
     if (raw.startsWith('diff --git ')) {
-      throw new Error('parseAddedLines expects a single-file diff (got a multi-file diff)');
+      if (++headers > 1) throw new Error('parseAddedLines expects a single-file diff (got a multi-file diff)');
+      continue;
     }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
     if (hunk) { newLine = parseInt(hunk[1], 10); inHunk = true; continue; }
     if (raw.startsWith('\\')) continue; // "\ No newline at end of file"
     // File headers ("+++ b/path") appear only BEFORE the first hunk. Inside a
