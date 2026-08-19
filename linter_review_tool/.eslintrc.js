@@ -33,10 +33,12 @@ module.exports = {
     'no-console': 'error', // F3
     // F3 ❌ — window./globalThis./self.console would bypass core no-console
     'shoptet/no-global-console': 'error',
+    // F2 ❌ — args: 'none': callback signatures are dictated by the API, not
+    // the author; an unused `event` param is not dead code. (Round 10.)
     'no-unused-vars': [
       'error',
-      { vars: 'all', args: 'after-used', ignoreRestSiblings: false },
-    ], // F2
+      { vars: 'all', args: 'none', ignoreRestSiblings: false },
+    ],
     'no-unreachable': 'error', // F2
     // F2 ❌ — but the everyday callback idioms `cb && cb()` and
     // `cond ? a() : b()` must not gate; genuinely dead expressions still do.

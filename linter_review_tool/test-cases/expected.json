@@ -1,8 +1,7 @@
 {
   "$comment": "Machine-checked spec for the linter self-test (test/selftest.js). Every file in test-cases/bad/ MUST list the exact sorted set of rule@severity pairs it triggers (severity is part of the gate contract: blocker gates the PR, recommend does not); every file in test-cases/good/ must produce zero findings. Update deliberately whenever rule behavior or severity changes.",
   "bad/bad-console.js": [
-    "no-console@blocker",
-    "no-unused-vars@blocker"
+    "no-console@blocker"
   ],
   "bad/bad-console.mjs": [
     "no-console@blocker"
@@ -15,7 +14,6 @@
     "shoptet/no-core-overwrite@blocker"
   ],
   "bad/bad-czech-comments.js": [
-    "no-unused-vars@blocker",
     "shoptet/no-czech-comments@recommend"
   ],
   "bad/bad-dead-code.js": [
@@ -25,8 +23,7 @@
     "prefer-const@recommend"
   ],
   "bad/bad-deep-nesting.js": [
-    "max-depth@blocker",
-    "no-unused-vars@blocker"
+    "max-depth@blocker"
   ],
   "bad/bad-global-bypass.js": [
     "shoptet/no-core-overwrite@blocker",
@@ -63,7 +60,6 @@
   "bad/bad-misc-practices.js": [
     "eqeqeq@blocker",
     "no-param-reassign@blocker",
-    "no-unused-vars@blocker",
     "shoptet/no-redundant-checks@recommend"
   ],
   "bad/bad-security.js": [
@@ -133,7 +129,6 @@
     "no-console@blocker"
   ],
   "bad/bad-var-usage.js": [
-    "no-unused-vars@blocker",
     "no-var@blocker"
   ],
   "bad/bad-xhr.js": [

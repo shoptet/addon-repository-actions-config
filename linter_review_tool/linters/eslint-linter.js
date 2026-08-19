@@ -12,8 +12,10 @@
  *   - fails both parses → genuinely broken JS: report the parse error itself.
  */
 
+const fs = require('fs');
 const path = require('path');
 const { ESLint } = require('eslint');
+const espree = require('espree');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -26,6 +28,29 @@ const BASE_OPTIONS = {
     shoptet: require('../rules'),
   },
 };
+
+// no-unused-vars is only trustworthy when the author actually opted into
+// module semantics: a file with no import/export statement parses as a module
+// all the same, but it ships as a classic script — its top-level functions may
+// be wired from HTML (onclick="…") and, through `var` hoisting, even nested
+// declarations reach the shared global scope, so ESLint cannot see the callers.
+// Checked on the AST, not with a regex (a comment mentioning "export" must not
+// count as module syntax). Filtering the WHOLE rule (not just top-level
+// declarations) is deliberate: hoisting makes "top-level" non-deterministic,
+// and accepted false negatives beat false positives in this profile.
+function usesModuleSyntax(filePath) {
+  try {
+    const ast = espree.parse(fs.readFileSync(filePath, 'utf8'), {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+    });
+    return ast.body.some(
+      (node) => node.type === 'ImportDeclaration' || node.type.startsWith('Export')
+    );
+  } catch {
+    return false; // not parseable here → the two-pass flow below handles it
+  }
+}
 
 function pushMessages(findings, result) {
   for (const message of result.messages) {
@@ -50,6 +75,12 @@ async function lintJavaScript(files) {
     if (result.messages.some((m) => m.fatal)) {
       moduleParseFailures.push(result);
     } else {
+      if (
+        result.messages.some((m) => m.ruleId === 'no-unused-vars') &&
+        !usesModuleSyntax(result.filePath)
+      ) {
+        result.messages = result.messages.filter((m) => m.ruleId !== 'no-unused-vars');
+      }
       pushMessages(findings, result);
     }
   }
@@ -89,7 +120,8 @@ async function lintJavaScript(files) {
       // picture in one run instead of fixing one parse error per push.
       // Except no-unused-vars: in script mode a top-level function is a global
       // whose callers (HTML onclick handlers) ESLint cannot see, so its
-      // positives are not trustworthy there. The module pass keeps the rule.
+      // positives are not trustworthy there. The module pass keeps the rule
+      // only for files that actually use module syntax (see usesModuleSyntax).
       scriptResult.messages = scriptResult.messages.filter((m) => m.ruleId !== 'no-unused-vars');
       pushMessages(findings, scriptResult);
     }
