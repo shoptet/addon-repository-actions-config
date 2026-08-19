@@ -101,12 +101,22 @@ jobs:
             const commit_id = context.payload.pull_request.head.sha;
             const base_sha = context.payload.pull_request.base.sha;
 
-            // We checked out HEAD, so the base commit may not be in local history —
-            // make sure it is before diffing against it (best-effort).
+            // The checkout ran with fetch-depth: 0, so the base commit is
+            // normally already present. Never fetch it with --depth=1: that
+            // GRAFTS the full clone (records the SHA in .git/shallow, cutting
+            // off its parents) even when the history is already there — and the
+            // three-dot diff below then dies with "no merge base" whenever the
+            // base branch has moved since the fork point, i.e. in normal
+            // traffic (round 11). Fetch only when the commit is genuinely
+            // absent, and then WITH history — the merge base needs it anyway.
             try {
-              execFileSync('git', ['fetch', '--no-tags', '--depth=1', 'origin', base_sha], { stdio: 'ignore' });
-            } catch (error) {
-              core.warning(`Could not fetch base ${base_sha.slice(0, 7)} for local diff: ${error.message}`);
+              execFileSync('git', ['cat-file', '-e', `${base_sha}^{commit}`], { stdio: 'ignore' });
+            } catch (absent) {
+              try {
+                execFileSync('git', ['fetch', '--no-tags', 'origin', base_sha], { stdio: 'ignore' });
+              } catch (error) {
+                core.warning(`Could not fetch base ${base_sha.slice(0, 7)} for local diff: ${error.message}`);
+              }
             }
 
             // Commentable = new-side line numbers of additions per file
