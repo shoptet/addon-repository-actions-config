@@ -1,0 +1,6 @@
+/* Dedicated pin: rem support in min-font-size (round 5). The per-file
+   snapshot only records rule sets, so this capability needs its own file —
+   a (px|rem) → (px) regression must fail CI (round 11). */
+.tiny-rem {
+  font-size: 0.5rem;
+}

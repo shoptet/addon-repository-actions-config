@@ -47,8 +47,11 @@ function isIgnoredPath(filePath) {
  */
 async function collectSkipped(targetPath) {
   const patterns = Object.values(PATTERNS);
+  // dot: true ONLY here — hidden files/dirs are never linted (tooling trees,
+  // not addon source), but they must surface in `skipped` instead of vanishing
+  // silently: the Summary's promise is that no coverage gap is silent (round 11).
   const [all, kept] = await Promise.all([
-    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'], nocase: true }))),
+    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'], nocase: true, dot: true }))),
     Promise.all(patterns.map((p) => collect(targetPath, p))),
   ]);
   const keptSet = new Set(kept.flat());
@@ -169,17 +172,24 @@ async function main() {
 
   if (rdjson) {
     // A successful run: emit the diagnostics; the CI reconcile step decides the
-    // PR verdict (blockers gate). Exit 0 so the workflow step counts as success.
+    // PR verdict (blockers gate). process.exitCode + natural exit, NOT
+    // process.exit(): exit() does not wait for a piped stdout to flush, so
+    // payloads over 64 KiB would be truncated mid-JSON — with exit 0 (round 11).
     process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped }));
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
 
   if (skipped.length) {
     info(`⏭️  ${skipped.length} file(s) skipped as minified/vendored: ${skipped.join(', ')}`);
   }
   const { blockerCount } = report(findings);
-  process.exit(blockerCount > 0 ? 1 : 0);
+  process.exitCode = blockerCount > 0 ? 1 : 0;
 }
+
+// Sentinel for fail(): aborts main() without process.exit(), so a piped stdout
+// always flushes completely (same 64 KiB concern as the success path).
+class HardFailure extends Error {}
 
 function fail(rdjson, message, skipped = []) {
   // A hard error (missing src, no reviewable files, linter crash) must NOT look
@@ -191,7 +201,8 @@ function fail(rdjson, message, skipped = []) {
     process.stdout.write(JSON.stringify({ source: { name: SOURCE_NAME }, diagnostics: [], skipped }));
   }
   console.error(`::error::${message}`);
-  process.exit(1);
+  process.exitCode = 1;
+  throw new HardFailure(message);
 }
 
 const SOURCE_NAME = 'Shoptet Addon Review';
@@ -263,6 +274,7 @@ function report(findings) {
 }
 
 main().catch((error) => {
+  if (error instanceof HardFailure) return; // already reported, exitCode set
   console.error(`::error::Fatal error: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
 });

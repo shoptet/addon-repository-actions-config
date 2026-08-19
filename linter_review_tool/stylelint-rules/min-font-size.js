@@ -33,12 +33,32 @@ const ruleFunction = (primary) => (root, result) => {
   });
   if (!validOptions) return;
 
+  // Entrance animations legitimately start tiny (font-size: 2px in a keyframe
+  // is not a resting size) — exempt @keyframes contexts entirely.
+  function isInsideKeyframes(decl) {
+    for (let node = decl.parent; node; node = node.parent) {
+      if (
+        node.type === 'atrule' &&
+        typeof node.name === 'string' &&
+        /^(-\w+-)?keyframes$/i.test(node.name)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function checkSize(decl, rawValue) {
     const match = SIZE_VALUE.exec(rawValue);
     if (!match) return;
+    if (isInsideKeyframes(decl)) return;
 
     const unit = match[2].toLowerCase();
     const px = unit === 'px' ? parseFloat(match[1]) : parseFloat(match[1]) * ROOT_PX; // unit === 'rem'
+    // Zero is text HIDING (image replacement, whitespace hacks), not small
+    // text — and unitless `font-size: 0` already passes, so flagging `0px`
+    // would be an inconsistency, not a policy.
+    if (px === 0) return;
     if (px < min) {
       stylelint.utils.report({
         result,

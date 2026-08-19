@@ -99,10 +99,19 @@
     "color-no-invalid-hex@blocker",
     "no-duplicate-at-import-rules@recommend"
   ],
+  "bad/bad-styles-not-print.css": [
+    "shoptet/no-pt-unit@recommend"
+  ],
   "bad/bad-styles-overrides.scss": [
     "declaration-no-important@recommend",
     "no-duplicate-selectors@recommend",
     "shoptet/max-z-index@recommend"
+  ],
+  "bad/bad-styles-rem.css": [
+    "shoptet/min-font-size@recommend"
+  ],
+  "bad/bad-styles-shorthand.css": [
+    "shoptet/min-font-size@recommend"
   ],
   "bad/bad-styles.css": [
     "shoptet/min-font-size@recommend",

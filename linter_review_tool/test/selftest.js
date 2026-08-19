@@ -255,5 +255,39 @@ if (symRun.status === 0 && symJson && symJson.diagnostics.some((d) => d.location
 }
 fs.rmSync(symTmp, { recursive: true, force: true });
 
+// rdjson stdout must survive a pipe even past 64 KiB — process.exit() would
+// truncate the async flush mid-JSON with exit 0 (round 11). execFileSync
+// captures through a pipe, which is exactly the failing medium.
+const bigTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-big-'));
+const bigBody = ['export const a = 1;']
+  .concat(Array.from({ length: 4000 }, (_, i) => `console.log(${i});`))
+  .join('\n');
+fs.writeFileSync(path.join(bigTmp, 'big.js'), bigBody + '\n');
+const bigRun = runRaw([bigTmp, '--rdjson']);
+let bigJson = null;
+try { bigJson = JSON.parse(bigRun.stdout); } catch (e) { /* handled below */ }
+if (bigRun.status === 0 && bigJson && bigJson.diagnostics.length >= 4000 && bigRun.stdout.length > 65536) {
+  pass(`rdjson stdout survives a pipe past 64 KiB (${bigRun.stdout.length} bytes, ${bigJson.diagnostics.length} findings)`);
+} else {
+  fail(`rdjson pipe contract broken: status ${bigRun.status}, bytes ${bigRun.stdout.length}, parsed ${bigJson ? bigJson.diagnostics.length : 'INVALID JSON'}`);
+}
+fs.rmSync(bigTmp, { recursive: true, force: true });
+
+// Dotted paths are never linted but must surface in skipped (round 11).
+const dotTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-dot-'));
+fs.mkdirSync(path.join(dotTmp, '.hidden'));
+fs.writeFileSync(path.join(dotTmp, '.hidden', 'inner.js'), 'export const x = eval("1");\n');
+fs.writeFileSync(path.join(dotTmp, 'app.js'), 'export const ok = 1;\n');
+const dotRun = runRaw([dotTmp, '--rdjson']);
+let dotJson = null;
+try { dotJson = JSON.parse(dotRun.stdout); } catch (e) { /* handled below */ }
+const dotSkipped = (dotJson && dotJson.skipped) || [];
+if (dotRun.status === 0 && dotJson && dotJson.diagnostics.length === 0 && dotSkipped.some((f) => f.includes('.hidden'))) {
+  pass('dotted paths surface in skipped (not linted, not silent)');
+} else {
+  fail(`dot contract broken: status ${dotRun.status}, skipped=${JSON.stringify(dotSkipped)}`);
+}
+fs.rmSync(dotTmp, { recursive: true, force: true });
+
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

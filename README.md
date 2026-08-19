@@ -106,6 +106,9 @@ the required Shoptet reviewer is assigned.
   it. Skipped files are listed in the run Summary so a human reviewer can see
   when coverage of a change was partial. When **every** candidate file is
   skipped, the run fails closed with a message saying so (not a green pass).
+- *Hidden (dot-prefixed) files and directories are never linted.* They are
+  tooling trees, not addon source — but since round 11 they surface in the
+  `skipped` list instead of vanishing silently, like every other coverage gap.
 - *Inline disable comments are honored.* `/* eslint-disable */` and
   `/* stylelint-disable */` comments (file-wide, block or per-line) remove the
   affected code from coverage with no trace in the findings or the Summary —
@@ -147,7 +150,12 @@ jobs:
     uses: shoptet/addon-repository-actions-config/.github/workflows/default.workflow.yml@main
     with:
       package_manager: pnpm # npm | yarn | pnpm
+      node_version: '20'    # optional — Node.js for the build (default '22')
 ```
+
+The build workflow also accepts a `node_version` input (passed to
+`actions/setup-node`), defaulting to `'22'` — set it when an addon needs a
+different Node major.
 
 The resolved package manager is used for the `setup-node` dependency cache, the install step (`npm ci` / `yarn` / `pnpm install --frozen-lockfile`) and the `build --env production` step. Existing Yarn-based addon repositories keep working without any change.
 

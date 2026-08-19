@@ -3,20 +3,3 @@
   border: 1pt solid #cccccc;
   line-height: 14pt;
 }
-
-/* rem/em below the 16px-root minimum must be flagged too (round 5). */
-.tiny-rem {
-  font-size: 0.5rem;
-}
-
-/* The font shorthand sets the size too (round 6). */
-.shorthand {
-  font: 8px Arial;
-}
-
-/* "not print" targets everything EXCEPT print — no exemption (round 8). */
-@media not print {
-  .no-exemption {
-    line-height: 14pt;
-  }
-}

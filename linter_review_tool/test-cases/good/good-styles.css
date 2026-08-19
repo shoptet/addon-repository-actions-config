@@ -19,3 +19,18 @@
   margin: 2cm 1.5cm;
   padding-top: 10pt;
 }
+
+/* Zero is text hiding, not small text — must not flag (round 11). */
+.hide-text {
+  font-size: 0px;
+}
+
+/* Entrance animations legitimately start tiny — @keyframes is exempt. */
+@keyframes text-pop {
+  from {
+    font-size: 2px;
+  }
+  to {
+    font-size: 14px;
+  }
+}
