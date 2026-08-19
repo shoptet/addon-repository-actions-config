@@ -34,8 +34,10 @@ async function collect(targetPath, pattern) {
 
 /** Does a path match the IGNORE conventions? (single-file mode + skip listing) */
 function isIgnoredPath(filePath) {
+  // /i on BOTH halves — the globs collect nocase, so DIST/app.js must be
+  // ignored in single-file mode exactly like dist/app.js is in dir mode.
   return (
-    /(^|\/)(node_modules|dist|vendor)\//.test(filePath) ||
+    /(^|\/)(node_modules|dist|vendor)\//i.test(filePath) ||
     /\.(min|bundle)\.(js|mjs|cjs|css|scss|less)$/i.test(filePath)
   );
 }
@@ -140,7 +142,7 @@ async function main() {
     // Fail closed either way — but say WHY: "all candidates skipped" is a very
     // different situation from "nothing matched at all".
     const message = files.skipped.length
-      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped as minified/vendored — nothing lintable.`
+      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/hidden/symlinked) — nothing lintable.`
       : `No reviewable files (.js/.mjs/.cjs/.css/.scss/.less/.html) found in ${targetPath}`;
     fail(rdjson, message, files.skipped.map((f) => path.relative(process.cwd(), f)));
   }
@@ -181,7 +183,7 @@ async function main() {
   }
 
   if (skipped.length) {
-    info(`⏭️  ${skipped.length} file(s) skipped as minified/vendored: ${skipped.join(', ')}`);
+    info(`⏭️  ${skipped.length} file(s) skipped (minified/vendored/hidden/symlinked): ${skipped.join(', ')}`);
   }
   const { blockerCount } = report(findings);
   process.exitCode = blockerCount > 0 ? 1 : 0;

@@ -18,6 +18,11 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 // Both casings are Shoptet core globals (both are declared readonly in .eslintrc.js).
 const SHOPTET_GLOBALS = new Set(['shoptet', 'Shoptet']);
 
+/** `shoptet?.x` arrives wrapped in ChainExpression — unwrap before matching. */
+function unwrapChain(node) {
+  return node && node.type === 'ChainExpression' ? node.expression : node;
+}
+
 /** Innermost MemberExpression of a chain — the one whose `.object` is the base. */
 function innermostMember(node) {
   let current = node;
@@ -128,14 +133,15 @@ module.exports = {
         }
       },
 
-      // delete shoptet.x
+      // delete shoptet.x (incl. delete shoptet?.x)
       UnaryExpression(node) {
+        const argument = unwrapChain(node.argument);
         if (
           node.operator === 'delete' &&
-          node.argument.type === 'MemberExpression' &&
-          targetsGlobalShoptet(node.argument, context.getScope())
+          argument.type === 'MemberExpression' &&
+          targetsGlobalShoptet(argument, context.getScope())
         ) {
-          report(node, node.argument);
+          report(node, argument);
         }
       },
 
@@ -162,16 +168,30 @@ module.exports = {
       // Object.assign(shoptet, …) / Object.defineProperty(shoptet, …)
       CallExpression(node) {
         const callee = node.callee;
+        if (callee.type !== 'MemberExpression') return;
+        // `Object` is resolved by SCOPE like every other identifier in this
+        // rule (a local `import Object from …` is not the built-in) — and the
+        // built-in reached through the global object counts too
+        // (window.Object.assign).
+        const base = callee.object;
+        const isBuiltinObject =
+          (base.type === 'Identifier' &&
+            base.name === 'Object' &&
+            isGlobalBinding(context.getScope(), 'Object')) ||
+          (base.type === 'MemberExpression' &&
+            base.object.type === 'Identifier' &&
+            GLOBAL_OBJECTS.has(base.object.name) &&
+            isGlobalBinding(context.getScope(), base.object.name) &&
+            memberName(base) === 'Object');
+        const arg0 = unwrapChain(node.arguments[0]);
         if (
-          callee.type === 'MemberExpression' &&
-          callee.object.type === 'Identifier' &&
-          callee.object.name === 'Object' &&
+          isBuiltinObject &&
           ['assign', 'defineProperty', 'defineProperties'].includes(memberName(callee)) &&
-          node.arguments[0] &&
-          (isGlobalShoptetRef(node.arguments[0], context.getScope()) ||
+          arg0 &&
+          (isGlobalShoptetRef(arg0, context.getScope()) ||
             // …including writes INTO a core sub-object: Object.assign(shoptet.config, …)
-            (node.arguments[0].type === 'MemberExpression' &&
-              targetsGlobalShoptet(node.arguments[0], context.getScope())))
+            (arg0.type === 'MemberExpression' &&
+              targetsGlobalShoptet(arg0, context.getScope())))
         ) {
           report(node, node.arguments[0]);
         }

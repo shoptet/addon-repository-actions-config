@@ -22,6 +22,11 @@ function isZeroDelay(node) {
     return typeof node.value === 'string' && Number(node.value) < 1 && !Number.isNaN(Number(node.value));
   }
   if (node.type === 'Identifier' && node.name === 'undefined') return true;
+  // `0` — an expression-less template coerces exactly like a string literal.
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
+    const cooked = node.quasis[0] && node.quasis[0].value.cooked;
+    return typeof cooked === 'string' && Number(cooked) < 1 && !Number.isNaN(Number(cooked));
+  }
   if (node.type === 'ArrayExpression' && node.elements.length === 0) return true; // ToNumber([]) → 0
   if (node.type === 'UnaryExpression') {
     if (node.operator === 'void') return true; // void <anything> → undefined → 0

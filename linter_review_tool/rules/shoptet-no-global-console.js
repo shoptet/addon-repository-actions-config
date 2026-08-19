@@ -31,7 +31,38 @@ module.exports = {
   create(context) {
     const sourceCode = context.getSourceCode();
 
+    // window.console / globalThis['console'] — the console slot itself.
+    function isGlobalConsoleRef(node) {
+      return (
+        node &&
+        node.type === 'MemberExpression' &&
+        node.object.type === 'Identifier' &&
+        GLOBAL_OBJECTS.has(node.object.name) &&
+        isGlobalBinding(context.getScope(), node.object.name) &&
+        memberName(node) === 'console'
+      );
+    }
+
+    function reportTamper(node, target) {
+      context.report({
+        node,
+        messageId: 'globalConsole',
+        data: { path: sourceCode.getText(target) },
+      });
+    }
+
     return {
+      // Tampering: window.console = fake (feature detection `if (window.console)`
+      // is a bare read and stays clean — pinned by good-console-detection.js).
+      AssignmentExpression(node) {
+        if (isGlobalConsoleRef(node.left)) reportTamper(node, node.left);
+      },
+      // Tampering: delete window.console
+      UnaryExpression(node) {
+        if (node.operator === 'delete' && isGlobalConsoleRef(node.argument)) {
+          reportTamper(node, node.argument);
+        }
+      },
       MemberExpression(node) {
         if (
           node.object.type === 'Identifier' &&

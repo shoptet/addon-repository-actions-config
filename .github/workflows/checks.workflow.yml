@@ -149,9 +149,14 @@ jobs:
                 // execFileSync (no shell) — `file.filename` is attacker-controlled
                 // (PR author names the file), so it must never reach `/bin/sh -c`.
                 // `--` additionally guards against git option injection.
+                // A renamed file needs BOTH paths in the pathspec — with only
+                // the new one, git cannot pair the rename and reports the whole
+                // file as added, mis-anchoring every comment (round 11).
+                const pathspec = ['--', file.filename];
+                if (file.previous_filename) pathspec.push(file.previous_filename);
                 const diff = execFileSync(
                   'git',
-                  ['diff', '--unified=0', `${base_sha}...${commit_id}`, '--', file.filename],
+                  ['diff', '--unified=0', `${base_sha}...${commit_id}`, ...pathspec],
                   { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }
                 );
                 commentable.set(file.filename, parseAddedLines(diff));
@@ -359,13 +364,13 @@ jobs:
                 ...rows,
               ]);
             }
-            // Surface files the linter deliberately skipped (minified/vendored),
+            // Surface files the linter deliberately skipped,
             // so a human reviewer can see when the gate's coverage was partial.
             if (skippedFiles.length) {
               const list = skippedFiles.slice(0, 20).map((f) => `\`${f}\``).join(', ');
               const more = skippedFiles.length > 20 ? ` … and ${skippedFiles.length - 20} more` : '';
               core.summary.addRaw(
-                `\n⏭️ **${skippedFiles.length} file(s) skipped** as minified/vendored/generated (not linted): ${list}${more}`,
+                `\n⏭️ **${skippedFiles.length} file(s) skipped** (minified/vendored/hidden/symlinked — not linted): ${list}${more}`,
                 true
               );
             }

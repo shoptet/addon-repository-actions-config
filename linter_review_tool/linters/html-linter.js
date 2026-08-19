@@ -13,6 +13,14 @@ const DEPRECATED_TAGS = new Set([
   'marquee',
   'blink',
   'tt',
+  'acronym',
+  'applet',
+  'dir',
+  'basefont',
+  'frame',
+  'frameset',
+  'xmp',
+  'plaintext',
   'strike',
 ]);
 

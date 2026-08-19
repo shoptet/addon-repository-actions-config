@@ -106,6 +106,10 @@ the required Shoptet reviewer is assigned.
   it. Skipped files are listed in the run Summary so a human reviewer can see
   when coverage of a change was partial. When **every** candidate file is
   skipped, the run fails closed with a message saying so (not a green pass).
+- *`<noscript>` content is invisible to the HTML checks.* parse5 parses with
+  scripting enabled, so `<noscript>` children are raw text — an `<img>` without
+  `alt` inside it escapes `a11y/img-alt`. Accepted miss for an advisory-scale
+  gate; the AI/human pass covers no-JS fallbacks.
 - *Hidden (dot-prefixed) files and directories are never linted.* They are
   tooling trees, not addon source — but since round 11 they surface in the
   `skipped` list instead of vanishing silently, like every other coverage gap.

@@ -33,12 +33,21 @@ module.exports = {
     return {
       'Program:exit'() {
         for (const comment of sourceCode.getAllComments()) {
-          if (DIACRITICS.test(comment.value)) {
-            context.report({
-              loc: comment.loc,
-              messageId: 'english',
-            });
-          }
+          // Anchor on the first line INSIDE the comment that carries the
+          // diacritics — a block comment's own loc spans the whole block, and
+          // the per-changed-line gate would drop a finding anchored on an
+          // unchanged first line (round 11).
+          const lines = comment.value.split('\n');
+          const index = lines.findIndex((line) => DIACRITICS.test(line));
+          if (index === -1) continue;
+          const line = comment.loc.start.line + index;
+          context.report({
+            loc: {
+              start: { line, column: 0 },
+              end: { line, column: lines[index].length },
+            },
+            messageId: 'english',
+          });
         }
       },
     };

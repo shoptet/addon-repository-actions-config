@@ -58,7 +58,8 @@ const pass = (msg) => console.log(`  ✓ ${msg}`);
 
 // ── 1+3: bad fixtures — exact rule sets + completeness ──────────────────────
 console.log('bad/ fixtures:');
-const badFindings = groupRulesByFile(runReview('test-cases/bad'));
+const badDiagnostics = runReview('test-cases/bad');
+const badFindings = groupRulesByFile(badDiagnostics);
 // Filter dotfiles — Finder drops .DS_Store uninvited and it is not a fixture.
 const badFilesOnDisk = fs.readdirSync(path.join(CASES, 'bad')).filter((f) => !f.startsWith('.')).map((f) => `bad/${f}`);
 
@@ -288,6 +289,35 @@ if (dotRun.status === 0 && dotJson && dotJson.diagnostics.length === 0 && dotSki
   fail(`dot contract broken: status ${dotRun.status}, skipped=${JSON.stringify(dotSkipped)}`);
 }
 fs.rmSync(dotTmp, { recursive: true, force: true });
+
+// Czech-comment findings must anchor on the line WITH the diacritics, not the
+// block comment's first line (round 11) — the set snapshot cannot see lines.
+{
+  const czechSource = fs.readFileSync(path.join(CASES, 'bad', 'bad-czech-comments.js'), 'utf8').split('\n');
+  const wantLine = czechSource.findIndex((l) => l.includes('Třetí řádek')) + 1;
+  const czechLines = badDiagnostics
+    .filter((d) => d.code.value === 'shoptet/no-czech-comments' && d.location.path.endsWith('bad-czech-comments.js'))
+    .map((d) => d.location.range.start.line);
+  if (wantLine > 0 && czechLines.includes(wantLine)) {
+    pass(`czech comment anchors on the diacritics line (${wantLine})`);
+  } else {
+    fail(`czech anchor broken: expected line ${wantLine} among [${czechLines.join(', ')}]`);
+  }
+}
+
+// Single-file mode must ignore case-insensitively like the dir globs (round 11).
+const distTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-dist-'));
+fs.mkdirSync(path.join(distTmp, 'DIST'));
+fs.writeFileSync(path.join(distTmp, 'DIST', 'app.js'), 'console.log(1);\n');
+const distRun = runRaw([path.join(distTmp, 'DIST', 'app.js'), '--rdjson']);
+let distJson = null;
+try { distJson = JSON.parse(distRun.stdout); } catch (e) { /* handled below */ }
+if (distRun.status === 1 && distJson && distJson.diagnostics.length === 0 && (distJson.skipped || []).length === 1) {
+  pass('single-file mode ignores DIST/ case-insensitively');
+} else {
+  fail(`single-file case contract broken: status ${distRun.status}, diags ${distJson ? distJson.diagnostics.length : 'n/a'}`);
+}
+fs.rmSync(distTmp, { recursive: true, force: true });
 
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
