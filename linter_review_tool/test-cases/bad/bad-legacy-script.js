@@ -8,3 +8,9 @@ with (settings) {
 }
 function initColorBox() { return conf; }
 initColorBox();
+
+// no-dupe-args: only expressible in non-strict script mode (round 10).
+function sum(a, a) {
+  return a + a;
+}
+sum(1, 2);

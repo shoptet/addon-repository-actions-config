@@ -45,7 +45,9 @@
   ],
   "bad/bad-legacy-script.js": [
     "no-console@blocker",
+    "no-dupe-args@blocker",
     "no-implicit-globals@blocker",
+    "no-redeclare@blocker",
     "no-var@blocker",
     "shoptet/es-module-required@blocker",
     "shoptet/no-core-overwrite@blocker"
@@ -61,6 +63,14 @@
     "eqeqeq@blocker",
     "no-param-reassign@blocker",
     "shoptet/no-redundant-checks@recommend"
+  ],
+  "bad/bad-runtime-facts.js": [
+    "no-const-assign@blocker",
+    "no-dupe-keys@blocker",
+    "no-func-assign@blocker",
+    "no-obj-calls@blocker",
+    "use-isnan@blocker",
+    "valid-typeof@blocker"
   ],
   "bad/bad-security.js": [
     "no-eval@blocker",

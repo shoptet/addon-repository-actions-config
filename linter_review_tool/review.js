@@ -63,6 +63,33 @@ function classifyFile(filePath) {
   return null;
 }
 
+/**
+ * Symlinked DIRECTORIES are a coverage gap glob will not descend into (and
+ * following them would escape the review tree and can loop on cycles), so they
+ * are surfaced in `skipped` instead — the Summary's promise is that no
+ * coverage gap is silent. Symlinked files are linted like any other file.
+ */
+function collectSymlinkedDirs(root) {
+  const found = [];
+  const walk = (dir) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        try {
+          if (fs.statSync(full).isDirectory()) found.push(full + path.sep);
+        } catch { /* dangling symlink — nothing behind it to review */ }
+      } else if (entry.isDirectory()) {
+        walk(full);
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
 async function gatherFiles(targetPath, stats) {
   if (stats.isDirectory()) {
     const [js, styles, html, skipped] = await Promise.all([
@@ -71,6 +98,8 @@ async function gatherFiles(targetPath, stats) {
       collect(targetPath, PATTERNS.html),
       collectSkipped(targetPath),
     ]);
+    skipped.push(...collectSymlinkedDirs(targetPath));
+    skipped.sort();
     return { js, styles, html, skipped };
   }
 

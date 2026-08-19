@@ -40,6 +40,15 @@ const RELIABLE_RULES = new Set([
   'max-lines-per-function',
   'max-statements',
   'complexity',
+  // runtime-fact family from eslint:recommended — deterministic guarantees
+  // of a runtime failure (TypeError and friends), ~zero-FP by construction
+  'no-const-assign',
+  'no-dupe-keys',
+  'no-dupe-args',
+  'no-obj-calls',
+  'no-func-assign',
+  'use-isnan',
+  'valid-typeof',
   // fatal parse errors surface with no ruleId → mapped to this catch-all
   'CodeQuality',
 
@@ -72,9 +81,10 @@ const RELIABLE_RULES = new Set([
   'html/deprecated-tag',
 ]);
 
-// Any rule not in the set above (e.g. eslint:recommended rules we don't
-// explicitly gate on) is dropped from the output. Heuristic/contextual checks
-// live in the AI review skill, not here.
+// Any rule not in the set above is dropped from the output — either it is
+// heuristic/contextual (the AI review skill's job, not this gate's), or it
+// simply has not been vetted against the zero-FP bar yet. Absence here is a
+// trust decision, not a claim that the rule is wrong.
 
 function isReliable(ruleId) {
   return RELIABLE_RULES.has(ruleId);

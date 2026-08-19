@@ -23,7 +23,7 @@ module.exports = {
     },
     messages: {
       globalConsole:
-        'Do not access the console through the global object (`{{path}}`) — production addons must not produce console output.',
+        'Do not access the console through the global object (`{{path}}`) — production addons must not access or tamper with the console.',
     },
     schema: [],
   },

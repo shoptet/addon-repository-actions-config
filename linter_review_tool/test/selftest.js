@@ -225,5 +225,35 @@ if (skipRun.status === 0 && (skipJson.skipped || []).some((f) => f.endsWith('lib
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 
+// Symlinked directories are a coverage gap glob will not descend into — they
+// must surface in `skipped` (round 10), not silently vanish. A symlinked FILE
+// is linted like any other (pinned via the blocker in linked.js).
+const symTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-sym-'));
+const outside = path.join(symTmp, 'outside');
+const srcDir = path.join(symTmp, 'src');
+fs.mkdirSync(outside); fs.mkdirSync(srcDir);
+fs.writeFileSync(path.join(outside, 'evil.js'), 'export const x = eval("1");\n');
+fs.writeFileSync(path.join(symTmp, 'shared.js'), 'export function used() { return eval("1"); }\n');
+fs.symlinkSync(outside, path.join(srcDir, 'linked-dir'));
+fs.symlinkSync(path.join(symTmp, 'shared.js'), path.join(srcDir, 'linked.js'));
+fs.writeFileSync(path.join(srcDir, 'app.js'), 'export const ok = 1;\n');
+const symRun = runRaw([srcDir, '--rdjson']);
+let symJson = null;
+try { symJson = JSON.parse(symRun.stdout); } catch (e) { /* handled below */ }
+const symSkipped = (symJson && symJson.skipped) || [];
+if (symSkipped.some((f) => f.includes('linked-dir'))) {
+  pass('symlinked directory surfaces in skipped');
+} else {
+  fail(`symlinked dir missing from skipped: ${JSON.stringify(symSkipped)}`);
+}
+// rdjson mode exits 0 on a successful run regardless of findings (the gate
+// lives in the workflow) — the pin is the diagnostic itself.
+if (symRun.status === 0 && symJson && symJson.diagnostics.some((d) => d.location.path.includes('linked.js'))) {
+  pass('symlinked file is linted like any other');
+} else {
+  fail(`symlinked file not linted: status ${symRun.status}, diags=${symJson ? symJson.diagnostics.length : 'n/a'}`);
+}
+fs.rmSync(symTmp, { recursive: true, force: true });
+
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
