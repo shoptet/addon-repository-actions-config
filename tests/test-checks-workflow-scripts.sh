@@ -78,6 +78,16 @@ cat > "$TMP/f5.json" <<'EOF'
 EOF
 run_case "exact-file rule is not a prefix match" "$TMP/files.js" "$TMP/f5.json" 0
 
+# the 3000-file fixture is generated, not hand-written
+node -e '
+const files = Array.from({ length: 3000 }, (unused, i) => ({ filename: `src/f${i}.js` }));
+process.stdout.write(JSON.stringify({
+  env: { PROTECTED_PATHS: ".github/workflows/" },
+  pr: { number: 1 },
+  files
+}));' > "$TMP/f6.json"
+run_case "3000-file PR fails closed (scope unverifiable)" "$TMP/files.js" "$TMP/f6.json" 1 'scope cannot be verified'
+
 ### collaborators-check — requested reviewers + submitted reviews
 
 cat > "$TMP/c1.json" <<'EOF'
@@ -176,9 +186,24 @@ cat > "$TMP/a6.json" <<'EOF'
 { "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer", "HOTFIX_BRANCH_PREFIX": "hotfix/", "HOTFIX_ALLOWED_PATH": "src/" },
   "pr": { "number": 7, "merged_by": { "login": "partner-dev" }, "head": { "ref": "hotfix/broken-banner" } },
   "files": [ { "filename": "src/banner.js" } ],
-  "comments": [ { "body": "older audit comment\n<!-- shoptet-merge-audit -->" } ] }
+  "comments": [ { "user": { "login": "github-actions[bot]" }, "body": "older audit comment\n<!-- shoptet-merge-audit -->" } ] }
 EOF
-run_case "re-run with existing marker comment does not post again" "$TMP/audit.js" "$TMP/a6.json" 0 'already present'
+run_case "re-run with existing bot marker comment does not post again" "$TMP/audit.js" "$TMP/a6.json" 0 'already present'
+
+cat > "$TMP/a6b.json" <<'EOF'
+{ "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer", "HOTFIX_BRANCH_PREFIX": "hotfix/", "HOTFIX_ALLOWED_PATH": "src/" },
+  "pr": { "number": 7, "merged_by": { "login": "partner-dev" }, "head": { "ref": "hotfix/broken-banner" } },
+  "files": [ { "filename": "src/banner.js" } ],
+  "comments": [ { "user": { "login": "partner-dev" }, "body": "unrelated comment\n<!-- shoptet-merge-audit -->" } ] }
+EOF
+run_case "a partner-authored marker does not pre-suppress the audit comment" "$TMP/audit.js" "$TMP/a6b.json" 0 'flagged for retroactive review'
+
+cat > "$TMP/a8.json" <<'EOF'
+{ "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer", "HOTFIX_BRANCH_PREFIX": "hotfix/", "HOTFIX_ALLOWED_PATH": "src/,assets/" },
+  "pr": { "number": 7, "merged_by": { "login": "partner-dev" }, "head": { "ref": "hotfix/broken-banner" } },
+  "files": [ { "filename": "src/banner.js" }, { "filename": "assets/logo.png" } ], "comments": [] }
+EOF
+run_case "HOTFIX_ALLOWED_PATH accepts a comma-separated list, same grammar as PROTECTED_PATHS" "$TMP/audit.js" "$TMP/a8.json" 0 'flagged for retroactive review'
 
 cat > "$TMP/a7.json" <<'EOF'
 { "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer", "HOTFIX_BRANCH_PREFIX": "hotfix/", "HOTFIX_ALLOWED_PATH": "src/" },

@@ -34,7 +34,15 @@ env:
 jobs:
   review:
     name: Review Code
-    if: github.event.action != 'closed'
+    # Skip only on closed+merged (merge-audit takes over from there). A
+    # closed-without-merge event still runs this job normally, so the real
+    # pass/fail status gets re-posted on the SAME event that closed the PR —
+    # this is what closes the close/reopen bypass a caller could otherwise
+    # hit by adding `closed` to its trigger types without `reopened`: a
+    # `skipped` conclusion counts as passing for required-status purposes,
+    # so skipping on every closed action (merged or not) would let a partner
+    # close a PR blocked by a red check and reopen it green.
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     # concurrency must sit at job level: GitHub ignores workflow-level
     # concurrency in a reusable workflow invoked via workflow_call
@@ -68,9 +76,12 @@ jobs:
 
   merge-audit:
     name: Merge audit
-    # Fires only once a PR is actually merged — the caller's pull_request
-    # trigger must list `closed` in its types, otherwise this job never runs.
-    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    # Fires only once a PR is actually merged — the caller's pull_request (or
+    # pull_request_target) trigger must list `closed` in its types, otherwise
+    # this job never runs. No event_name check: no other event carries a
+    # truthy github.event.pull_request.merged, and gating on 'pull_request'
+    # specifically would silently skip this job for pull_request_target callers.
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     # No concurrency group on purpose: the closed+merged event fires once per
     # PR lifetime, so there is nothing to supersede — and cancelling an
@@ -85,6 +96,11 @@ jobs:
             const MARKER = '<!-- shoptet-merge-audit -->';
             const authorized = process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim());
             const pr = context.payload.pull_request;
+            // Assumes a manual merge: with auto-merge, merged_by is who
+            // *enabled* it, not who triggered the actual merge, and a merge
+            // queue attributes to github-merge-queue[bot] — neither is
+            // expected on private Free-plan partner repos today. Revisit if
+            // auto-merge or merge queues become available to partners.
             const mergedBy = pr.merged_by?.login ?? 'unknown';
 
             if (authorized.includes(mergedBy)) {
@@ -103,7 +119,9 @@ jobs:
                   repo: context.repo.repo,
                   issue_number: pr.number,
                 });
-                if (existing.some(comment => comment.body?.includes(MARKER))) {
+                // Author-checked so a partner can't pre-suppress the audit
+                // comment by posting an ordinary comment containing the marker.
+                if (existing.some(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(MARKER))) {
                   console.log('Audit comment already present — not posting again.');
                   return;
                 }
@@ -120,30 +138,39 @@ jobs:
 
             // Hotfix exception: a partner may merge an urgent fix themselves,
             // provided the branch is named hotfix/* and the diff stays inside
-            // the allowed path. Review happens retroactively.
+            // the allowed path(s). Review happens retroactively. Same rule
+            // grammar as PROTECTED_PATHS above: comma-separated, an entry
+            // ending in '/' matches the whole directory, anything else is an
+            // exact file.
             const prefix = process.env.HOTFIX_BRANCH_PREFIX;
-            const allowedPath = process.env.HOTFIX_ALLOWED_PATH;
+            const allowedPathSpec = process.env.HOTFIX_ALLOWED_PATH;
+            const allowedRules = allowedPathSpec.split(',').map(rule => rule.trim()).filter(Boolean);
+            const isAllowed = (name) => allowedRules.some(rule =>
+              rule.endsWith('/') ? name.startsWith(rule) : name === rule
+            );
             const isHotfixBranch = pr.head.ref.startsWith(prefix);
             let outsideFiles = [];
+            let scopeUnverifiable = false;
             if (isHotfixBranch) {
               const files = await github.paginate(github.rest.pulls.listFiles, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: pr.number
               });
-              outsideFiles = [...new Set(files
-                .flatMap(file => file.previous_filename ? [file.filename, file.previous_filename] : [file.filename])
-                .filter(name => !name.startsWith(allowedPath)))];
               // the API lists at most 3000 files — beyond that the scope cannot
               // be verified, so fail closed instead of waving the PR through
               if (files.length >= 3000) {
-                outsideFiles.push(`(${files.length}+ changed files — scope cannot be verified)`);
+                scopeUnverifiable = true;
+              } else {
+                outsideFiles = [...new Set(files
+                  .flatMap(file => file.previous_filename ? [file.filename, file.previous_filename] : [file.filename])
+                  .filter(name => !isAllowed(name)))];
               }
             }
 
-            if (isHotfixBranch && outsideFiles.length === 0) {
+            if (isHotfixBranch && !scopeUnverifiable && outsideFiles.length === 0) {
               await postCommentOnce([
-                `🔥 **Hotfix merged by @${mergedBy} without prior Shoptet review** (branch \`${pr.head.ref}\`, changes limited to \`${allowedPath}\`).`,
+                `🔥 **Hotfix merged by @${mergedBy} without prior Shoptet review** (branch \`${pr.head.ref}\`, changes limited to \`${allowedPathSpec}\`).`,
                 '',
                 `${authorized.map(account => '@' + account).join(', ')} please review this change retroactively — if it does not hold up, revert it.`,
               ].join('\n'));
@@ -153,9 +180,11 @@ jobs:
 
             const shownOutside = outsideFiles.slice(0, 20).join(', ')
               + (outsideFiles.length > 20 ? ` — and ${outsideFiles.length - 20} more` : '');
-            const reason = isHotfixBranch
-              ? `the branch has the \`${prefix}\` prefix but the PR touches files outside \`${allowedPath}\`: ${shownOutside} — the hotfix exception covers only changes inside \`${allowedPath}\``
-              : `only hotfixes (branch \`${prefix}*\`, changes limited to \`${allowedPath}\`) may be merged by partners`;
+            const reason = scopeUnverifiable
+              ? `the PR has too many changed files to verify — scope cannot be verified, so the hotfix exception cannot be applied`
+              : isHotfixBranch
+                ? `the branch has the \`${prefix}\` prefix but the PR touches files outside \`${allowedPathSpec}\`: ${shownOutside} — the hotfix exception covers only changes inside \`${allowedPathSpec}\``
+                : `only hotfixes (branch \`${prefix}*\`, changes limited to \`${allowedPathSpec}\`) may be merged by partners`;
 
             await postCommentOnce([
               `⚠️ **This pull request was merged by @${mergedBy}, who is not a Shoptet reviewer.**`,
@@ -167,7 +196,9 @@ jobs:
 
   files-check:
     name: File Protection Check
-    if: github.event.action != 'closed'
+    # See the "review" job above: closed-without-merge must still run this
+    # job, or a partner could close+reopen past a red check.
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     concurrency:
       group: "pr-checks-files-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
@@ -186,6 +217,13 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number
             });
+
+            // the API lists at most 3000 files — beyond that protection cannot
+            // be verified, so fail closed instead of waving the PR through
+            if (files.length >= 3000) {
+              console.error(`Cannot verify protected paths: PR has ${files.length}+ changed files — scope cannot be verified`);
+              process.exit(1);
+            }
 
             const rules = process.env.PROTECTED_PATHS.split(',').map(rule => rule.trim()).filter(Boolean);
             const isProtected = (name) => rules.some(rule =>
@@ -206,7 +244,9 @@ jobs:
 
   collaborators-check:
     name: Shoptet reviewers assigned
-    if: github.event.action != 'closed'
+    # See the "review" job above: closed-without-merge must still run this
+    # job, or a partner could close+reopen past a red check.
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     concurrency:
       group: "pr-checks-collaborators-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
