@@ -3,6 +3,12 @@
  *
  * Huge z-index values ("z-index war") fight the eshop and other addons. Flags
  * numeric z-index declarations above the configured maximum.
+ *
+ * Deliberately NOT exempt inside @keyframes (unlike min-font-size): a z-index
+ * in a keyframe is a real stacking value while the animation runs — an
+ * animated jump above the cap still covers the shop's UI. A keyframe
+ * font-size, by contrast, interpolates toward a resting value that is checked
+ * where it is declared (decision, round 13).
  */
 
 const stylelint = require('stylelint');

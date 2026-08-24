@@ -185,7 +185,7 @@
     "shoptet/no-testid-selector@blocker"
   ],
   "bad/bad-testid.js": [
-    "shoptet/no-testid-selector@blocker:2"
+    "shoptet/no-testid-selector@blocker:3"
   ],
   "bad/bad-upper.CSS": [
     "color-no-invalid-hex@blocker"

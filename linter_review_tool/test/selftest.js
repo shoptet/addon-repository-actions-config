@@ -396,5 +396,20 @@ if (maxLen > 0 && maxLen <= 1020) pass(`finding messages are bounded (max ${maxL
 else fail(`message bound broken: max ${maxLen}`);
 fs.rmSync(longTmp, { recursive: true, force: true });
 
+// Testid findings in multi-line templates must anchor on the line WITH the
+// match (round 13) — same class of pin as the czech-comments anchor above.
+{
+  const testidSource = fs.readFileSync(path.join(CASES, 'bad', 'bad-testid.js'), 'utf8').split('\n');
+  const wantLine = testidSource.findIndex((l) => l.includes('[data-testid="price"]')) + 1;
+  const testidLines = badDiagnostics
+    .filter((d) => d.code.value === 'shoptet/no-testid-selector' && d.location.path.endsWith('bad-testid.js'))
+    .map((d) => d.location.range.start.line);
+  if (wantLine > 0 && testidLines.includes(wantLine)) {
+    pass(`testid anchors on the matching template line (${wantLine})`);
+  } else {
+    fail(`testid anchor broken: expected line ${wantLine} among [${testidLines.join(', ')}]`);
+  }
+}
+
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

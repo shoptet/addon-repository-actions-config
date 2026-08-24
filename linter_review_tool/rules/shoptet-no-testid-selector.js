@@ -34,13 +34,35 @@ module.exports = {
       }
     }
 
+    // Multi-line quasis anchor on the LINE with the match, not the literal's
+    // first line — a testid added to line 3 of an existing template would
+    // otherwise anchor on an unchanged line and be dropped by the
+    // per-changed-line gate (round 13; same technique as czech-comments).
+    function checkQuasi(quasi) {
+      const text = quasi.value.cooked;
+      if (typeof text !== 'string') return;
+      const lines = text.split('\n');
+      const index = lines.findIndex((line) => TESTID_PATTERN.test(line));
+      if (index === -1) return;
+      const line = quasi.loc.start.line + index;
+      const origin = index === 0 ? quasi.loc.start.column : 0;
+      const matchCol = lines[index].search(TESTID_PATTERN);
+      context.report({
+        loc: {
+          start: { line, column: origin + matchCol },
+          end: { line, column: origin + lines[index].length },
+        },
+        messageId: 'testid',
+      });
+    }
+
     return {
       Literal(node) {
         if (typeof node.value === 'string') check(node, node.value);
       },
       TemplateLiteral(node) {
         for (const quasi of node.quasis) {
-          check(node, quasi.value.cooked);
+          checkQuasi(quasi);
         }
       },
     };

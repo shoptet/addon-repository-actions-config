@@ -34,7 +34,9 @@ const ruleFunction = (primary) => (root, result) => {
   if (!validOptions) return;
 
   // Entrance animations legitimately start tiny (font-size: 2px in a keyframe
-  // is not a resting size) — exempt @keyframes contexts entirely.
+  // is not a resting size) — exempt @keyframes contexts entirely. (max-z-index
+  // deliberately does NOT share this exemption: an animated z-index is a real
+  // stacking value while it runs — round 13.)
   function isInsideKeyframes(decl) {
     for (let node = decl.parent; node; node = node.parent) {
       if (
