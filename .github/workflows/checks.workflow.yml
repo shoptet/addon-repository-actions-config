@@ -168,6 +168,17 @@ jobs:
             // Findings on changed lines only (off-diff lines are not commentable),
             // keyed by fingerprint. Findings from `null` files gate but are marked
             // unanchored — never posted inline (they'd 422), Summary carries them.
+            //
+            // Exception: FILE-LEVEL findings (fatal parse errors and the
+            // module-format blocker) gate even when anchored off-diff. The
+            // parser reports where it GIVES UP, not where the defect was
+            // introduced — an unbalanced brace added mid-file anchors lines
+            // later, even at EOF; dropping such a finding would fail OPEN on an
+            // everyday partner mistake (and dismiss a standing REQUEST_CHANGES).
+            // This also covers binary-looking files (UTF-16-saved .js): their
+            // diff has no hunks → empty commentable set → the parse blocker
+            // would otherwise vanish the same way (round 13).
+            const FILE_LEVEL_RULES = new Set(['CodeQuality', 'CssSyntaxError', 'stylelint/parse-error', 'shoptet/es-module-required']);
             const wanted = new Map();
             const unanchored = new Set();
             for (const d of diagnostics) {
@@ -176,12 +187,15 @@ jobs:
               // Only ERROR severity gates the PR (see `blockers` below).
               if (!commentable.has(d.location.path)) continue; // file not part of this PR
               const lines = commentable.get(d.location.path);
+              const key = fp(d);
               if (lines === null) {
-                const key = fp(d);
                 wanted.set(key, d);
                 unanchored.add(key);
               } else if (lines.has(d.location.range.start.line)) {
-                wanted.set(fp(d), d);
+                wanted.set(key, d);
+              } else if (FILE_LEVEL_RULES.has(d.code && d.code.value)) {
+                wanted.set(key, d);
+                unanchored.add(key); // gate + Summary, no inline anchor
               }
             }
 
