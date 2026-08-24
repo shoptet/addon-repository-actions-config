@@ -100,15 +100,26 @@ module.exports = {
 
     return {
       AssignmentExpression(node) {
-        if (
-          node.left.type === 'MemberExpression' &&
-          targetsGlobalShoptet(node.left, context.getScope())
-        ) {
-          context.report({
-            node,
-            messageId: 'shoptetMember',
-            data: { path: sourceCode.getText(node.left) },
-          });
+        if (node.left.type === 'MemberExpression') {
+          if (targetsGlobalShoptet(node.left, context.getScope())) {
+            context.report({
+              node,
+              messageId: 'shoptetMember',
+              data: { path: sourceCode.getText(node.left) },
+            });
+            return;
+          }
+          // window.initColorBox = … — the global-object spelling of a core
+          // function write (the classic legacy way to define globals), same
+          // treatment as the bare form below (round 12).
+          const inner = innermostMember(node.left);
+          if (
+            inner.object.type === 'Identifier' &&
+            GLOBAL_OBJECTS.has(inner.object.name) &&
+            isGlobalBinding(context.getScope(), inner.object.name)
+          ) {
+            reportCoreFunction(node, memberName(inner));
+          }
           return;
         }
 

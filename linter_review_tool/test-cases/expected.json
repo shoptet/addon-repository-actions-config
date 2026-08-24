@@ -19,6 +19,9 @@
   "bad/bad-core-optional-chain.js": [
     "shoptet/no-core-overwrite@blocker"
   ],
+  "bad/bad-core-window-function.js": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
   "bad/bad-core-window-object.js": [
     "shoptet/no-core-overwrite@blocker"
   ],

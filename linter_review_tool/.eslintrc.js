@@ -34,10 +34,13 @@ module.exports = {
     // F3 ❌ — window./globalThis./self.console would bypass core no-console
     'shoptet/no-global-console': 'error',
     // F2 ❌ — args: 'none': callback signatures are dictated by the API, not
-    // the author; an unused `event` param is not dead code. (Round 10.)
+    // the author; an unused `event` param is not dead code (round 10).
+    // ignoreRestSiblings: true — `const { password, ...safe } = user` is THE
+    // idiomatic key-omission in modern ESM; the "unused" name is the point
+    // (round 12).
     'no-unused-vars': [
       'error',
-      { vars: 'all', args: 'none', ignoreRestSiblings: false },
+      { vars: 'all', args: 'none', ignoreRestSiblings: true },
     ],
     'no-unreachable': 'error', // F2
     // F2 ❌ — but the everyday callback idioms `cb && cb()` and
