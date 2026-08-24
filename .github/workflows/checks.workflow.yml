@@ -52,6 +52,13 @@ jobs:
     steps:
       - name: Checkout addon code
         uses: actions/checkout@v6
+        with:
+          # Explicit SHA, not the default refs/pull/N/merge: GitHub stops
+          # maintaining that ref once a PR closes, and this job re-runs on a
+          # closed-without-merge event (see the guard above) — a merge ref
+          # that's gone stale or never existed (conflicted PRs) would
+          # otherwise fail checkout and stamp an errored red on the head SHA.
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Checkout review tool
         uses: actions/checkout@v6
@@ -83,9 +90,15 @@ jobs:
     # specifically would silently skip this job for pull_request_target callers.
     if: github.event.action == 'closed' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    # No concurrency group on purpose: the closed+merged event fires once per
-    # PR lifetime, so there is nothing to supersede — and cancelling an
-    # in-flight audit would serve no purpose.
+    # No cancel-in-progress: the closed+merged event fires once per PR
+    # lifetime under a single trigger, so there is normally nothing to
+    # supersede. The group still matters for a caller that declares both
+    # pull_request and pull_request_target with `closed` — that fires this
+    # job twice, concurrently; queueing (not cancelling) the second run means
+    # it sees the first run's marker comment and exits via the "already
+    # posted" path instead of double-posting.
+    concurrency:
+      group: "pr-checks-merge-audit-${{ github.repository_id }}-${{ github.event.pull_request.number }}"
     permissions:
       pull-requests: write
     steps:
