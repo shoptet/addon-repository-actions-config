@@ -21,7 +21,7 @@ grab = ->(job, step) {
 }
 File.write(files_js, grab.call("files-check", "Check protected files"))
 File.write(collab_js, grab.call("collaborators-check", "Check required reviewers"))
-' "$WORKFLOW" "$TMP/files.js" "$TMP/collab.js"
+' "$WORKFLOW" "$TMP/files.js" "$TMP/collab.js" || exit 1
 
 PASS=0
 FAIL=0
@@ -114,6 +114,20 @@ cat > "$TMP/c5.json" <<'EOF'
   "reviews": [ { "user": { "login": "shoptet-addon-reviewer" }, "state": "COMMENTED" } ] }
 EOF
 run_case "multiple required reviewers combine request + review" "$TMP/collab.js" "$TMP/c5.json" 0
+
+cat > "$TMP/c6.json" <<'EOF'
+{ "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer" },
+  "pr": { "number": 1, "requested_reviewers": [], "requested_teams": [] },
+  "reviews": [ { "user": { "login": "shoptet-addon-reviewer" }, "state": "CHANGES_REQUESTED" } ] }
+EOF
+run_case "a CHANGES_REQUESTED review still counts (deliberate)" "$TMP/collab.js" "$TMP/c6.json" 0
+
+cat > "$TMP/c7.json" <<'EOF'
+{ "env": { "REQUIRED_REVIEWER": "shoptet-addon-reviewer" },
+  "pr": { "number": 1, "requested_reviewers": [], "requested_teams": [] },
+  "reviews": [ { "user": { "login": "shoptet-addon-reviewer" }, "state": "DISMISSED" } ] }
+EOF
+run_case "a later-dismissed review still counts (deliberate)" "$TMP/collab.js" "$TMP/c7.json" 0
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="
