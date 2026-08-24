@@ -49,6 +49,15 @@ const RELIABLE_RULES = new Set([
   'no-func-assign',
   'use-isnan',
   'valid-typeof',
+  'no-import-assign',
+  'no-class-assign',
+  'getter-return',
+  'no-setter-return',
+  'no-dupe-else-if',
+  'no-self-assign',
+  // textbook production leftover — deterministic, zero-FP, parity with the
+  // zero-console policy (round 12)
+  'no-debugger',
   // fatal parse errors surface with no ruleId → mapped to this catch-all
   'CodeQuality',
 

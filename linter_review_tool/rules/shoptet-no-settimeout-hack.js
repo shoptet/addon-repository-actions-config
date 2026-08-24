@@ -8,6 +8,7 @@
  */
 
 const { globalCalleeName } = require('./global-callee');
+const { findVariable } = require('@eslint-community/eslint-utils');
 
 /**
  * A delay argument that effectively runs at 0 at runtime: numeric values < 1
@@ -53,6 +54,18 @@ module.exports = {
   },
 
   create(context) {
+    function resolvesToZeroConst(node, scope) {
+      if (!node || node.type !== 'Identifier') return false;
+      const variable = findVariable(scope, node);
+      if (!variable || variable.defs.length !== 1) return false;
+      const def = variable.defs[0];
+      // Only a `const` (no reassignment possible) with a literal initializer
+      // and no writes beyond that init — genuine zero, no data-flow guessing.
+      if (def.type !== 'Variable' || def.parent.kind !== 'const') return false;
+      if (variable.references.filter((r) => r.isWrite()).length > 1) return false;
+      return isZeroDelay(def.node.init);
+    }
+
     return {
       CallExpression(node) {
         if (globalCalleeName(node.callee, context.getScope()) !== 'setTimeout') {
@@ -67,9 +80,14 @@ module.exports = {
 
         // Zero (or omitted) delay — including forms that coerce to 0 at runtime
         // ('0', '', null, false, undefined, void 0, -0), so the blocker can't
-        // be evaded by respelling.
+        // be evaded by respelling — plus the named `const DELAY = 0` spelling,
+        // resolved through scope (const + single write + literal init is
+        // zero-FP; a reassignable `let` or a non-literal init is left alone).
+        const delayArg = node.arguments[1];
         const hasZeroDelay =
-          node.arguments.length === 1 || isZeroDelay(node.arguments[1]);
+          node.arguments.length === 1 ||
+          isZeroDelay(delayArg) ||
+          resolvesToZeroConst(delayArg, context.getScope());
 
         if (hasZeroDelay) {
           context.report({ node, messageId: 'zeroTimeout' });

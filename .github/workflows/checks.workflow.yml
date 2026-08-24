@@ -8,7 +8,6 @@ concurrency:
 
 permissions:
   contents: read
-  checks: write
   pull-requests: write
 
 env:
@@ -415,7 +414,6 @@ jobs:
     name: File Protection Check
     runs-on: ubuntu-latest
     permissions:
-      checks: write
       pull-requests: read
     steps:
       - name: Check protected files
@@ -444,7 +442,6 @@ jobs:
     name: Shoptet reviewers assigned
     runs-on: ubuntu-latest
     permissions:
-      checks: write
       pull-requests: read
     steps:
       - name: Check required reviewers

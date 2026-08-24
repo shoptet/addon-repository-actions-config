@@ -42,11 +42,11 @@ const ruleFunction = (primary) => (root, result) => {
   if (!validOptions) return;
 
   root.walkDecls((decl) => {
-    // SCSS variables ($invoice-size: 11pt) are definitions, not applied styles
-    // — where they are USED decides the print context. (postcss-scss parses
-    // them as declarations; the identical LESS idiom is an atrule and never
-    // reached this walk — this also restores SCSS/LESS parity.)
-    if (decl.prop.startsWith('$')) return;
+    // Variable/custom-property DEFINITIONS ($scss, --custom) are not applied
+    // styles — where they are USED decides the print context (round 11/12).
+    // (postcss-scss parses $vars as declarations; the identical LESS @var is an
+    // atrule and never reached this walk — so this also keeps SCSS/LESS parity.)
+    if (decl.prop.startsWith('$') || decl.prop.startsWith('--')) return;
     // Strings and url() tokens are prose/filenames, not measurements.
     const measurable = decl.value.replace(/"[^"]*"|'[^']*'|url\(\s*[^)]*\)/gi, ' ');
     if (!PT_VALUE.test(measurable)) return;

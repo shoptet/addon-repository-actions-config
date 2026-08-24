@@ -10,8 +10,10 @@ Runs the linter review tool (`linter_review_tool/`) over the addon source in `sr
 and reports findings directly on the pull request.
 
 **Linters:** ESLint (core rules + custom `shoptet/*` rules), stylelint
-(CSS/SCSS/LESS) and factual HTML checks. The exact set that gates the PR is
-`RELIABLE_RULES` in `linter_review_tool/profiles.js`.
+(CSS/SCSS/LESS) and factual HTML checks. The exact set the linter **reports** is
+`RELIABLE_RULES` in `linter_review_tool/profiles.js`; of those, only the
+error-severity (❌) subset gates the PR — ⚠️ rules are recommendations (see
+Behavior below).
 
 The linter runs the **reliable rule set only** (`linter_review_tool/profiles.js`):
 rules with ~zero false positives. It is a deterministic gate — heuristic /
@@ -43,7 +45,6 @@ jobs:
     uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@feature/linter-review-tool
     permissions:
       contents: read
-      checks: write
       pull-requests: write
 ```
 

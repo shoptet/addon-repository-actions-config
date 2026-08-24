@@ -15,6 +15,20 @@ const { GLOBAL_OBJECTS, memberName, isGlobalBinding } = require('./global-callee
 
 const CORE_FUNCTIONS = new Set(['initColorBox']);
 
+// A file with no import/export ships as a classic script (same argument the
+// no-unused-vars trust filter uses): its top-level function declarations bind
+// to the shared global scope and DO overwrite the core, even though ESLint
+// parses the file as a module and reports them at module scope. .mjs is a real
+// module by convention and is exempt. (round 12)
+function shipsAsClassicScript(context) {
+  const filename = context.getFilename();
+  if (/\.mjs$/i.test(filename)) return false;
+  const body = context.getSourceCode().ast.body;
+  return !body.some(
+    (node) => node.type === 'ImportDeclaration' || node.type.startsWith('Export')
+  );
+}
+
 // Both casings are Shoptet core globals (both are declared readonly in .eslintrc.js).
 const SHOPTET_GLOBALS = new Set(['shoptet', 'Shoptet']);
 
@@ -135,11 +149,17 @@ module.exports = {
 
       FunctionDeclaration(node) {
         if (!node.id) return;
-        // The declaration's binding lives in the ENCLOSING scope. Only the true
-        // global scope (script-mode top level) can overwrite the core — a
-        // module-scope or nested declaration is the partner's own function.
+        // The declaration's binding lives in the ENCLOSING scope. Script-mode
+        // top level is 'global'; a module-syntax-less file that ships as a
+        // classic script parses as a module but its top-level declaration
+        // (enclosing 'module') still leaks to the real global at runtime.
+        // A nested declaration is the partner's own function in both cases.
         const enclosing = context.getScope().upper;
-        if (enclosing && enclosing.type === 'global') {
+        if (!enclosing) return;
+        if (
+          enclosing.type === 'global' ||
+          (enclosing.type === 'module' && shipsAsClassicScript(context))
+        ) {
           reportCoreFunction(node, node.id.name);
         }
       },

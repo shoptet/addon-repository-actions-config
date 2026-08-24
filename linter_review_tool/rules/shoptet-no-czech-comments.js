@@ -41,10 +41,15 @@ module.exports = {
           const index = lines.findIndex((line) => DIACRITICS.test(line));
           if (index === -1) continue;
           const line = comment.loc.start.line + index;
+          // Column origin differs by line: the FIRST line of the comment value
+          // starts after the delimiter (// or /*) at start.column + 2; a
+          // continuation line starts at the source line's column 0.
+          const origin = index === 0 ? comment.loc.start.column + 2 : 0;
+          const matchCol = lines[index].search(DIACRITICS);
           context.report({
             loc: {
-              start: { line, column: 0 },
-              end: { line, column: lines[index].length },
+              start: { line, column: origin + matchCol },
+              end: { line, column: origin + lines[index].length },
             },
             messageId: 'english',
           });

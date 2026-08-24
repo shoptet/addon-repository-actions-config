@@ -9,6 +9,9 @@
   "bad/bad-console.mjs": [
     "no-console@blocker"
   ],
+  "bad/bad-core-module-scope-fn.js": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
   "bad/bad-core-mutations.js": [
     "no-global-assign@blocker",
     "shoptet/no-core-overwrite@blocker"
@@ -34,6 +37,9 @@
     "no-unused-vars@blocker",
     "prefer-const@recommend"
   ],
+  "bad/bad-debugger.js": [
+    "no-debugger@blocker"
+  ],
   "bad/bad-deep-nesting.js": [
     "max-depth@blocker"
   ],
@@ -46,6 +52,9 @@
   ],
   "bad/bad-html-deprecated-extra.html": [
     "html/deprecated-tag@recommend"
+  ],
+  "bad/bad-import-assign.js": [
+    "no-import-assign@blocker"
   ],
   "bad/bad-js-practices.js": [
     "camelcase@recommend",
@@ -90,12 +99,22 @@
     "use-isnan@blocker",
     "valid-typeof@blocker"
   ],
+  "bad/bad-runtime-facts2.js": [
+    "getter-return@blocker",
+    "no-class-assign@blocker",
+    "no-dupe-else-if@blocker",
+    "no-self-assign@blocker",
+    "no-setter-return@blocker"
+  ],
   "bad/bad-security.js": [
     "no-eval@blocker",
     "no-implied-eval@blocker",
     "no-script-url@blocker"
   ],
   "bad/bad-settimeout-coercions.js": [
+    "shoptet/no-settimeout-hack@blocker"
+  ],
+  "bad/bad-settimeout-named-const.js": [
     "shoptet/no-settimeout-hack@blocker"
   ],
   "bad/bad-settimeout-template.js": [
