@@ -27,7 +27,16 @@ module.exports = {
   create(context) {
     return {
       UnaryExpression(node) {
+        // Only the existence-CHECK shape: `typeof x` as an operand of a
+        // comparison. A bare `const kind = typeof shoptet;` is introspection,
+        // not a check — the message would be untrue there (round 13).
+        const parent = node.parent;
+        const isComparison =
+          parent &&
+          parent.type === 'BinaryExpression' &&
+          ['==', '===', '!=', '!=='].includes(parent.operator);
         if (
+          isComparison &&
           node.operator === 'typeof' &&
           node.argument.type === 'Identifier' &&
           ALWAYS_DEFINED.has(node.argument.name) &&

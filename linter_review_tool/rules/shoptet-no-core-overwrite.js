@@ -12,6 +12,7 @@
  */
 
 const { GLOBAL_OBJECTS, memberName, isGlobalBinding } = require('./global-callee');
+const { parsesAsScript } = require('./script-detect');
 
 const CORE_FUNCTIONS = new Set(['initColorBox']);
 
@@ -23,10 +24,10 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 function shipsAsClassicScript(context) {
   const filename = context.getFilename();
   if (/\.mjs$/i.test(filename)) return false;
-  const body = context.getSourceCode().ast.body;
-  return !body.some(
-    (node) => node.type === 'ImportDeclaration' || node.type.startsWith('Export')
-  );
+  // Script-parseability IS the question: import/export, import.meta and
+  // top-level await all fail it, so this cannot diverge from the linter's
+  // usesModuleSyntax again (round 13, shared helper).
+  return parsesAsScript(context.getSourceCode().text);
 }
 
 // Both casings are Shoptet core globals (both are declared readonly in .eslintrc.js).
@@ -104,6 +105,24 @@ module.exports = {
       }
     }
 
+    // Core names a top-level declaration can hijack: known core functions AND
+    // the core object itself — `function shoptet() {}` in a legacy script
+    // replaces the whole core, strictly worse than any property write (round 13).
+    function reportCoreName(node, name) {
+      if (CORE_FUNCTIONS.has(name)) {
+        context.report({ node, messageId: 'coreFunction', data: { name } });
+      } else if (SHOPTET_GLOBALS.has(name)) {
+        context.report({ node, messageId: 'shoptetMember', data: { path: name } });
+      }
+    }
+
+    // Does a top-level declaration in THIS file land in the real global scope
+    // at runtime? Script-mode top level always; module-parse top level only
+    // when the file ships as a classic script.
+    function topLevelLeaksToGlobal(scopeType) {
+      return scopeType === 'global' || (scopeType === 'module' && shipsAsClassicScript(context));
+    }
+
     function report(node, targetExpr) {
       context.report({
         node,
@@ -133,6 +152,17 @@ module.exports = {
             isGlobalBinding(context.getScope(), inner.object.name)
           ) {
             reportCoreFunction(node, memberName(inner));
+            return;
+          }
+          // Property writes ON a core function — bare spelling
+          // (initColorBox.cache = {}), symmetric with the window form above
+          // (round 13).
+          if (
+            inner.object.type === 'Identifier' &&
+            CORE_FUNCTIONS.has(inner.object.name) &&
+            isGlobalBinding(context.getScope(), inner.object.name)
+          ) {
+            reportCoreFunction(node, inner.object.name);
           }
           return;
         }
@@ -149,18 +179,35 @@ module.exports = {
 
       FunctionDeclaration(node) {
         if (!node.id) return;
-        // The declaration's binding lives in the ENCLOSING scope. Script-mode
-        // top level is 'global'; a module-syntax-less file that ships as a
-        // classic script parses as a module but its top-level declaration
-        // (enclosing 'module') still leaks to the real global at runtime.
-        // A nested declaration is the partner's own function in both cases.
+        // The declaration's binding lives in the ENCLOSING scope. A nested
+        // declaration is the partner's own function in both cases.
         const enclosing = context.getScope().upper;
-        if (!enclosing) return;
-        if (
-          enclosing.type === 'global' ||
-          (enclosing.type === 'module' && shipsAsClassicScript(context))
-        ) {
-          reportCoreFunction(node, node.id.name);
+        if (enclosing && topLevelLeaksToGlobal(enclosing.type)) {
+          reportCoreName(node, node.id.name);
+        }
+      },
+
+      // Top-level lexical bindings shadow the core for every later script:
+      // const/let/class initColorBox (incl. init-less let) — same harm as the
+      // assignment forms (round 13). Walked on Program.body: exactly the
+      // declarations whose binding can leak.
+      Program(node) {
+        // getScope() at Program returns the GLOBAL scope even in module mode
+        // (the module scope is its child) — resolve the actual top-level scope.
+        let scope = context.getScope();
+        if (scope.type === 'global') {
+          const moduleScope = scope.childScopes.find((s) => s.type === 'module' && s.block === node);
+          if (moduleScope) scope = moduleScope;
+        }
+        if (!topLevelLeaksToGlobal(scope.type)) return;
+        for (const stmt of node.body) {
+          if (stmt.type === 'VariableDeclaration') {
+            for (const declarator of stmt.declarations) {
+              if (declarator.id.type === 'Identifier') reportCoreName(declarator, declarator.id.name);
+            }
+          } else if (stmt.type === 'ClassDeclaration' && stmt.id) {
+            reportCoreName(stmt, stmt.id.name);
+          }
         }
       },
 

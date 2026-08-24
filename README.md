@@ -107,6 +107,16 @@ the required Shoptet reviewer is assigned.
   it. Skipped files are listed in the run Summary so a human reviewer can see
   when coverage of a change was partial. When **every** candidate file is
   skipped, the run fails closed with a message saying so (not a green pass).
+- *Only `.js/.mjs/.cjs`, stylesheet and HTML extensions are linted.* Other
+  source-looking files (`.ts`, `.jsx`, `.vue`, …) are never linted — they
+  surface in the `skipped` list so the coverage gap is visible (TypeScript/JSX
+  support is a separate ticket, gated on partner demand).
+- *Templating placeholders in attribute position weaken the HTML checks.* A
+  Mustache/Handlebars-style placeholder standing where an attribute would be
+  (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`
+  deliberately stays silent on such elements rather than claim `alt` is
+  missing (false negatives over false positives). Placeholders inside
+  attribute VALUES (`alt="{{alt}}"`) parse fine and are fully checked.
 - *`<noscript>` content is invisible to the HTML checks.* parse5 parses with
   scripting enabled, so `<noscript>` children are raw text — an `<img>` without
   `alt` inside it escapes `a11y/img-alt`. Accepted miss for an advisory-scale

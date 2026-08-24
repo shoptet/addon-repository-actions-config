@@ -1,40 +1,46 @@
 {
   "$comment": "Machine-checked spec for the linter self-test (test/selftest.js). Every file in test-cases/bad/ MUST list the exact sorted set of rule@severity pairs it triggers (severity is part of the gate contract: blocker gates the PR, recommend does not); every file in test-cases/good/ must produce zero findings. Update deliberately whenever rule behavior or severity changes.",
   "bad/bad-console-tamper.js": [
-    "shoptet/no-global-console@blocker"
+    "shoptet/no-global-console@blocker:2"
   ],
   "bad/bad-console.js": [
-    "no-console@blocker"
+    "no-console@blocker:3"
   ],
   "bad/bad-console.mjs": [
     "no-console@blocker"
+  ],
+  "bad/bad-core-fn-prop.js": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
+  "bad/bad-core-legacy-decls.js": [
+    "shoptet/no-core-overwrite@blocker:3"
   ],
   "bad/bad-core-module-scope-fn.js": [
     "shoptet/no-core-overwrite@blocker"
   ],
   "bad/bad-core-mutations.js": [
     "no-global-assign@blocker",
-    "shoptet/no-core-overwrite@blocker"
+    "shoptet/no-core-overwrite@blocker:7"
   ],
   "bad/bad-core-nested.js": [
-    "shoptet/no-core-overwrite@blocker"
+    "shoptet/no-core-overwrite@blocker:3"
   ],
   "bad/bad-core-optional-chain.js": [
-    "shoptet/no-core-overwrite@blocker"
+    "shoptet/no-core-overwrite@blocker:2"
   ],
   "bad/bad-core-window-function.js": [
-    "shoptet/no-core-overwrite@blocker"
+    "shoptet/no-core-overwrite@blocker:2"
   ],
   "bad/bad-core-window-object.js": [
     "shoptet/no-core-overwrite@blocker"
   ],
   "bad/bad-czech-comments.js": [
-    "shoptet/no-czech-comments@recommend"
+    "shoptet/no-czech-comments@recommend:3"
   ],
   "bad/bad-dead-code.js": [
     "no-console@blocker",
     "no-unreachable@blocker",
-    "no-unused-vars@blocker",
+    "no-unused-vars@blocker:6",
     "prefer-const@recommend"
   ],
   "bad/bad-debugger.js": [
@@ -45,32 +51,32 @@
   ],
   "bad/bad-global-bypass.js": [
     "shoptet/no-core-overwrite@blocker",
-    "shoptet/no-settimeout-hack@blocker"
+    "shoptet/no-settimeout-hack@blocker:2"
   ],
   "bad/bad-global-console.js": [
-    "shoptet/no-global-console@blocker"
+    "shoptet/no-global-console@blocker:3"
   ],
   "bad/bad-html-deprecated-extra.html": [
-    "html/deprecated-tag@recommend"
+    "html/deprecated-tag@recommend:3"
   ],
   "bad/bad-import-assign.js": [
     "no-import-assign@blocker"
   ],
   "bad/bad-js-practices.js": [
-    "camelcase@recommend",
+    "camelcase@recommend:2",
     "no-extend-native@recommend",
     "no-mixed-spaces-and-tabs@recommend",
     "no-redeclare@blocker",
     "no-unused-expressions@blocker",
     "no-useless-concat@recommend",
-    "no-var@blocker",
+    "no-var@blocker:2",
     "prefer-template@recommend",
     "radix@recommend"
   ],
   "bad/bad-legacy-script.js": [
     "no-console@blocker",
     "no-dupe-args@blocker",
-    "no-implicit-globals@blocker",
+    "no-implicit-globals@blocker:3",
     "no-redeclare@blocker",
     "no-var@blocker",
     "shoptet/es-module-required@blocker",
@@ -112,7 +118,7 @@
     "no-script-url@blocker"
   ],
   "bad/bad-settimeout-coercions.js": [
-    "shoptet/no-settimeout-hack@blocker"
+    "shoptet/no-settimeout-hack@blocker:8"
   ],
   "bad/bad-settimeout-named-const.js": [
     "shoptet/no-settimeout-hack@blocker"
@@ -124,7 +130,7 @@
     "shoptet/no-settimeout-hack@blocker"
   ],
   "bad/bad-shoptet-overwrite.js": [
-    "shoptet/no-core-overwrite@blocker"
+    "shoptet/no-core-overwrite@blocker:3"
   ],
   "bad/bad-structure.js": [
     "complexity@recommend",
@@ -155,7 +161,7 @@
   ],
   "bad/bad-styles.css": [
     "shoptet/min-font-size@recommend",
-    "shoptet/no-pt-unit@recommend"
+    "shoptet/no-pt-unit@recommend:2"
   ],
   "bad/bad-styles.less": [
     "shoptet/min-font-size@recommend",
@@ -179,7 +185,7 @@
     "shoptet/no-testid-selector@blocker"
   ],
   "bad/bad-testid.js": [
-    "shoptet/no-testid-selector@blocker"
+    "shoptet/no-testid-selector@blocker:2"
   ],
   "bad/bad-upper.CSS": [
     "color-no-invalid-hex@blocker"
@@ -188,7 +194,7 @@
     "no-console@blocker"
   ],
   "bad/bad-var-usage.js": [
-    "no-var@blocker"
+    "no-var@blocker:5"
   ],
   "bad/bad-xhr.js": [
     "shoptet/prefer-fetch@recommend"

@@ -59,8 +59,13 @@ function checkElement(node, file, findings) {
     );
   }
 
-  // J — image without alt (alt="" is allowed for decorative images)
-  if (tag === 'img' && !('alt' in attrs)) {
+  // J — image without alt (alt="" is allowed for decorative images).
+  // Templating guard: a placeholder in ATTRIBUTE POSITION (<img {{alt_attr}}>)
+  // breaks parse5's tokenization — the attribute set cannot be trusted, so
+  // don't claim alt is missing (FN over FP; round 13). Legal HTML attribute
+  // names never contain braces, so this can't misfire on real markup.
+  const brokenTokenization = Object.keys(attrs).some((name) => name.includes('{{') || name.includes('}}'));
+  if (tag === 'img' && !('alt' in attrs) && !brokenTokenization) {
     add(
       findings, file, node, 'a11y/img-alt',
       'Image is missing an alt attribute (use alt="" for decorative images).',

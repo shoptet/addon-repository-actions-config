@@ -19,8 +19,8 @@ const PATTERNS = {
 // CI run Summary) so partial coverage is visible, and it is documented in the
 // README known limitations.
 const IGNORE = [
-  '**/*.min.{js,mjs,cjs,css,scss,less}',
-  '**/*.bundle.{js,mjs,cjs,css,scss,less}',
+  '**/*.min.{js,mjs,cjs,css,scss,less,html,htm}',
+  '**/*.bundle.{js,mjs,cjs,css,scss,less,html,htm}',
   '**/node_modules/**',
   '**/dist/**',
   '**/vendor/**',
@@ -38,7 +38,7 @@ function isIgnoredPath(filePath) {
   // ignored in single-file mode exactly like dist/app.js is in dir mode.
   return (
     /(^|\/)(node_modules|dist|vendor)\//i.test(filePath) ||
-    /\.(min|bundle)\.(js|mjs|cjs|css|scss|less)$/i.test(filePath)
+    /\.(min|bundle)\.(js|mjs|cjs|css|scss|less|html|htm)$/i.test(filePath)
   );
 }
 
@@ -47,13 +47,21 @@ function isIgnoredPath(filePath) {
  * trees are not enumerated (walking thousands of vendored files just to label
  * them "skipped" is pure cost) — dist/, vendor/ and *.min/*.bundle files are.
  */
+// Source-looking extensions we do NOT lint — surfaced in `skipped` so the
+// coverage gap is visible instead of silent (round 13; single-file mode
+// rejects the same files loudly, dir mode must not disagree).
+const FOREIGN_SOURCE_PATTERN = '**/*.{ts,tsx,mts,cts,jsx,vue,svelte,coffee}';
+
 async function collectSkipped(targetPath) {
+  // The "all candidates" side includes foreign source extensions; the "kept"
+  // side must NOT (they are never linted — that's what makes them skipped).
   const patterns = Object.values(PATTERNS);
+  const allPatterns = patterns.concat(FOREIGN_SOURCE_PATTERN);
   // dot: true ONLY here — hidden files/dirs are never linted (tooling trees,
   // not addon source), but they must surface in `skipped` instead of vanishing
   // silently: the Summary's promise is that no coverage gap is silent (round 11).
   const [all, kept] = await Promise.all([
-    Promise.all(patterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'], nocase: true, dot: true }))),
+    Promise.all(allPatterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'], nocase: true, dot: true }))),
     Promise.all(patterns.map((p) => collect(targetPath, p))),
   ]);
   const keptSet = new Set(kept.flat());
@@ -103,7 +111,7 @@ async function gatherFiles(targetPath, stats) {
       collect(targetPath, PATTERNS.html),
       collectSkipped(targetPath),
     ]);
-    skipped.push(...collectSymlinkedDirs(targetPath));
+    for (const dir of collectSymlinkedDirs(targetPath)) skipped.push(dir);
     skipped.sort();
     return { js, styles, html, skipped };
   }
@@ -112,7 +120,16 @@ async function gatherFiles(targetPath, stats) {
   if (!kind) return null;
   // Single-file mode honors the same IGNORE conventions as directory mode —
   // otherwise `review.js dist/app.min.js` would lint what the CI never does.
-  if (isIgnoredPath(targetPath)) {
+  // Match the RELATIVE path: a checkout living under /dist/ or /vendor/ must
+  // not skip everything the dir mode from the same cwd lints (round 13).
+  const relative = path.relative(process.cwd(), targetPath);
+  if (isIgnoredPath(relative)) {
+    return { js: [], styles: [], html: [], skipped: [targetPath] };
+  }
+  // Hidden files: dir mode never lints them (they surface in skipped) — and a
+  // hidden .js passed directly would be default-ignored by ESLint, remapped to
+  // a recommend, and exit 0: a fake-clean (round 13). Same routing as dir mode.
+  if (relative.split(path.sep).some((segment) => segment.startsWith('.') && segment !== '.' && segment !== '..')) {
     return { js: [], styles: [], html: [], skipped: [targetPath] };
   }
   return { js: [], styles: [], html: [], skipped: [], [kind]: [targetPath] };
@@ -161,7 +178,11 @@ async function main() {
       files.styles.length ? lintStyles(files.styles) : [],
       files.html.length ? lintHtml(files.html) : [],
     ]);
-    rawFindings.push(...jsFindings, ...styleFindings, ...htmlFindings);
+    // No spread into push(): V8's argument limit (~125k) would throw on a
+    // pathological file with six-figure findings and kill the whole run (round 13).
+    for (const group of [jsFindings, styleFindings, htmlFindings]) {
+      for (const finding of group) rawFindings.push(finding);
+    }
   } catch (error) {
     fail(rdjson, `Review execution failed: ${error.message}`);
   }
@@ -209,11 +230,23 @@ function fail(rdjson, message, skipped = []) {
 
 const SOURCE_NAME = 'Shoptet Addon Review';
 
+// Comment bodies cap at 64 KiB and the whole step Summary at 1 MiB — one
+// pathological identifier in a message (70k chars measured) would void a
+// 25-comment chunk or the entire Summary. Bound it once, here, so every
+// consumer (comments, Summary, fingerprints) inherits the limit (round 13).
+const MESSAGE_LIMIT = 1000;
+
+function boundMessage(message) {
+  return message.length > MESSAGE_LIMIT
+    ? `${message.slice(0, MESSAGE_LIMIT)}… [truncated]`
+    : message;
+}
+
 function toRdjson(findings) {
   return {
     source: { name: SOURCE_NAME },
     diagnostics: findings.map((finding) => ({
-      message: finding.message,
+      message: boundMessage(finding.message),
       location: {
         path: path.relative(process.cwd(), finding.file),
         range: { start: { line: finding.line, column: finding.column } },

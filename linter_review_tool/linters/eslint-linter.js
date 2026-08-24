@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { ESLint } = require('eslint');
-const espree = require('espree');
+const { parsesAsScript } = require('../rules/script-detect');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -39,35 +39,16 @@ const BASE_OPTIONS = {
 // declarations) is deliberate: hoisting makes "top-level" non-deterministic,
 // and accepted false negatives beat false positives in this profile.
 function usesModuleSyntax(filePath) {
-  // .mjs is a module by CONVENTION regardless of content — its top level can
-  // never be wired from HTML, so the trust argument does not apply (round 11).
+  // .mjs is a module by CONVENTION regardless of content. For everything else
+  // a single script-parse decides: import/export, import.meta and top-level
+  // await are all SyntaxErrors in script mode, so "cannot run as a classic
+  // script" IS the module commitment (round 13 — shared with the
+  // no-core-overwrite rule via script-detect.js).
   if (filePath.toLowerCase().endsWith('.mjs')) return true;
   try {
-    const ast = espree.parse(fs.readFileSync(filePath, 'utf8'), {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-    });
-    if (ast.body.some((node) => node.type === 'ImportDeclaration' || node.type.startsWith('Export'))) {
-      return true;
-    }
-    // import.meta anywhere in the tree is a module opt-in too — such a file
-    // cannot run as a classic script at all. (new.target is also a
-    // MetaProperty but is script-legal, so check the meta name.)
-    const stack = [...ast.body];
-    while (stack.length) {
-      const node = stack.pop();
-      if (!node || typeof node.type !== 'string') continue;
-      if (node.type === 'MetaProperty' && node.meta && node.meta.name === 'import') return true;
-      for (const key of Object.keys(node)) {
-        if (key === 'parent') continue;
-        const value = node[key];
-        if (Array.isArray(value)) stack.push(...value);
-        else if (value && typeof value === 'object' && typeof value.type === 'string') stack.push(value);
-      }
-    }
-    return false;
+    return !parsesAsScript(fs.readFileSync(filePath, 'utf8'));
   } catch {
-    return false; // not parseable here → the two-pass flow below handles it
+    return false; // unreadable → the lint run itself will surface that
   }
 }
 

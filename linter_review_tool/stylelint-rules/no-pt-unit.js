@@ -14,7 +14,10 @@ const messages = stylelint.utils.ruleMessages(ruleName, {
 });
 
 // A number immediately followed by the pt unit (12pt, .5pt, 1.25pt).
-const PT_VALUE = /(^|[\s,(/])[+-]?\d*\.?\d+pt(?![\w])/i;
+// Bounded quantifiers: the unbounded \d*\.?\d+ backtracked quadratically over
+// long numeric runs (13 s at 200k digits — round 13); no real CSS length needs
+// more than 10 digits on either side of the dot.
+const PT_VALUE = /(^|[\s,(/])[+-]?\d{0,10}\.?\d{1,10}pt(?![\w])/i;
 
 // A media query targets print only when a clause starts with (optionally
 // "only") print — "not print" targets everything EXCEPT print and must not
@@ -48,7 +51,11 @@ const ruleFunction = (primary) => (root, result) => {
     // atrule and never reached this walk — so this also keeps SCSS/LESS parity.)
     if (decl.prop.startsWith('$') || decl.prop.startsWith('--')) return;
     // Strings and url() tokens are prose/filenames, not measurements.
-    const measurable = decl.value.replace(/"[^"]*"|'[^']*'|url\(\s*[^)]*\)/gi, ' ');
+    // Escape-aware alternates: 'it\'s 5pt tall' must strip whole (round 13);
+    // a QUOTED url() argument is consumed by the string alternates (leaving a
+    // harmless `url()`), the unquoted variant must not swallow past its own
+    // closing paren — [^)"'] instead of [^)] keeps `url("a (1) 5pt.png")` safe.
+    const measurable = decl.value.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|url\([^)"']*\)/gi, ' ');
     if (!PT_VALUE.test(measurable)) return;
     if (isInsidePrintContext(decl)) return;
     stylelint.utils.report({

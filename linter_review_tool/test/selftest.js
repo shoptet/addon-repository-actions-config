@@ -43,13 +43,25 @@ function groupRulesByFile(diagnostics) {
   for (const d of diagnostics) {
     // paths come back relative to cwd (linter_review_tool) → strip test-cases/
     const key = d.location.path.replace(/^test-cases\//, '');
-    if (!byFile.has(key)) byFile.set(key, new Set());
+    if (!byFile.has(key)) byFile.set(key, new Map());
     // Severity is part of the snapshot: only blockers gate the PR, so a silent
     // error→warn downgrade must fail this suite, not just a ruleId change.
     const severity = d.severity === 'ERROR' ? 'blocker' : 'recommend';
-    byFile.get(key).add(`${d.code.value}@${severity}`);
+    const tag = `${d.code.value}@${severity}`;
+    const counts = byFile.get(key);
+    counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   return byFile;
+}
+
+// Multiset snapshot: "rule@severity" for a single occurrence, "rule@severity:N"
+// for N — a fixture promising "every form gates" must fail when a rule stops
+// catching 7 of its 8 forms, not only when it stops entirely (round 13).
+function formatCounts(counts) {
+  if (!counts) return [];
+  return [...counts.entries()]
+    .map(([tag, n]) => (n > 1 ? `${tag}:${n}` : tag))
+    .sort();
 }
 
 let failures = 0;
@@ -66,7 +78,7 @@ const badFilesOnDisk = fs.readdirSync(path.join(CASES, 'bad')).filter((f) => !f.
 for (const file of badFilesOnDisk) {
   if (!(file in spec)) { fail(`${file}: missing from expected.json (undocumented fixture)`); continue; }
   const expected = [...spec[file]].sort();
-  const actual = [...(badFindings.get(file) || [])].sort();
+  const actual = formatCounts(badFindings.get(file));
   if (JSON.stringify(expected) === JSON.stringify(actual)) {
     pass(`${file}: [${actual.join(', ')}]`);
   } else {
@@ -83,7 +95,7 @@ const goodFindings = groupRulesByFile(runReview('test-cases/good'));
 const goodFilesOnDisk = fs.readdirSync(path.join(CASES, 'good')).filter((f) => !f.startsWith('.')).map((f) => `good/${f}`);
 for (const file of goodFilesOnDisk) {
   const rules = goodFindings.get(file);
-  if (rules && rules.size) fail(`${file}: expected clean but got [${[...rules].sort().join(', ')}]`);
+  if (rules && rules.size) fail(`${file}: expected clean but got [${formatCounts(rules).join(', ')}]`);
   else pass(`${file}: clean`);
 }
 
@@ -174,6 +186,21 @@ if (findingFingerprint(mkDiag(5)) !== findingFingerprint(mkDiag(6))) pass('finge
 else fail('fingerprint does not include the line');
 if (mkFp('a.js', 1, 'a', 'b\nc') !== mkFp('a.js', 1, 'a\nb', 'c')) pass('fingerprint fields cannot bleed across a newline');
 else fail('fingerprint is ambiguous for fields containing newlines');
+
+
+// ── fixture hygiene: every test-case file must be classifiable (a .ts with
+// eval would pass "clean" without ever being linted), and subdirectories are
+// forbidden (the good/ readdir is not recursive) — round 13.
+for (const side of ['bad', 'good']) {
+  for (const entry of fs.readdirSync(path.join(CASES, side), { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.isDirectory()) { fail(`test-cases/${side}/${entry.name}: subdirectories are not scanned — flatten it`); continue; }
+    if (!/\.(js|mjs|cjs|css|scss|less|html|htm)$/i.test(entry.name)) {
+      fail(`test-cases/${side}/${entry.name}: extension outside the lint patterns — it would pass vacuously`);
+    }
+  }
+}
+pass('fixture hygiene: all classifiable, no subdirs');
 
 // ── 5: RELIABLE_RULES completeness — every gate rule must be pinned by a fixture ──
 console.log('reliable-rules coverage:');
@@ -318,6 +345,56 @@ if (distRun.status === 1 && distJson && distJson.diagnostics.length === 0 && (di
   fail(`single-file case contract broken: status ${distRun.status}, diags ${distJson ? distJson.diagnostics.length : 'n/a'}`);
 }
 fs.rmSync(distTmp, { recursive: true, force: true });
+
+// Warnings-only input must exit 0 in plain mode — partners' non-PR gate must
+// not turn red on recommendations (round 13).
+const warnTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-warn-'));
+fs.writeFileSync(path.join(warnTmp, 'warn-only.js'), 'export const a = 1; // Poznámka s ěščř\n');
+const warnRun = runRaw([warnTmp]);
+if (warnRun.status === 0) pass('plain mode exits 0 on warnings-only input');
+else fail(`warnings-only plain run exited ${warnRun.status}`);
+fs.rmSync(warnTmp, { recursive: true, force: true });
+
+// Single-file happy path: a clean file passed directly exits 0.
+const oneOk = runRaw(['test-cases/good/good-rest-omission.js']);
+if (oneOk.status === 0) pass('single-file mode exits 0 on a clean file');
+else fail(`single-file clean run exited ${oneOk.status}`);
+
+// Unsupported single-file type: exit 1 + valid JSON (fail() variant).
+const xyzTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-xyz-'));
+fs.writeFileSync(path.join(xyzTmp, 'data.xyz'), 'whatever');
+const xyzRun = runRaw([path.join(xyzTmp, 'data.xyz'), '--rdjson']);
+let xyzJson = null;
+try { xyzJson = JSON.parse(xyzRun.stdout); } catch (e) { /* handled below */ }
+if (xyzRun.status === 1 && xyzJson && xyzJson.diagnostics.length === 0) pass('unsupported file type: exit 1 + valid JSON');
+else fail(`unsupported-type contract broken: status ${xyzRun.status}`);
+fs.rmSync(xyzTmp, { recursive: true, force: true });
+
+// Foreign source extensions surface in skipped — not silently invisible (round 13).
+const tsTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-ts-'));
+fs.writeFileSync(path.join(tsTmp, 'typed.ts'), 'export const x = eval("1");\n');
+fs.writeFileSync(path.join(tsTmp, 'app.js'), 'export const ok = 1;\n');
+const tsRun = runRaw([tsTmp, '--rdjson']);
+let tsJson = null;
+try { tsJson = JSON.parse(tsRun.stdout); } catch (e) { /* handled below */ }
+if (tsRun.status === 0 && tsJson && (tsJson.skipped || []).some((f) => f.endsWith('typed.ts'))) {
+  pass('foreign source extension (.ts) surfaces in skipped');
+} else {
+  fail(`.ts contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsJson && tsJson.skipped)}`);
+}
+fs.rmSync(tsTmp, { recursive: true, force: true });
+
+// Messages are bounded — a 70k-char identifier must not produce a comment-
+// killing 70k message (round 13).
+const longTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-long-'));
+fs.writeFileSync(path.join(longTmp, 'long.js'), 'export {};\nconst x' + 'y'.repeat(70000) + ' = 1;\n');
+const longRun = runRaw([longTmp, '--rdjson']);
+let longJson = null;
+try { longJson = JSON.parse(longRun.stdout); } catch (e) { /* handled below */ }
+const maxLen = longJson ? Math.max(...longJson.diagnostics.map((d) => d.message.length), 0) : -1;
+if (maxLen > 0 && maxLen <= 1020) pass(`finding messages are bounded (max ${maxLen} chars)`);
+else fail(`message bound broken: max ${maxLen}`);
+fs.rmSync(longTmp, { recursive: true, force: true });
 
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

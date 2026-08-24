@@ -2,10 +2,6 @@ name: Pull Request Checks
 on:
   workflow_call:
 
-concurrency:
-  group: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
-  cancel-in-progress: true
-
 permissions:
   contents: read
   pull-requests: write
@@ -18,6 +14,18 @@ jobs:
   review:
     name: Review Code
     runs-on: ubuntu-latest
+    # concurrency must sit at JOB level: GitHub ignores workflow-level
+    # concurrency in a reusable workflow invoked via workflow_call (432ae69;
+    # the reconcile logic depends on cancel-in-progress — two parallel runs
+    # would both see !hasRequest and double the verdict).
+    concurrency:
+      group: "pr-checks-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
+    # ═══ :71 — negatovat plný běh na closed eventech ═══
+    # Do NOT run the full lint+reconcile on close/merge — wasted minutes on
+    # every partner merge and a doomed REQUEST_CHANGES attempt on a closed PR.
+    # The exact shape keeps the non-PR fallback (push/schedule/dispatch) alive.
+    if: ${{ !github.event.pull_request || github.event.pull_request.state == 'open' }}
     steps:
       - name: Checkout addon code
         uses: actions/checkout@v6
@@ -355,16 +363,20 @@ jobs:
                   : '.'),
                 true
               );
+              // addTable wraps cells verbatim (no escaping in @actions/core) —
+              // partner-controlled paths/messages must not inject HTML into the
+              // page sold as the source of truth (round 13).
+              const esc = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
               const rows = [...wanted.values()]
                 .sort((a, b) => (a.severity === 'ERROR' ? 0 : 1) - (b.severity === 'ERROR' ? 0 : 1)
                   || a.location.path.localeCompare(b.location.path)
                   || a.location.range.start.line - b.location.range.start.line)
                 .map(d => [
                   d.severity === 'ERROR' ? '❌' : '⚠️',
-                  d.location.path,
+                  esc(d.location.path),
                   String(d.location.range.start.line),
-                  d.code?.value || '',
-                  d.message.replace(/\r?\n/g, ' '),
+                  esc(d.code?.value || ''),
+                  esc(d.message.replace(/\r?\n/g, ' ')),
                 ]);
               core.summary.addTable([
                 [
@@ -405,6 +417,9 @@ jobs:
   merge-check:
     name: Merge Pull Request alert
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-merge-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     steps:
       - name: Get PR author
         id: pr-info
@@ -427,6 +442,9 @@ jobs:
   files-check:
     name: File Protection Check
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-files-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     permissions:
       pull-requests: read
     steps:
@@ -455,6 +473,9 @@ jobs:
   collaborators-check:
     name: Shoptet reviewers assigned
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-collaborators-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     permissions:
       pull-requests: read
     steps:
