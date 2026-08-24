@@ -13,6 +13,14 @@ permissions:
   checks: write
   pull-requests: write
 
+# Known, accepted race in the per-job concurrency groups below: GitHub queues
+# by the time a job *enters* the group, not by push order, so under runner
+# contention an older commit's job can enter later and cancel a newer
+# commit's in-progress job, stranding the newer (head) SHA with a `cancelled`
+# required check until someone manually re-runs it. This is the standard
+# `pr-<number>` + cancel-in-progress idiom; the race is rare and recoverable,
+# and dropping cancel-in-progress would bring back the runner pile-up this
+# job-level concurrency exists to fix — so it stays, with this on record.
 env:
   REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
   # Entries ending with '/' protect the whole directory, anything else an exact file.
@@ -138,31 +146,37 @@ jobs:
 
             const requestedReviewers = pr.requested_reviewers.map(reviewer => reviewer.login);
             const requestedTeams = pr.requested_teams?.map(team => team.slug) || [];
+            const requiredReviewers = process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim());
+
+            console.log('Required reviewers:', process.env.REQUIRED_REVIEWER);
+            console.log('Requested reviewers:', [...requestedReviewers, ...requestedTeams]);
+
+            let satisfied = [...requestedReviewers, ...requestedTeams];
+            let missingReviewers = requiredReviewers.filter(reviewer => !satisfied.includes(reviewer));
 
             // GitHub removes a reviewer from requested_reviewers the moment they
             // submit a review, so already-submitted reviews must count too —
-            // otherwise a re-run after an approval fails the check.
+            // otherwise a re-run after an approval fails the check. Only paginate
+            // listReviews when the requested-reviewers set doesn't already
+            // satisfy the check, since that's the common case on every push.
             // Deliberate consequence: any submitted review (even COMMENTED or a
             // later-dismissed one) satisfies this check permanently, regardless
             // of commits pushed afterwards. This check verifies "the reviewer
             // is in the loop"; merge enforcement itself lives in the merge
-            // audit and the App's deploy gate.
-            const reviews = await github.paginate(github.rest.pulls.listReviews, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number
-            });
-            const submittedReviewers = [...new Set(reviews.map(review => review.user?.login).filter(Boolean))];
+            // audit (#10) and the App's deploy gate (addon-repository-github-app).
+            let submittedReviewers = [];
+            if (missingReviewers.length > 0) {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number
+              });
+              submittedReviewers = [...new Set(reviews.map(review => review.user?.login).filter(Boolean))];
+              satisfied = [...satisfied, ...submittedReviewers];
+              missingReviewers = requiredReviewers.filter(reviewer => !satisfied.includes(reviewer));
+            }
 
-            const satisfied = [...requestedReviewers, ...requestedTeams, ...submittedReviewers];
-
-            console.log('Required reviewers:', process.env.REQUIRED_REVIEWER);
-            console.log('Requested reviewers:', [...requestedReviewers, ...requestedTeams]);
             console.log('Submitted reviews from:', submittedReviewers);
-
-            const missingReviewers = process.env.REQUIRED_REVIEWER.split(',').filter(reviewer =>
-              !satisfied.includes(reviewer.trim())
-            );
 
             if (missingReviewers.length > 0) {
               console.error('Missing required reviewers:', missingReviewers);
