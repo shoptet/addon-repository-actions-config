@@ -88,7 +88,11 @@ jobs:
     # this job never runs. No event_name check: no other event carries a
     # truthy github.event.pull_request.merged, and gating on 'pull_request'
     # specifically would silently skip this job for pull_request_target callers.
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    # Scoped to the default branch: this check encodes "who may merge code
+    # that reaches production", so a PR merged between two non-default
+    # branches (partners managing their own feature/release branches) must
+    # not trigger it — that would misfire on merges nobody needs reviewed.
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: ubuntu-latest
     # No cancel-in-progress: the closed+merged event fires once per PR
     # lifetime under a single trigger, so there is normally nothing to
