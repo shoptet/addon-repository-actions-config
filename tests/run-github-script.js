@@ -9,6 +9,9 @@
 //              context.payload.pull_request)
 //   files    — array returned when the script paginates pulls.listFiles
 //   reviews  — array returned when the script paginates pulls.listReviews
+//   comments — array returned when the script paginates issues.listComments
+//   commentError — when true, issues.createComment throws, simulating a
+//              token without pull-requests: write
 //
 // The exit code is the test result: 0 = the script finished normally,
 // 1 = the script signalled a policy failure (process.exit(1) / core.setFailed),
@@ -38,7 +41,12 @@ Promise.resolve().then(() => {
       },
       issues: {
         listComments: paged(fixture.comments || []),
-        createComment: async () => ({}),
+        // The body is echoed so tests can assert on what would be posted.
+        createComment: async ({ body }) => {
+          if (fixture.commentError) throw new Error('simulated API failure');
+          console.log(`[createComment] ${body}`);
+          return {};
+        },
       },
     },
     paginate: async (endpoint) => (await endpoint()).data,
