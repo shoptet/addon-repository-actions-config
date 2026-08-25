@@ -33,7 +33,7 @@ The resolved package manager is used for the `setup-node` dependency cache, the 
 
 ## Pull request checks
 
-`checks.workflow.yml` runs code review, protected-path and required-reviewer checks on every PR, plus a post-merge `merge-audit` job that flags a merge performed by anyone other than `REQUIRED_REVIEWER` (with a retroactive-review exception for `hotfix/*` branches touching only `src/`). Call it with:
+`checks.workflow.yml` runs code review, protected-path and required-reviewer checks on every PR, plus a post-merge `merge-audit` job that flags a merge into the repo's default branch performed by anyone other than `REQUIRED_REVIEWER` (with a retroactive-review exception for `hotfix/*` branches touching only `src/`). Call it with:
 
 ```yaml
 on:
