@@ -8,23 +8,33 @@ on:
         type: boolean
         default: false
 
-concurrency:
-  group: "pr-checks-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
-  cancel-in-progress: true
-
 permissions:
   contents: read
   checks: write
   pull-requests: write
 
+# Known, accepted race in the per-job concurrency groups below: GitHub queues
+# by the time a job *enters* the group, not by push order, so under runner
+# contention an older commit's job can enter later and cancel a newer
+# commit's in-progress job, stranding the newer (head) SHA with a `cancelled`
+# required check until someone manually re-runs it. This is the standard
+# `pr-<number>` + cancel-in-progress idiom; the race is rare and recoverable,
+# and dropping cancel-in-progress would bring back the runner pile-up this
+# job-level concurrency exists to fix — so it stays, with this on record.
 env:
   REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
-  PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
+  # Entries ending with '/' protect the whole directory, anything else an exact file.
+  PROTECTED_PATHS: '.github/workflows/'
 
 jobs:
   review:
     name: Review Code
     runs-on: ubuntu-latest
+    # concurrency must sit at job level: GitHub ignores workflow-level
+    # concurrency in a reusable workflow invoked via workflow_call
+    concurrency:
+      group: "pr-checks-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     steps:
       - name: Checkout addon code
         uses: actions/checkout@v6
@@ -53,6 +63,9 @@ jobs:
   merge-check:
     name: Merge Pull Request alert
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-merge-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     steps:
       - name: Get PR author
         id: pr-info
@@ -75,6 +88,9 @@ jobs:
   files-check:
     name: File Protection Check
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-files-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     permissions:
       checks: write
       pull-requests: read
@@ -90,8 +106,14 @@ jobs:
               pull_number: context.payload.pull_request.number
             });
 
+            const rules = process.env.PROTECTED_PATHS.split(',').map(rule => rule.trim()).filter(Boolean);
+            const isProtected = (name) => rules.some(rule =>
+              rule.endsWith('/') ? name.startsWith(rule) : name === rule
+            );
+
+            // previous_filename catches files renamed out of a protected path
             const changedProtectedFiles = files.filter(file =>
-              process.env.PROTECTED_FILES.split(',').map(f => f.trim()).includes(file.filename)
+              isProtected(file.filename) || (file.previous_filename && isProtected(file.previous_filename))
             );
 
             if (changedProtectedFiles.length > 0) {
@@ -104,6 +126,9 @@ jobs:
   collaborators-check:
     name: Shoptet reviewers assigned
     runs-on: ubuntu-latest
+    concurrency:
+      group: "pr-checks-collaborators-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
+      cancel-in-progress: true
     permissions:
       checks: write
       pull-requests: read
@@ -121,18 +146,41 @@ jobs:
 
             const requestedReviewers = pr.requested_reviewers.map(reviewer => reviewer.login);
             const requestedTeams = pr.requested_teams?.map(team => team.slug) || [];
-            const allRequestedReviewers = [...requestedReviewers, ...requestedTeams];
+            const requiredReviewers = process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim());
 
             console.log('Required reviewers:', process.env.REQUIRED_REVIEWER);
-            console.log('Requested reviewers:', allRequestedReviewers);
+            console.log('Requested reviewers:', [...requestedReviewers, ...requestedTeams]);
 
-            const missingReviewers = process.env.REQUIRED_REVIEWER.split(',').filter(reviewer =>
-              !allRequestedReviewers.includes(reviewer.trim())
-            );
+            let satisfied = [...requestedReviewers, ...requestedTeams];
+            let missingReviewers = requiredReviewers.filter(reviewer => !satisfied.includes(reviewer));
+
+            // GitHub removes a reviewer from requested_reviewers the moment they
+            // submit a review, so already-submitted reviews must count too —
+            // otherwise a re-run after an approval fails the check. Only paginate
+            // listReviews when the requested-reviewers set doesn't already
+            // satisfy the check, since that's the common case on every push.
+            // Deliberate consequence: any submitted review (even COMMENTED or a
+            // later-dismissed one) satisfies this check permanently, regardless
+            // of commits pushed afterwards. This check verifies "the reviewer
+            // is in the loop"; merge enforcement itself lives in the merge
+            // audit (#10) and the App's deploy gate (addon-repository-github-app).
+            let submittedReviewers = [];
+            if (missingReviewers.length > 0) {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number
+              });
+              submittedReviewers = [...new Set(reviews.map(review => review.user?.login).filter(Boolean))];
+              satisfied = [...satisfied, ...submittedReviewers];
+              missingReviewers = requiredReviewers.filter(reviewer => !satisfied.includes(reviewer));
+            }
+
+            console.log('Submitted reviews from:', submittedReviewers);
 
             if (missingReviewers.length > 0) {
               console.error('Missing required reviewers:', missingReviewers);
               process.exit(1);
             } else {
-              console.log('All required reviewers assigned');
+              console.log('All required reviewers assigned or already reviewed');
             }
