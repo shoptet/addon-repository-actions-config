@@ -190,3 +190,9 @@ cd linter_review_tool
 yarn
 node review.js path/to/addon/src   # same reliable rule set as CI
 ```
+
+Single-file mode (`node review.js path/to/file.js`) applies the
+minified/vendored ignore conventions to the **CWD-relative** path — run it
+from the addon repo root for the same view CI has. A `dist/` or `vendor/`
+segment in the path *as you typed it* counts as vendored; directories above
+your current directory don't.

@@ -120,8 +120,11 @@ async function gatherFiles(targetPath, stats) {
   if (!kind) return null;
   // Single-file mode honors the same IGNORE conventions as directory mode —
   // otherwise `review.js dist/app.min.js` would lint what the CI never does.
-  // Match the RELATIVE path: a checkout living under /dist/ or /vendor/ must
-  // not skip everything the dir mode from the same cwd lints (round 13).
+  // The conventions match the CWD-RELATIVE path (documented semantics, round
+  // 14): from inside the addon tree, /dist/ segments above the tree don't
+  // skip; invoked from elsewhere with an absolute path, segments of that path
+  // count. Target-relative would need the addon root, which single-file mode
+  // doesn't know. CI (dir mode) is unaffected either way.
   const relative = path.relative(process.cwd(), targetPath);
   if (isIgnoredPath(relative)) {
     return { js: [], styles: [], html: [], skipped: [targetPath] };

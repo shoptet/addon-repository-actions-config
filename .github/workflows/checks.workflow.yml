@@ -21,7 +21,6 @@ jobs:
     concurrency:
       group: "pr-checks-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
       cancel-in-progress: true
-    # ═══ :71 — negatovat plný běh na closed eventech ═══
     # Do NOT run the full lint+reconcile on close/merge — wasted minutes on
     # every partner merge and a doomed REQUEST_CHANGES attempt on a closed PR.
     # The exact shape keeps the non-PR fallback (push/schedule/dispatch) alive.
