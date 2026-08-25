@@ -72,6 +72,29 @@ function checkElement(node, file, findings) {
       'blocker'
     );
   }
+
+  // Inline JS is a whole-category coverage gap: this linter never lints script
+  // TEXT, so every shoptet/* and core-JS blocker could hide behind a green
+  // check (round 14). Policy blocker, same spirit as es-module-required:
+  // JS belongs in .js files, where the full rule set applies. Deterministic
+  // cut: a non-empty script element whose type is missing or a JS MIME —
+  // external scripts (src=, empty content) and DATA blocks (ld+json,
+  // text/template, …) are not executable inline JS and never flag.
+  if (tag === 'script') {
+    const type = (attrs.type || '').trim().toLowerCase();
+    const isJs = type === '' || type === 'module' || type === 'text/javascript' || type === 'application/javascript';
+    const text = (node.childNodes || [])
+      .filter((child) => child.nodeName === '#text')
+      .map((child) => child.value)
+      .join('');
+    if (isJs && text.trim() !== '') {
+      add(
+        findings, file, node, 'html/no-inline-script',
+        'Inline script content is not linted — move the code to a .js file in src/, where the full rule set applies.',
+        'blocker'
+      );
+    }
+  }
 }
 
 // Iterative (explicit stack) — recursion would overflow on pathologically deep

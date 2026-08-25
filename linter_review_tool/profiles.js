@@ -88,6 +88,8 @@ const RELIABLE_RULES = new Set([
   // ── HTML: factual DOM checks (parse5) ──
   'a11y/img-alt',
   'html/deprecated-tag',
+  // policy blocker: inline JS would bypass the ENTIRE JS rule set (round 14)
+  'html/no-inline-script',
 ]);
 
 // Any rule not in the set above is dropped from the output — either it is

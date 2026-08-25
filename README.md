@@ -117,6 +117,15 @@ the required Shoptet reviewer is assigned.
   deliberately stays silent on such elements rather than claim `alt` is
   missing (false negatives over false positives). Placeholders inside
   attribute VALUES (`alt="{{alt}}"`) parse fine and are fully checked.
+- *Inline `<script>` content is never linted — it gates instead.* The HTML
+  pass checks markup, not script text: inline JS would silently bypass the
+  ENTIRE JS rule set (every `shoptet/*` blocker included), so a non-empty
+  inline script is itself a blocker (`html/no-inline-script`) — move the code
+  to a `.js` file in `src/`, where the full rule set applies. External
+  scripts (`src=`) and data blocks (`application/ld+json`, `text/template`)
+  are not executable inline JS and never flag. (Linting extracted inline JS
+  in place is a possible follow-up — only worth it if the policy ever changes
+  to allow inline scripts.)
 - *`<noscript>` content is invisible to the HTML checks.* parse5 parses with
   scripting enabled, so `<noscript>` children are raw text — an `<img>` without
   `alt` inside it escapes `a11y/img-alt`. Accepted miss for an advisory-scale

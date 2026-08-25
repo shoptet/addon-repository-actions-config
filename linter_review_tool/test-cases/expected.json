@@ -62,6 +62,9 @@
   "bad/bad-import-assign.js": [
     "no-import-assign@blocker"
   ],
+  "bad/bad-inline-script.html": [
+    "html/no-inline-script@blocker:2"
+  ],
   "bad/bad-js-practices.js": [
     "camelcase@recommend:2",
     "no-extend-native@recommend",
