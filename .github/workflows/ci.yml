@@ -47,3 +47,6 @@ jobs:
           persist-credentials: false
       - name: Run tests
         run: bash tests/test-workflow-scripts.sh
+
+      - name: Run checks workflow script tests
+        run: bash tests/test-checks-workflow-scripts.sh

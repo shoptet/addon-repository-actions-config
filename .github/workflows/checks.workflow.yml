@@ -6,13 +6,36 @@ permissions:
   contents: read
   pull-requests: write
 
+# Known, accepted race in the per-job concurrency groups below: GitHub queues
+# by the time a job *enters* the group, not by push order, so under runner
+# contention an older commit's job can enter later and cancel a newer
+# commit's in-progress job, stranding the newer (head) SHA with a `cancelled`
+# required check until someone manually re-runs it. This is the standard
+# `pr-<number>` + cancel-in-progress idiom; the race is rare and recoverable,
+# and dropping cancel-in-progress would bring back the runner pile-up this
+# job-level concurrency exists to fix — so it stays, with this on record.
 env:
   REQUIRED_REVIEWER: 'shoptet-addon-reviewer'
-  PROTECTED_FILES: '.github/workflows/shoptetAddon.workflow.yml, .github/workflows/deploy.workflow.yml, .github/workflows/checks.workflow.yml'
+  # Entries ending with '/' protect the whole directory, anything else an exact file.
+  PROTECTED_PATHS: '.github/workflows/'
+  # Partners may merge urgent fixes themselves when the PR comes from a branch
+  # with this prefix AND touches nothing outside HOTFIX_ALLOWED_PATH — such
+  # merges pass the audit and are flagged for retroactive Shoptet review.
+  HOTFIX_BRANCH_PREFIX: 'hotfix/'
+  HOTFIX_ALLOWED_PATH: 'src/'
 
 jobs:
   review:
     name: Review Code
+    # Skip only on closed+merged (merge-audit takes over from there). A
+    # closed-without-merge event still runs this job normally, so the real
+    # pass/fail status gets re-posted on the SAME event that closed the PR —
+    # this is what closes the close/reopen bypass a caller could otherwise
+    # hit by adding `closed` to its trigger types without `reopened`: a
+    # `skipped` conclusion counts as passing for required-status purposes,
+    # so skipping on every closed action (merged or not) would let a partner
+    # close a PR blocked by a red check and reopen it green.
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     # concurrency must sit at JOB level: GitHub ignores workflow-level
     # concurrency in a reusable workflow invoked via workflow_call (432ae69;
@@ -21,19 +44,18 @@ jobs:
     concurrency:
       group: "pr-checks-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
       cancel-in-progress: true
-    # Do NOT run the full lint+reconcile on close/merge — wasted minutes on
-    # every partner merge and a doomed REQUEST_CHANGES attempt on a closed PR.
-    # The exact shape keeps the non-PR fallback (push/schedule/dispatch) alive.
-    if: ${{ !github.event.pull_request || github.event.pull_request.state == 'open' }}
     steps:
       - name: Checkout addon code
         uses: actions/checkout@v6
         with:
-          # Check out the PR HEAD (not the default merge ref) so the linter sees
-          # exactly the code that review comments are anchored to — otherwise a
-          # base branch that moved would shift line numbers (wrong-line comments
-          # / 422). Full history so we can reconstruct changed lines via `git diff`
-          # for large files whose diff GitHub omits from the API `patch` field.
+          # Explicit PR HEAD SHA, not the default refs/pull/N/merge, for two
+          # reasons: (1) the linter must see exactly the code review comments
+          # anchor to — a moved base would shift line numbers (wrong-line
+          # comments / 422); (2) GitHub stops maintaining the merge ref once a
+          # PR closes, and this job re-runs on closed-without-merge events
+          # (see the guard above). Full history (fetch-depth: 0) so changed
+          # lines can be reconstructed via `git diff` for large files whose
+          # patch the API omits.
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
@@ -413,33 +435,137 @@ jobs:
         working-directory: ./
         run: node review-tool/linter_review_tool/review.js src
 
-  merge-check:
-    name: Merge Pull Request alert
+  merge-audit:
+    name: Merge audit
+    # Fires only once a PR is actually merged — the caller's pull_request (or
+    # pull_request_target) trigger must list `closed` in its types, otherwise
+    # this job never runs. No event_name check: no other event carries a
+    # truthy github.event.pull_request.merged, and gating on 'pull_request'
+    # specifically would silently skip this job for pull_request_target callers.
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    # No cancel-in-progress: the closed+merged event fires once per PR
+    # lifetime under a single trigger, so there is normally nothing to
+    # supersede. The group still matters for a caller that declares both
+    # pull_request and pull_request_target with `closed` — that fires this
+    # job twice, concurrently; queueing (not cancelling) the second run means
+    # it sees the first run's marker comment and exits via the "already
+    # posted" path instead of double-posting.
     concurrency:
-      group: "pr-checks-merge-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
-      cancel-in-progress: true
+      group: "pr-checks-merge-audit-${{ github.repository_id }}-${{ github.event.pull_request.number }}"
+    permissions:
+      pull-requests: write
     steps:
-      - name: Get PR author
-        id: pr-info
+      - name: Verify who merged the pull request
         uses: actions/github-script@v7
         with:
           script: |
-            const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number
-            });
-            core.setOutput('author', pr.user.login);
-            if (process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim()).includes(pr.user.login)) {
-              console.log(`User ${pr.user.login} is authorized to merge`);
-            } else {
-              console.error(`User ${pr.user.login} is NOT authorized to merge - only Shoptet reviewers can merge`);
-              process.exit(1);
+            const MARKER = '<!-- shoptet-merge-audit -->';
+            const authorized = process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim());
+            const pr = context.payload.pull_request;
+            // Assumes a manual merge: with auto-merge, merged_by is who
+            // *enabled* it, not who triggered the actual merge, and a merge
+            // queue attributes to github-merge-queue[bot] — neither is
+            // expected on private Free-plan partner repos today. Revisit if
+            // auto-merge or merge queues become available to partners.
+            const mergedBy = pr.merged_by?.login ?? 'unknown';
+
+            if (authorized.includes(mergedBy)) {
+              console.log(`Merged by ${mergedBy} — authorized Shoptet reviewer.`);
+              return;
             }
+
+            // The comment is best-effort and must never decide the audit
+            // outcome: a caller granting less than pull-requests: write would
+            // otherwise turn even a legitimate hotfix red with an API error.
+            // The marker keeps job re-runs from posting duplicates.
+            async function postCommentOnce(body) {
+              try {
+                const existing = await github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                });
+                // Author-checked so a partner can't pre-suppress the audit
+                // comment by posting an ordinary comment containing the marker.
+                if (existing.some(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(MARKER))) {
+                  console.log('Audit comment already present — not posting again.');
+                  return;
+                }
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body: body + '\n' + MARKER,
+                });
+              } catch (error) {
+                core.warning(`Could not post the audit comment: ${error.message}`);
+              }
+            }
+
+            // Hotfix exception: a partner may merge an urgent fix themselves,
+            // provided the branch is named hotfix/* and the diff stays inside
+            // the allowed path(s). Review happens retroactively. Same rule
+            // grammar as PROTECTED_PATHS above: comma-separated, an entry
+            // ending in '/' matches the whole directory, anything else is an
+            // exact file.
+            const prefix = process.env.HOTFIX_BRANCH_PREFIX;
+            const allowedPathSpec = process.env.HOTFIX_ALLOWED_PATH;
+            const allowedRules = allowedPathSpec.split(',').map(rule => rule.trim()).filter(Boolean);
+            const isAllowed = (name) => allowedRules.some(rule =>
+              rule.endsWith('/') ? name.startsWith(rule) : name === rule
+            );
+            const isHotfixBranch = pr.head.ref.startsWith(prefix);
+            let outsideFiles = [];
+            let scopeUnverifiable = false;
+            if (isHotfixBranch) {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              });
+              // the API lists at most 3000 files — beyond that the scope cannot
+              // be verified, so fail closed instead of waving the PR through
+              if (files.length >= 3000) {
+                scopeUnverifiable = true;
+              } else {
+                outsideFiles = [...new Set(files
+                  .flatMap(file => file.previous_filename ? [file.filename, file.previous_filename] : [file.filename])
+                  .filter(name => !isAllowed(name)))];
+              }
+            }
+
+            if (isHotfixBranch && !scopeUnverifiable && outsideFiles.length === 0) {
+              await postCommentOnce([
+                `🔥 **Hotfix merged by @${mergedBy} without prior Shoptet review** (branch \`${pr.head.ref}\`, changes limited to \`${allowedPathSpec}\`).`,
+                '',
+                `${authorized.map(account => '@' + account).join(', ')} please review this change retroactively — if it does not hold up, revert it.`,
+              ].join('\n'));
+              console.log(`Hotfix merged by ${mergedBy} — flagged for retroactive review.`);
+              return;
+            }
+
+            const shownOutside = outsideFiles.slice(0, 20).join(', ')
+              + (outsideFiles.length > 20 ? ` — and ${outsideFiles.length - 20} more` : '');
+            const reason = scopeUnverifiable
+              ? `the PR has too many changed files to verify — scope cannot be verified, so the hotfix exception cannot be applied`
+              : isHotfixBranch
+                ? `the branch has the \`${prefix}\` prefix but the PR touches files outside \`${allowedPathSpec}\`: ${shownOutside} — the hotfix exception covers only changes inside \`${allowedPathSpec}\``
+                : `only hotfixes (branch \`${prefix}*\`, changes limited to \`${allowedPathSpec}\`) may be merged by partners`;
+
+            await postCommentOnce([
+              `⚠️ **This pull request was merged by @${mergedBy}, who is not a Shoptet reviewer.**`,
+              '',
+              `Addon changes must be reviewed and merged by ${authorized.map(account => '@' + account).join(', ')} — ${reason}.`,
+              'This merge has been flagged for Shoptet review — unreviewed changes may be reverted and their deployment may be withheld.',
+            ].join('\n'));
+            core.setFailed(`PR #${pr.number} was merged by ${mergedBy} — only Shoptet reviewers may merge (no qualifying hotfix).`);
 
   files-check:
     name: File Protection Check
+    # See the "review" job above: closed-without-merge must still run this
+    # job, or a partner could close+reopen past a red check.
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     concurrency:
       group: "pr-checks-files-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
@@ -458,8 +584,21 @@ jobs:
               pull_number: context.payload.pull_request.number
             });
 
+            // the API lists at most 3000 files — beyond that protection cannot
+            // be verified, so fail closed instead of waving the PR through
+            if (files.length >= 3000) {
+              console.error(`Cannot verify protected paths: PR has ${files.length}+ changed files — scope cannot be verified`);
+              process.exit(1);
+            }
+
+            const rules = process.env.PROTECTED_PATHS.split(',').map(rule => rule.trim()).filter(Boolean);
+            const isProtected = (name) => rules.some(rule =>
+              rule.endsWith('/') ? name.startsWith(rule) : name === rule
+            );
+
+            // previous_filename catches files renamed out of a protected path
             const changedProtectedFiles = files.filter(file =>
-              process.env.PROTECTED_FILES.split(',').map(f => f.trim()).includes(file.filename)
+              isProtected(file.filename) || (file.previous_filename && isProtected(file.previous_filename))
             );
 
             if (changedProtectedFiles.length > 0) {
@@ -471,6 +610,9 @@ jobs:
 
   collaborators-check:
     name: Shoptet reviewers assigned
+    # See the "review" job above: closed-without-merge must still run this
+    # job, or a partner could close+reopen past a red check.
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     concurrency:
       group: "pr-checks-collaborators-${{ github.repository_id }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}"
@@ -491,18 +633,41 @@ jobs:
 
             const requestedReviewers = pr.requested_reviewers.map(reviewer => reviewer.login);
             const requestedTeams = pr.requested_teams?.map(team => team.slug) || [];
-            const allRequestedReviewers = [...requestedReviewers, ...requestedTeams];
+            const requiredReviewers = process.env.REQUIRED_REVIEWER.split(',').map(reviewer => reviewer.trim());
 
             console.log('Required reviewers:', process.env.REQUIRED_REVIEWER);
-            console.log('Requested reviewers:', allRequestedReviewers);
+            console.log('Requested reviewers:', [...requestedReviewers, ...requestedTeams]);
 
-            const missingReviewers = process.env.REQUIRED_REVIEWER.split(',').filter(reviewer =>
-              !allRequestedReviewers.includes(reviewer.trim())
-            );
+            let satisfied = [...requestedReviewers, ...requestedTeams];
+            let missingReviewers = requiredReviewers.filter(reviewer => !satisfied.includes(reviewer));
+
+            // GitHub removes a reviewer from requested_reviewers the moment they
+            // submit a review, so already-submitted reviews must count too —
+            // otherwise a re-run after an approval fails the check. Only paginate
+            // listReviews when the requested-reviewers set doesn't already
+            // satisfy the check, since that's the common case on every push.
+            // Deliberate consequence: any submitted review (even COMMENTED or a
+            // later-dismissed one) satisfies this check permanently, regardless
+            // of commits pushed afterwards. This check verifies "the reviewer
+            // is in the loop"; merge enforcement itself lives in the merge
+            // audit (#10) and the App's deploy gate (addon-repository-github-app).
+            let submittedReviewers = [];
+            if (missingReviewers.length > 0) {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number
+              });
+              submittedReviewers = [...new Set(reviews.map(review => review.user?.login).filter(Boolean))];
+              satisfied = [...satisfied, ...submittedReviewers];
+              missingReviewers = requiredReviewers.filter(reviewer => !satisfied.includes(reviewer));
+            }
+
+            console.log('Submitted reviews from:', submittedReviewers);
 
             if (missingReviewers.length > 0) {
               console.error('Missing required reviewers:', missingReviewers);
               process.exit(1);
             } else {
-              console.log('All required reviewers assigned');
+              console.log('All required reviewers assigned or already reviewed');
             }

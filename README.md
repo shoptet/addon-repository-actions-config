@@ -48,9 +48,10 @@ jobs:
       pull-requests: write
 ```
 
-Besides the review job, the workflow also verifies that protected workflow files
-are not modified, that the PR author is an authorized Shoptet reviewer, and that
-the required Shoptet reviewer is assigned.
+Besides the review job, the workflow also verifies that protected paths
+(`.github/workflows/`) are not modified, that the required Shoptet reviewer is
+assigned (submitted reviews count), and — post-merge — audits WHO merged
+(`merge-audit`; see below).
 
 **Known limitations:**
 - *Line shifts re-create comment threads.* Comments are matched across pushes by
@@ -196,3 +197,33 @@ minified/vendored ignore conventions to the **CWD-relative** path — run it
 from the addon repo root for the same view CI has. A `dist/` or `vendor/`
 segment in the path *as you typed it* counts as vendored; directories above
 your current directory don't.
+
+### Merge audit and caller trigger requirements
+
+Besides the PR-time jobs, the workflow runs a post-merge **`merge-audit`** job
+that flags a merge performed by anyone other than `REQUIRED_REVIEWER` (with a
+retroactive-review exception for `hotfix/*` branches touching only `src/`).
+
+`closed` must be in the caller's trigger types — GitHub's default (`[opened,
+synchronize, reopened]`) never fires it — or `merge-audit` never runs and
+merges go unaudited. `reopened` is not required for safety: the
+review/files/collaborators jobs re-run on a closed-but-unmerged event too, so
+a partner cannot close a PR blocked by a red check and reopen it past a stale
+green one; keep `reopened` only if you also want checks to re-run after a
+partner reopens a closed PR without a new push.
+
+The `permissions` block matters: a restrictive org/repo default token
+(`contents: read` only) grants less than the workflow requests, and the
+merge-audit comment step degrades silently to a warning instead of failing
+the run — on a qualifying hotfix that means a green check with no
+retroactive-review ping at all. Declare only one of `pull_request` /
+`pull_request_target` with `closed` — declaring both fires `merge-audit`
+twice per merge; the job's own concurrency group queues (not cancels) a
+duplicate run so it detects the first run's comment instead of
+double-posting, but there is no reason to wire it that way.
+
+Enforcement of "only Shoptet reviewers may merge" is not this workflow's job —
+a workflow in a partner-owned repo can only detect and flag, since the partner
+is admin of their own repo. The actual enforcement (deploy gate, branch
+protection management) lives in `addon-repository-github-app`, which should
+mirror this trigger requirement in whatever caller template it distributes.
