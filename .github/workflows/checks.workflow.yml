@@ -34,14 +34,16 @@ env:
 jobs:
   review:
     name: Review Code
-    # Skip only on closed+merged (merge-audit takes over from there). A
-    # closed-without-merge event still runs this job normally, so the real
-    # pass/fail status gets re-posted on the SAME event that closed the PR —
-    # this is what closes the close/reopen bypass a caller could otherwise
-    # hit by adding `closed` to its trigger types without `reopened`: a
-    # `skipped` conclusion counts as passing for required-status purposes,
-    # so skipping on every closed action (merged or not) would let a partner
-    # close a PR blocked by a red check and reopen it green.
+    # Skip only on closed+merged (merge-audit takes over from there, for a
+    # PR merged into main/master — a merge into any other branch intentionally
+    # runs nothing at all, see merge-audit's own if: below). A closed-without-
+    # merge event still runs this job normally, so the real pass/fail status
+    # gets re-posted on the SAME event that closed the PR — this is what
+    # closes the close/reopen bypass a caller could otherwise hit by adding
+    # `closed` to its trigger types without `reopened`: a `skipped` conclusion
+    # counts as passing for required-status purposes, so skipping on every
+    # closed action (merged or not) would let a partner close a PR blocked by
+    # a red check and reopen it green.
     if: github.event.action != 'closed' || github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     # concurrency must sit at job level: GitHub ignores workflow-level
@@ -88,11 +90,24 @@ jobs:
     # this job never runs. No event_name check: no other event carries a
     # truthy github.event.pull_request.merged, and gating on 'pull_request'
     # specifically would silently skip this job for pull_request_target callers.
-    # Scoped to the default branch: this check encodes "who may merge code
-    # that reaches production", so a PR merged between two non-default
-    # branches (partners managing their own feature/release branches) must
-    # not trigger it — that would misfire on merges nobody needs reviewed.
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
+    # Scoped to main/master, NOT github.event.repository.default_branch:
+    # this check encodes "who may merge code that reaches production", and
+    # default_branch is a partner-editable Settings value with no commit
+    # trail — a partner could point it at a throwaway branch, self-merge
+    # unreviewed code into main, then point it back, and the audit would
+    # skip silently (no red check, no comment) for that PR forever. A repo
+    # whose real default branch simply isn't named main/master would also
+    # go permanently unaudited under the default_branch condition, silently
+    # and by default rather than as a deliberate attack. main/master is what
+    # actually deploys: it's the exact branch list the App's distributed
+    # deploy template (assets/shoptetAddon.workflow.yml in
+    # addon-repository-github-app) hardcodes as its `push` trigger, so this
+    # tracks the real deploy path instead of a value the audited party
+    # controls. `contains()` here does a case-insensitive match (same as
+    # Actions' `==`), so a partner merging into a same-named branch that
+    # differs only by case (e.g. `Main`) still trips this — accepted edge,
+    # not worth a shell-level case-sensitive workaround.
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true && contains(fromJSON('["main", "master"]'), github.event.pull_request.base.ref)
     runs-on: ubuntu-latest
     # No cancel-in-progress: the closed+merged event fires once per PR
     # lifetime under a single trigger, so there is normally nothing to
