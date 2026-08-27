@@ -33,7 +33,7 @@ The resolved package manager is used for the `setup-node` dependency cache, the 
 
 ## Pull request checks
 
-`checks.workflow.yml` runs code review, protected-path and required-reviewer checks on every PR, plus a post-merge `merge-audit` job that flags a merge performed by anyone other than `REQUIRED_REVIEWER` (with a retroactive-review exception for `hotfix/*` branches touching only `src/`). Call it with:
+`checks.workflow.yml` runs code review, protected-path and required-reviewer checks on every PR, plus a post-merge `merge-audit` job that flags a merge into `main` or `master` performed by anyone other than `REQUIRED_REVIEWER` (with a retroactive-review exception for `hotfix/*` branches touching only `src/`). Scoped to `main`/`master` rather than the repo's (partner-editable) default branch setting, to track the branch that actually deploys. Call it with:
 
 ```yaml
 on:
@@ -48,7 +48,7 @@ jobs:
     uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@main
 ```
 
-`closed` must be in the caller's trigger types — GitHub's default (`[opened, synchronize, reopened]`) never fires it — or `merge-audit` never runs and merges go unaudited. `reopened` is not required for safety: the review/files/collaborators jobs re-run on a closed-but-unmerged event too, so a partner cannot close a PR blocked by a red check and reopen it past a stale green one; keep `reopened` only if you also want checks to re-run after a partner reopens a closed PR without a new push.
+`closed` must be in the caller's trigger types — GitHub's default (`[opened, synchronize, reopened]`) never fires it — or `merge-audit` never runs and merges go unaudited (a merge into a branch other than `main`/`master` is never audited regardless of trigger types — see above). `reopened` is not required for safety: the review/files/collaborators jobs re-run on a closed-but-unmerged event too, so a partner cannot close a PR blocked by a red check and reopen it past a stale green one; keep `reopened` only if you also want checks to re-run after a partner reopens a closed PR without a new push.
 
 The `permissions` block matters: a restrictive org/repo default token (`contents: read` only) grants less than the workflow requests, and the merge-audit comment step degrades silently to a warning instead of failing the run — on a qualifying hotfix that means a green check with no retroactive-review ping at all. Declare only one of `pull_request` / `pull_request_target` with `closed` — declaring both fires `merge-audit` twice per merge; the job's own concurrency group queues (not cancels) a duplicate run so it detects the first run's comment instead of double-posting, but there is no reason to wire it that way.
 
