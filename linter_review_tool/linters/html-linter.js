@@ -81,7 +81,9 @@ function checkElement(node, file, findings) {
   // external scripts (src=, empty content) and DATA blocks (ld+json,
   // text/template, …) are not executable inline JS and never flag.
   if (tag === 'script') {
-    const type = (attrs.type || '').trim().toLowerCase();
+    // MIME essence only — browsers execute `text/javascript;charset=utf-8`,
+    // so parameters must not evade the blocker (post-approval nit).
+    const type = (attrs.type || '').split(';')[0].trim().toLowerCase();
     const isJs = type === '' || type === 'module' || type === 'text/javascript' || type === 'application/javascript';
     const text = (node.childNodes || [])
       .filter((child) => child.nodeName === '#text')

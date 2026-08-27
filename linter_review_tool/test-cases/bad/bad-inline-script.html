@@ -9,5 +9,9 @@
     <script type="module">
       window.console.log('module inline');
     </script>
+    <!-- MIME parameters must not evade the blocker (post-approval nit). -->
+    <script type="text/javascript;charset=utf-8">
+      document.title = 'still executable';
+    </script>
   </body>
 </html>

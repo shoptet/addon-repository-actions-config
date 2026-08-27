@@ -63,7 +63,7 @@
     "no-import-assign@blocker"
   ],
   "bad/bad-inline-script.html": [
-    "html/no-inline-script@blocker:2"
+    "html/no-inline-script@blocker:3"
   ],
   "bad/bad-js-practices.js": [
     "camelcase@recommend:2",
