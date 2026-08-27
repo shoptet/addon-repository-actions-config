@@ -1,0 +1,5 @@
+{
+  "name": "shoptet-addon-review",
+  "description": "Front-end code review of Shoptet visual addons against a rules catalog — review in Claude Code over a cloned addon repo (skill st-addon-review).",
+  "version": "0.1.0"
+}

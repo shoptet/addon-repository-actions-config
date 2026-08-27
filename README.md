@@ -153,6 +153,16 @@ The deploy pipeline called from partner repositories:
 Addon Repository will upload this artifact to FTP, remove the artifact from
 GitHub and update custom codes.
 
+### `shoptet-addon-review/` — AI code-review skill
+
+The heuristic/contextual counterpart of the deterministic linter gate above:
+an AI code-review skill (`st-addon-review`, a Claude Code plugin) that reviews
+addon PRs against the FE rules catalog. Install/run instructions →
+`shoptet-addon-review/INSTALL.md`; status and decisions →
+`shoptet-addon-review/CONTEXT.md`. (The legacy `review_tool/` prototype it
+superseded was removed together with the introduction of
+`linter_review_tool/`.)
+
 ## Package managers
 
 The build workflow supports **npm, Yarn and pnpm**. The package manager is resolved in this order:
@@ -201,12 +211,16 @@ your current directory don't.
 ### Merge audit and caller trigger requirements
 
 Besides the PR-time jobs, the workflow runs a post-merge **`merge-audit`** job
-that flags a merge performed by anyone other than `REQUIRED_REVIEWER` (with a
-retroactive-review exception for `hotfix/*` branches touching only `src/`).
+that flags a merge **into `main` or `master`** performed by anyone other than
+`REQUIRED_REVIEWER` (with a retroactive-review exception for `hotfix/*`
+branches touching only `src/`). It is scoped to `main`/`master` rather than
+the repo's (partner-editable) default-branch setting, to track the branch
+that actually deploys.
 
 `closed` must be in the caller's trigger types — GitHub's default (`[opened,
 synchronize, reopened]`) never fires it — or `merge-audit` never runs and
-merges go unaudited. `reopened` is not required for safety: the
+merges go unaudited (a merge into a branch other than `main`/`master` is never
+audited regardless of trigger types — see above). `reopened` is not required for safety: the
 review/files/collaborators jobs re-run on a closed-but-unmerged event too, so
 a partner cannot close a PR blocked by a red check and reopen it past a stale
 green one; keep `reopened` only if you also want checks to re-run after a
