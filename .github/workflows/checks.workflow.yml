@@ -316,8 +316,10 @@ jobs:
             // Deliberate consequence: any submitted review (even COMMENTED or a
             // later-dismissed one) satisfies this check permanently, regardless
             // of commits pushed afterwards. This check verifies "the reviewer
-            // is in the loop"; merge enforcement itself lives in the merge
-            // audit (#10) and the App's deploy gate (addon-repository-github-app).
+            // is in the loop"; merge enforcement for production-bound code
+            // lives in the merge audit (#10) and the App's deploy gate
+            // (addon-repository-github-app) — neither backstop fires for a
+            // PR merged into a branch other than main/master.
             let submittedReviewers = [];
             if (missingReviewers.length > 0) {
               const reviews = await github.paginate(github.rest.pulls.listReviews, {
