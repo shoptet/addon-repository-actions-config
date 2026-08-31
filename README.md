@@ -40,6 +40,23 @@ jobs:
 
 The resolved package manager is used for the `setup-node` dependency cache, the install step (`npm ci` / `yarn` / `pnpm install --frozen-lockfile`) and the `build --env production` step. Existing Yarn-based addon repositories keep working without any change.
 
+## Node version
+
+Builds run on **Node 24** (the current LTS) by default. A repository that
+needs a different version can override it per-call via the optional
+`node_version` input:
+
+```yaml
+jobs:
+  deploy:
+    uses: shoptet/addon-repository-actions-config/.github/workflows/default.workflow.yml@main
+    with:
+      node_version: '22'
+```
+
+The value is passed straight to `actions/setup-node`; without the input the
+default above applies.
+
 ## Pull request checks
 
 `checks.workflow.yml` runs code review, protected-path and required-reviewer checks on every PR, plus a post-merge `merge-audit` job that flags a merge into `main` or `master` performed by anyone other than `REQUIRED_REVIEWER` (with a retroactive-review exception for `hotfix/*` branches touching only `src/`). Scoped to `main`/`master` rather than the repo's (partner-editable) default branch setting, to track the branch that actually deploys. Call it with:
