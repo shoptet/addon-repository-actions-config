@@ -38,6 +38,19 @@ abort "deploy.workflow.yml wrapper inputs drift from default.workflow.yml:\n#{a}
 ' "$ROOT" || { echo "FAIL: wrapper input parity"; exit 1; }
 echo "PASS: wrapper inputs match default.workflow.yml"
 
+# The README prose documents the default Node version — keep it in sync with
+# the YAML default (the two YAML copies are covered by the parity check above).
+node_default=$(ruby -ryaml -e '
+doc = YAML.load_file(ARGV[0])
+puts (doc["on"] || doc[true]).fetch("workflow_call").fetch("inputs").fetch("node_version").fetch("default")
+' "$WORKFLOW")
+if grep -q "Builds run on \*\*Node ${node_default}\*\* by default" "$ROOT/README.md"; then
+  echo "PASS: README documents the Node ${node_default} default"
+else
+  echo "FAIL: README prose drifted from the workflow default (Node ${node_default})"
+  exit 1
+fi
+
 # Stub package manager binaries so tests only record what would be executed
 # instead of installing anything for real. `--version` answers with
 # $STUB_VERSION so the workflow's version asserts can be exercised;

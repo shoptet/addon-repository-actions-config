@@ -42,7 +42,7 @@ The resolved package manager is used for the `setup-node` dependency cache, the 
 
 ## Node version
 
-Builds run on **Node 24** (the current LTS) by default. A repository that
+Builds run on **Node 24** by default. A repository that
 needs a different version can override it per-call via the optional
 `node_version` input:
 
@@ -54,8 +54,8 @@ jobs:
       node_version: '22'
 ```
 
-The value is passed straight to `actions/setup-node`; without the input the
-default above applies.
+The value is passed straight to `actions/setup-node`; when the input is
+omitted the default above applies.
 
 ## Pull request checks
 
