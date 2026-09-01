@@ -12,7 +12,7 @@ on:
         description: 'Node.js version used for the build (passed to actions/setup-node).'
         required: false
         type: string
-        default: '22'
+        default: '24'
 
 jobs:
   build:

@@ -192,6 +192,24 @@ The build workflow also accepts a `node_version` input (passed to
 `actions/setup-node`), defaulting to `'22'` — set it when an addon needs a
 different Node major.
 
+## Node version
+
+Builds run on **Node 24** by default. A repository that
+needs a different version can override it per-call via the optional
+`node_version` input:
+
+```yaml
+jobs:
+  deploy:
+    uses: shoptet/addon-repository-actions-config/.github/workflows/default.workflow.yml@main
+    with:
+      node_version: '22'
+```
+
+The value is passed straight to `actions/setup-node`; when the input is
+omitted the default above applies.
+
+## Pull request checks
 The resolved package manager is used for the `setup-node` dependency cache, the install step (`npm ci` / `yarn` / `pnpm install --frozen-lockfile`) and the `build --env production` step. Existing Yarn-based addon repositories keep working without any change.
 
 ## Local usage

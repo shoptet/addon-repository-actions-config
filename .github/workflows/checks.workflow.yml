@@ -76,6 +76,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
+          # review_tool runtime — independent of the partner build node_version default
           node-version: "22"
 
       - name: Install review tool dependencies
