@@ -1,0 +1,7 @@
+/* Escape/paren-aware stripping pins (round 13): none of these is a length. */
+.gallery {
+  background: url("photo (1) 5pt.png");
+}
+.note::after {
+  content: 'it\'s 5pt tall';
+}

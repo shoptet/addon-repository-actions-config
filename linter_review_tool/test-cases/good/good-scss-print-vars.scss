@@ -1,0 +1,9 @@
+// A variable holding a pt value is a definition, not an applied style —
+// its USE inside @media print decides the context (round 11).
+$invoice-size: 11pt;
+
+@media print {
+  .invoice {
+    font-size: $invoice-size;
+  }
+}

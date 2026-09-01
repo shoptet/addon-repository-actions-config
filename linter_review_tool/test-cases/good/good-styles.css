@@ -1,0 +1,36 @@
+.elevate-widget {
+  font-size: 14px;
+  border: 1px solid #cccccc;
+  line-height: 1.4;
+}
+
+/* Partner-owned attribute — must NOT match the testid rule boundary. */
+[data-testid-mine="own"] {
+  color: green;
+}
+
+/* pt is the CORRECT unit in print contexts — the exemption is pinned here. */
+@media print {
+  .invoice {
+    font-size: 12pt;
+  }
+}
+@page {
+  margin: 2cm 1.5cm;
+  padding-top: 10pt;
+}
+
+/* Zero is text hiding, not small text — must not flag (round 11). */
+.hide-text {
+  font-size: 0px;
+}
+
+/* Entrance animations legitimately start tiny — @keyframes is exempt. */
+@keyframes text-pop {
+  from {
+    font-size: 2px;
+  }
+  to {
+    font-size: 14px;
+  }
+}

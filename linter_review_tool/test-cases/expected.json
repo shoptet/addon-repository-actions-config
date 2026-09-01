@@ -1,0 +1,205 @@
+{
+  "$comment": "Machine-checked spec for the linter self-test (test/selftest.js). Every file in test-cases/bad/ MUST list the exact sorted set of rule@severity pairs it triggers (severity is part of the gate contract: blocker gates the PR, recommend does not); every file in test-cases/good/ must produce zero findings. Update deliberately whenever rule behavior or severity changes.",
+  "bad/bad-console-tamper.js": [
+    "shoptet/no-global-console@blocker:2"
+  ],
+  "bad/bad-console.js": [
+    "no-console@blocker:3"
+  ],
+  "bad/bad-console.mjs": [
+    "no-console@blocker"
+  ],
+  "bad/bad-core-fn-prop.js": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
+  "bad/bad-core-legacy-decls.js": [
+    "shoptet/no-core-overwrite@blocker:3"
+  ],
+  "bad/bad-core-module-scope-fn.js": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
+  "bad/bad-core-mutations.js": [
+    "no-global-assign@blocker",
+    "shoptet/no-core-overwrite@blocker:7"
+  ],
+  "bad/bad-core-nested.js": [
+    "shoptet/no-core-overwrite@blocker:3"
+  ],
+  "bad/bad-core-optional-chain.js": [
+    "shoptet/no-core-overwrite@blocker:2"
+  ],
+  "bad/bad-core-window-function.js": [
+    "shoptet/no-core-overwrite@blocker:2"
+  ],
+  "bad/bad-core-window-object.js": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
+  "bad/bad-czech-comments.js": [
+    "shoptet/no-czech-comments@recommend:3"
+  ],
+  "bad/bad-dead-code.js": [
+    "no-console@blocker",
+    "no-unreachable@blocker",
+    "no-unused-vars@blocker:6",
+    "prefer-const@recommend"
+  ],
+  "bad/bad-debugger.js": [
+    "no-debugger@blocker"
+  ],
+  "bad/bad-deep-nesting.js": [
+    "max-depth@blocker"
+  ],
+  "bad/bad-global-bypass.js": [
+    "shoptet/no-core-overwrite@blocker",
+    "shoptet/no-settimeout-hack@blocker:2"
+  ],
+  "bad/bad-global-console.js": [
+    "shoptet/no-global-console@blocker:3"
+  ],
+  "bad/bad-html-deprecated-extra.html": [
+    "html/deprecated-tag@recommend:3"
+  ],
+  "bad/bad-import-assign.js": [
+    "no-import-assign@blocker"
+  ],
+  "bad/bad-inline-script.html": [
+    "html/no-inline-script@blocker:3"
+  ],
+  "bad/bad-js-practices.js": [
+    "camelcase@recommend:2",
+    "no-extend-native@recommend",
+    "no-mixed-spaces-and-tabs@recommend",
+    "no-redeclare@blocker",
+    "no-unused-expressions@blocker",
+    "no-useless-concat@recommend",
+    "no-var@blocker:2",
+    "prefer-template@recommend",
+    "radix@recommend"
+  ],
+  "bad/bad-legacy-script.js": [
+    "no-console@blocker",
+    "no-dupe-args@blocker",
+    "no-implicit-globals@blocker:3",
+    "no-redeclare@blocker",
+    "no-var@blocker",
+    "shoptet/es-module-required@blocker",
+    "shoptet/no-core-overwrite@blocker"
+  ],
+  "bad/bad-markup.html": [
+    "a11y/img-alt@blocker",
+    "html/deprecated-tag@recommend"
+  ],
+  "bad/bad-max-lines.js": [
+    "max-lines@recommend"
+  ],
+  "bad/bad-misc-practices.js": [
+    "eqeqeq@blocker",
+    "no-param-reassign@blocker",
+    "shoptet/no-redundant-checks@recommend"
+  ],
+  "bad/bad-mjs-dead-code.mjs": [
+    "no-unused-vars@blocker"
+  ],
+  "bad/bad-runtime-facts.js": [
+    "no-const-assign@blocker",
+    "no-dupe-keys@blocker",
+    "no-func-assign@blocker",
+    "no-obj-calls@blocker",
+    "use-isnan@blocker",
+    "valid-typeof@blocker"
+  ],
+  "bad/bad-runtime-facts2.js": [
+    "getter-return@blocker",
+    "no-class-assign@blocker",
+    "no-dupe-else-if@blocker",
+    "no-self-assign@blocker",
+    "no-setter-return@blocker"
+  ],
+  "bad/bad-security.js": [
+    "no-eval@blocker",
+    "no-implied-eval@blocker",
+    "no-script-url@blocker"
+  ],
+  "bad/bad-settimeout-coercions.js": [
+    "shoptet/no-settimeout-hack@blocker:8"
+  ],
+  "bad/bad-settimeout-named-const.js": [
+    "shoptet/no-settimeout-hack@blocker"
+  ],
+  "bad/bad-settimeout-template.js": [
+    "shoptet/no-settimeout-hack@blocker"
+  ],
+  "bad/bad-settimeout.js": [
+    "shoptet/no-settimeout-hack@blocker"
+  ],
+  "bad/bad-shoptet-overwrite.js": [
+    "shoptet/no-core-overwrite@blocker:3"
+  ],
+  "bad/bad-structure.js": [
+    "complexity@recommend",
+    "max-lines-per-function@recommend",
+    "max-nested-callbacks@blocker",
+    "max-statements@recommend"
+  ],
+  "bad/bad-styles-broken.css": [
+    "CssSyntaxError@blocker"
+  ],
+  "bad/bad-styles-invalid.css": [
+    "color-no-invalid-hex@blocker",
+    "no-duplicate-at-import-rules@recommend"
+  ],
+  "bad/bad-styles-not-print.css": [
+    "shoptet/no-pt-unit@recommend"
+  ],
+  "bad/bad-styles-overrides.scss": [
+    "declaration-no-important@recommend",
+    "no-duplicate-selectors@recommend",
+    "shoptet/max-z-index@recommend"
+  ],
+  "bad/bad-styles-rem.css": [
+    "shoptet/min-font-size@recommend"
+  ],
+  "bad/bad-styles-shorthand.css": [
+    "shoptet/min-font-size@recommend"
+  ],
+  "bad/bad-styles.css": [
+    "shoptet/min-font-size@recommend",
+    "shoptet/no-pt-unit@recommend:2"
+  ],
+  "bad/bad-styles.less": [
+    "shoptet/min-font-size@recommend",
+    "shoptet/no-pt-unit@recommend"
+  ],
+  "bad/bad-styles.scss": [
+    "shoptet/min-font-size@recommend",
+    "shoptet/no-pt-unit@recommend"
+  ],
+  "bad/bad-syntax-error.js": [
+    "CodeQuality@blocker"
+  ],
+  "bad/bad-tdz.js": [
+    "no-use-before-define@blocker"
+  ],
+  "bad/bad-template-markup.html": [
+    "a11y/img-alt@blocker",
+    "html/deprecated-tag@recommend"
+  ],
+  "bad/bad-testid-styles.css": [
+    "shoptet/no-testid-selector@blocker"
+  ],
+  "bad/bad-testid.js": [
+    "shoptet/no-testid-selector@blocker:3"
+  ],
+  "bad/bad-upper.CSS": [
+    "color-no-invalid-hex@blocker"
+  ],
+  "bad/bad-upper.JS": [
+    "no-console@blocker"
+  ],
+  "bad/bad-var-usage.js": [
+    "no-var@blocker:5"
+  ],
+  "bad/bad-xhr.js": [
+    "shoptet/prefer-fetch@recommend"
+  ]
+}

@@ -1,0 +1,45 @@
+name: Linter self-test
+# CI for this repository itself (NOT the reusable partner workflow): verifies
+# the rule set against the fixtures in linter_review_tool/test-cases via
+# test/selftest.js, so a rule regression can't ship to partners unnoticed.
+on:
+  push:
+    # main + the LIVE branch partners consume pre-merge: the PR run covers the
+    # merge ref, not the branch tip callers pin (round 13). Other feature
+    # branches stay covered by their PRs — without a filter every same-repo PR
+    # would run the suite twice (push + pull_request).
+    branches: [main, feature/linter-review-tool]
+    paths:
+      - 'linter_review_tool/**'
+      - '.github/workflows/selftest.yml'
+      # The reconcile github-script require()s lib/reconcile-utils.js from the
+      # tool — run the suite when the workflow changes too, so at least the
+      # shared-module contract is exercised (full script harness = follow-up).
+      - '.github/workflows/checks.workflow.yml'
+  pull_request:
+    paths:
+      - 'linter_review_tool/**'
+      - '.github/workflows/selftest.yml'
+      - '.github/workflows/checks.workflow.yml'
+
+jobs:
+  selftest:
+    name: Rule-set snapshot test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: linter_review_tool
+        run: yarn --frozen-lockfile
+
+      - name: Run self-test
+        working-directory: linter_review_tool
+        run: yarn test

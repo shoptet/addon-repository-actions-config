@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <body>
+    <!-- Inline JS bypasses the whole JS rule set — must gate (round 14). -->
+    <script>
+      console.log('debug leftover');
+      eval('2+2');
+    </script>
+    <script type="module">
+      window.console.log('module inline');
+    </script>
+    <!-- MIME parameters must not evade the blocker (post-approval nit). -->
+    <script type="text/javascript;charset=utf-8">
+      document.title = 'still executable';
+    </script>
+  </body>
+</html>
