@@ -1,0 +1,9 @@
+<!doctype html>
+<html>
+  <body>
+    <!-- Placeholder in attribute position breaks tokenization — the attribute
+         set can't be trusted, img-alt must not claim alt is missing (round 13). -->
+    <img src="banner.png" {{alt_attribute}}>
+    <img src="{{img}}" {{#if alt}}alt="{{alt}}"{{/if}}>
+  </body>
+</html>

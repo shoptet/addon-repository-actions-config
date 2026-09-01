@@ -1,0 +1,4 @@
+/* Styles must not bind to Shoptet testids (B7 — stylesheet counterpart). */
+[data-testid="cart-button"] {
+  color: red;
+}

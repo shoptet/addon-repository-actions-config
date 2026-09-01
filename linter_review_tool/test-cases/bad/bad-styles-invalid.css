@@ -1,0 +1,5 @@
+@import url("shared.css");
+@import url("shared.css"); /* no-duplicate-at-import-rules */
+.brand {
+  color: #12ez45; /* color-no-invalid-hex */
+}
