@@ -69,7 +69,7 @@ jobs:
           # config are read from this ref. (github.job_workflow_sha would remove
           # this manual step, but it resolves empty in this setup, so it can't be
           # used; workflow_sha/workflow_ref point at the caller, not this repo.)
-          ref: feature/linter-review-tool
+          ref: main
           path: review-tool
           token: ${{ secrets.GITHUB_TOKEN }}
 

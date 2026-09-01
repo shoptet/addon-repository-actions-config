@@ -42,7 +42,7 @@ on:
 
 jobs:
   checks:
-    uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@feature/linter-review-tool
+    uses: shoptet/addon-repository-actions-config/.github/workflows/checks.workflow.yml@main
     permissions:
       contents: read
       pull-requests: write
