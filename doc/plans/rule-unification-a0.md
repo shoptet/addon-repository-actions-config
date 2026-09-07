@@ -1,0 +1,66 @@
+# A0 — land the in-flight branches and freeze the rule set
+
+> **Slice 1 of 8 in the rule-unification track.** [`README.md`](./README.md) indexes this
+> repository's half; the track index lives in the CLI repo at `doc/plans/rule-unification.md`.
+> Next: [`A1`](./rule-unification-a1.md).
+>
+> **Status: not started.**
+
+## Why this is its own slice
+
+Three open branches are editing the very things the next two slices extract. Extracting a rule set
+while it is being changed means the 53-fixture selftest is validating a moving target, and
+"preserve the existing functionality" — the constraint the whole track is built on — has no fixed
+definition to preserve.
+
+The branch that matters most is **`fix/large-file-inline-comments`**. Its commits:
+
+- *"blockers mode: post only blockers (drop warnings) + make max-lines a blocker"*
+- *"blockers mode: full blocker table in job Summary + raise inline cap to 100"*
+- *"Point review-tool checkout at this branch so rule config changes take effect"*
+
+That changes the **severity → gate mapping** and promotes `max-lines` from a recommendation to a
+blocker. Both are layers the shared packages will own. If it lands after extraction, it lands twice.
+
+The others are lower risk but should be resolved rather than carried:
+
+| branch | what it touches |
+| --- | --- |
+| `fix/large-file-inline-comments` | severity mapping, `max-lines` severity, inline comment cap |
+| `fix/merge-audit-base-branch-guard` | governance jobs — anchors merge-audit on `main`/`master` |
+| `node22-update` | `actions/*` versions, artifact upload v5, Node 22 |
+| `webpack` | `default.workflow.yml`, production mode, artifact naming |
+| `feature/ai-review-skill` | `shoptet-addon-review/` docs and the rule catalogue |
+
+`feature/ai-review-skill` is explicitly **out of the track's scope** — the AI review surface is not
+being adopted by the CLI. It only matters here because it edits `rules-catalog.md`, whose codes
+(`A1`, `B5`, `C4`, `H1`) the rule comments cite.
+
+## Scope
+
+- Land or close each open branch. For any that will not land, record why in the PR, so a later reader
+  does not treat an abandoned branch as pending work.
+- After they land, take a **rule-set snapshot**: the exact `rule@severity` set the gate produces, from
+  `test/selftest.js` + `test-cases/expected.json`. This is the baseline `A1` must preserve and `A2`
+  must publish.
+- Re-run the selftest and confirm green on `main`.
+- Decide and record the **`max-lines` question**: if `fix/large-file-inline-comments` lands, the
+  shared `@shoptet/addon-eslint-config` ships `max-lines` as a blocker at `400` lines from v1. That is
+  a partner-visible gate change and belongs in the snapshot, not in a later "small fix".
+
+## Definition of done
+
+- No open branch modifies `linter_review_tool/` rule config, severities, or `profiles.js`.
+- `node test/selftest.js` green on `main`, and the resulting `rule@severity` set is written down in
+  the PR as the frozen baseline.
+- The `README`'s Node-version inconsistency is fixed while here: one paragraph still says the
+  `node_version` default is `'22'`, while `default.workflow.yml` sets `'24'` after PR #13.
+
+## Review checklist
+
+- Confirm the frozen baseline was produced by *running* the selftest, not by reading
+  `expected.json`. The two can disagree, and which one is true is the whole question.
+- Confirm no branch was left open with rule-config changes in it. A branch is not "resolved" because
+  someone intends to rebase it later.
+- Check the baseline includes stylelint and HTML findings, not just ESLint — all three linters feed
+  one gate.

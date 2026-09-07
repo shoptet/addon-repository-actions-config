@@ -1,0 +1,95 @@
+# A3 — the equality test and the discovery conformance corpus
+
+> **Slice 7 of 8 in the rule-unification track.** [`README.md`](./README.md) indexes this
+> repository's half; the track index lives in the CLI repo at `doc/plans/rule-unification.md`.
+> Previous: [`A2`](./rule-unification-a2.md). Runs in parallel with `B4` in the CLI repo — the two are
+> halves of one mechanism and should be reviewed together.
+>
+> **Status: not started.**
+
+## Why this is its own slice
+
+[`A2`](./rule-unification-a2.md) makes the two runners agree. This slice is what keeps them agreeing.
+Without it the track delivers a one-time alignment that decays, and the decay is invisible: a rule
+added on one side and not the other produces no error anywhere, just two tools quietly disagreeing
+about whether a partner's addon is acceptable.
+
+Two mechanisms, deliberately different in kind, because they catch different things.
+
+## Scope
+
+### The rule-set equality test
+
+This repository asserts that **its effective rule set equals the shared packages' declared set**, by
+**rule id and severity only**.
+
+Not message text and not report ranges. Across ESLint 9.39.5 and 10.8.0 exactly two rules diverge:
+`max-depth` reports a narrower `endColumn` on 10, and `no-useless-assignment`'s message text differs.
+The CLI is on 10 and this repo on 9, so asserting on either would make the test fail for reasons that
+have nothing to do with policy — and a test that cries wolf gets deleted.
+
+Four failures it must produce:
+
+- a rule enabled in the shared config but missing from this repo's effective set
+- a rule whose severity differs between the two
+- a rule configured but absent from `RELIABLE_RULES` — configured yet never reportable
+- a rule in `RELIABLE_RULES` that nothing configures
+
+The existing selftest already has a `RELIABLE_RULES` coverage assertion — every gating rule must be
+pinned by some fixture. That is the right instinct and this extends it across the repository boundary
+rather than replacing it.
+
+### The discovery conformance corpus
+
+**File discovery is the one verdict-determining layer the shared packages do not cover.** This repo
+has its `IGNORE` list (`**/*.min.*`, `**/*.bundle.*`, `node_modules`, `dist`, `vendor`, no dotfiles,
+no symlinked directories, plus a fail-closed rule when every candidate was skipped); the CLI has its
+own globs and `distDir` exclusions.
+
+That is also the layer whose silent failure is already proven possible — see
+[`A1`](./rule-unification-a1.md)'s `cwd`/basePath collapse, which makes the gate report zero blockers
+and pass green, and which this repository's 53-fixture selftest structurally could not see because
+every fixture lives inside the tool tree.
+
+So: a shared set of directory shapes with expected outcomes, run in **both** repositories' CI.
+
+| shape | expected |
+| --- | --- |
+| minified file, bundle, `dist/` artifact, `vendor/` copy | skipped, and visibly reported as skipped |
+| dotfile, symlinked directory | never linted |
+| **target directory outside the runner's own tree** | findings reported, blockers still blocking |
+| every candidate skipped | fail-closed — never a silent pass |
+| a file with a known blocker | reported identically by both runners |
+
+The third row is the one that fails *green*, and it is the reason the corpus exists rather than being
+a nice-to-have.
+
+### Where it lives
+
+The corpus is shared data, so it needs one home and two consumers. Publishing it as a fourth package
+is one option; keeping it here and having the CLI's CI fetch it at a pinned tag is another. Decide it
+in this slice's PR — the requirement is that **neither repository owns a private copy**, because two
+copies of a conformance corpus is the same duplication problem one level further out.
+
+## Definition of done
+
+- The equality test runs in this repository's CI and fails on all four divergence classes, proven by
+  perturbation rather than by reading the code.
+- The conformance corpus runs here and in the CLI repo, from a single shared source, and both
+  runners produce identical results on every shape.
+- The outside-the-tree case is covered and demonstrably fails when [`A1`](./rule-unification-a1.md)'s
+  `cwd` fix is reverted.
+- `node test/selftest.js` still green; the gate still gates.
+
+## Review checklist
+
+- **Perturbation, the important one:** revert the `cwd` fix and confirm the corpus fails. A
+  conformance corpus that stays green through the failure it was built for is decoration.
+- **Perturbation:** add a rule to the shared config and not to this repo's expectations — the
+  equality test must fail. Flip a severity — it must fail again.
+- **Perturbation:** point the equality test at a local copy of `RELIABLE_RULES` instead of the
+  package's export and confirm it then passes trivially. That is the shape of the bug to guard
+  against.
+- Confirm the equality test asserts on rule id and severity only. Any assertion on message text or
+  `endColumn` is a latent failure the moment either side moves an ESLint major.
+- Confirm the corpus has exactly one source of truth and that neither repository vendored it.
