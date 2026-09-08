@@ -10,7 +10,7 @@ linting, published as three npm packages that both this repo's gate **and** the 
 `validate` command consume.
 
 The other half of the track lives in
-[`shoptet/shoptet-partner-cli`](https://github.com/shoptet/shoptet-partner-cli), under
+[`shoptet/partner-cli`](https://github.com/shoptet/partner-cli), under
 `doc/plans/rule-unification.md`. **That document is the track index — read it first.** It carries the
 full scope, the decisions, the measured facts behind them, and the cross-repo ordering.
 

@@ -38,6 +38,13 @@ The `addon-` prefix is deliberate: the `@shoptet` scope already hosts the SOFA/g
 `@shoptet/eslint-config` would read as the house style for any Shoptet code rather than the g3
 partner-addon deploy gate.
 
+They live in **`packages/<name>/`** at the repository root — `packages/addon-eslint-config/`,
+`packages/addon-stylelint-config/`, `packages/addon-html-lint/` — as a Yarn classic workspace, with
+`linter_review_tool/` keeping its own `package.json` and lockfile as the consumer. That keeps the
+publish workflow's `working-directory` per package and keeps the extraction diff readable as a move.
+The alternative — three sibling directories with independent lockfiles — is more release plumbing for
+no gain at three packages.
+
 Each package needs what `linter_review_tool/package.json` currently lacks entirely: `main` or
 `exports`, `files`, `repository`, a real `version`, and a license. Today it is
 `shoptet-addon-review-system@2.0.0` with no `main`, no `exports`, no `files`, no `bin` and no
@@ -54,6 +61,15 @@ compares a local copy against itself always passes.
 
 Its stylelint and HTML entries travel with their own packages, so no consumer needs all three to
 filter one linter's output correctly.
+
+**But `profiles.js` does change, and the change is verdict-affecting — it is in scope, not an implied
+no-op.** Today `RELIABLE_RULES` is one flat `Set` spanning all three linters and `isReliable(ruleId)`
+is linter-agnostic: it matches ESLint, stylelint and HTML rule ids against the same set. `review.js`
+runs all three linters, so after the split it needs the union. Merge the three packages' exports into
+one set at load time and keep `isReliable()`'s signature — the union must be assembled from the
+packages, never restated locally, or [`A3`](./rule-unification-a3.md)'s equality test compares a copy
+against itself. The selftest's existing `RELIABLE_RULES` completeness assertion must run against the
+merged set, so that every gating rule from every package is still pinned by a fixture.
 
 ### The runner keeps its job
 
@@ -84,7 +100,13 @@ re-creates the divergence the track exists to remove — just with a shorter hal
   to pass. A new warning-level rule is a minor. This is the rule that makes the packages safe to
   depend on, and it is the rule most likely to be quietly broken by someone in a hurry.
 - v1's rule set is [`A0`](./rule-unification-a0.md)'s frozen baseline, including whatever
-  `fix/large-file-inline-comments` decided about `max-lines`.
+  `fix/large-file-inline-comments` decided about `max-lines`. For that to be unambiguous, **A0's
+  snapshot must be taken with [`A1`](./rule-unification-a1.md)'s two intentional deltas already
+  decided** — `caughtErrors: 'none'` and the `no-implicit-globals`-on-`shoptet = {}` question — so
+  the baseline already contains them. A0's own definition of done requires the baseline be produced
+  by *running* the selftest, and A1 changes what the selftest produces; a baseline snapshotted before
+  those decisions would describe a rule set no release ever ships. There is no "baseline ± later
+  deltas" version of v1: one number, one rule set.
 
 ### Partners get a version gate for the first time
 
@@ -125,5 +147,8 @@ All three names are currently unpublished and free, as are the unscoped variants
   be a move plus packaging metadata. Anything else makes the selftest's green ambiguous.
 - Confirm `review.js`, the RDJSON path and the reconciliation logic did not move into a package. The
   extraction is rules-only by design.
+- Confirm `profiles.js` assembles `RELIABLE_RULES` from the three packages' exports and hardcodes no
+  rule id of its own. A leftover local entry is invisible until the equality test, which is exactly
+  the case it is built to catch.
 - Check the SemVer story is written down somewhere a future contributor will read before adding a
   blocking rule.

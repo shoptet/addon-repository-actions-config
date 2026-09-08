@@ -22,15 +22,24 @@ The branch that matters most is **`fix/large-file-inline-comments`**. Its commit
 That changes the **severity → gate mapping** and promotes `max-lines` from a recommendation to a
 blocker. Both are layers the shared packages will own. If it lands after extraction, it lands twice.
 
-The others are lower risk but should be resolved rather than carried:
+The others are lower risk but should be resolved rather than carried. Only the first three touch
+rule config, severities, or `profiles.js`; `webpack` and `feature/ai-review-skill` are resolved here
+because carrying them across the extraction is more expensive than closing them now, not because
+they affect the frozen baseline:
 
 | branch | what it touches |
 | --- | --- |
 | `fix/large-file-inline-comments` | severity mapping, `max-lines` severity, inline comment cap |
 | `fix/merge-audit-base-branch-guard` | governance jobs — anchors merge-audit on `main`/`master` |
-| `node22-update` | `actions/*` versions, artifact upload v5, Node 22 |
+| `node22-update` | `actions/*` versions, artifact upload v5, Node 22 — **conflicts with `main`, see below** |
 | `webpack` | `default.workflow.yml`, production mode, artifact naming |
 | `feature/ai-review-skill` | `shoptet-addon-review/` docs and the rule catalogue |
+
+`node22-update` cannot be landed as-is. Its `default.workflow.yml` hardcodes `node-version: '22'`
+and carries **no `node_version` input at all**, while `main` after PR #13 exposes the input with
+default `'24'`. Merging it would both downgrade the Node version and remove the caller-facing input.
+Its remaining value is the `actions/*` bumps and artifact upload v5 — cherry-pick those, or close the
+branch and reopen the bumps separately.
 
 `feature/ai-review-skill` is explicitly **out of the track's scope** — the AI review surface is not
 being adopted by the CLI. It only matters here because it edits `rules-catalog.md`, whose codes
@@ -62,5 +71,7 @@ being adopted by the CLI. It only matters here because it edits `rules-catalog.m
   `expected.json`. The two can disagree, and which one is true is the whole question.
 - Confirm no branch was left open with rule-config changes in it. A branch is not "resolved" because
   someone intends to rebase it later.
+- Confirm `default.workflow.yml` still exposes the `node_version` input with default `'24'` — that
+  the `node22-update` resolution did not reintroduce a hardcoded `'22'`.
 - Check the baseline includes stylelint and HTML findings, not just ESLint — all three linters feed
   one gate.

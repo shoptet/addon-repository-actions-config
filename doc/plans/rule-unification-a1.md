@@ -149,11 +149,15 @@ both allowlisted and pinned, and the config sets it explicitly, so it keeps firi
 
 ### Dependency moves
 
-- `espree` `^9.6.1` → `^11.2.0`. **Not cosmetic:** `rules/script-detect.js` uses espree directly as
+- `espree` `^9.6.1` → `^10.4.0` — the line ESLint 9 bundles (9.5.0 depends on `espree@^10.0.1`,
+  9.39.5 on `^10.4.0`; `^11.x` is ESLint **10**'s espree and would leave the oracle a major *ahead*
+  of the linter's own parser). **Not cosmetic:** `rules/script-detect.js` uses espree directly as
   the oracle for `parsesAsScript`, which decides `shoptet/es-module-required` *and* the
   `no-unused-vars` trust filter. Leaving espree 9 pinned means the oracle and the linter's own parser
   disagree about `ecmaVersion: 'latest'`, so a file using newer syntax is misclassified as "not a
   module" and silently loses `no-unused-vars`.
+  Verify after the bump that `yarn why espree` shows a **single** resolution, matching the version
+  ESLint 9 pulls in itself.
 - `@eslint-community/eslint-utils` `^4.4.0` → `^4.10.0` to dedupe. `findVariable` is unaffected; the
   peer range already admits ESLint 10.
 - new: `@eslint/js` (pinned), `globals`.
@@ -164,9 +168,12 @@ both allowlisted and pinned, and the config sets it explicitly, so it keeps firi
   resolves to `dist/cjs/index.js`. Its two real breaks (no ESM `default` export;
   `require('parse5/package.json')` throws) are not in this code's path.
 - Regenerate `yarn.lock` — both workflows run `yarn --frozen-lockfile`.
-- **Pin `node-version` explicitly** (`"22.13"` or `"24"`) rather than `"22"`. ESLint 9/10's engine
-  floor is `^20.19.0 || ^22.13.0 || >=24`, and bare `"22"` depends on `setup-node` resolving to
-  ≥22.13.
+- **Pin `node-version` explicitly** (`"22.13"` or `"24"`) rather than `"22"`. This is *not* because
+  ESLint 9 requires it — ESLint 9's engine floor is `^18.18.0 || ^20.9.0 || >=21.1.0`, which bare
+  `"22"` satisfies. It is to satisfy the ESLint **10** side of the `>=9.5.0 <11` peer range
+  [`A2`](./rule-unification-a2.md) publishes: ESLint 10's floor is
+  `^20.19.0 || ^22.13.0 || >=24`, so the moment CI or the equality test runs against 10, a Node below
+  22.13 fails the engine check.
 
 The tool stays **CommonJS**. Nothing forces ESM: ESLint is `"type": "commonjs"`, and even Stylelint
 17's ESM-only source is reachable via `require()` on Node ≥20.19.
@@ -178,6 +185,14 @@ The tool stays **CommonJS**. Nothing forces ESM: ESLint is `"type": "commonjs"`,
 - **A new selftest fixture runs `review.js` against a target directory outside the tool tree** and
   asserts a known blocker is reported as a blocker. Without this, the same class of failure recurs on
   the next ESLint major and it fails *green*.
+
+  This needs no new infrastructure — it is **not** a `test-cases/` fixture and should not be built as
+  one. Section 6 of `test/selftest.js` already invokes `review.js` in exactly the CI topology: a
+  `fs.mkdtempSync` target passed as an absolute path, with `runRaw`'s `cwd: ROOT` leaving the tool's
+  own directory as the working directory while the target sits outside it. The existing skip and
+  symlink assertions use that harness already; both only assert on `skipped`. The missing piece is
+  ~5 lines in the same block: write a file with a known blocker into the tmpdir and assert it comes
+  back in `diagnostics` at **blocker severity**, not merely that the run exited 0.
 - The gate still gates: a real PR with a known blocker still fails.
 - `caughtErrors: 'none'` in place; no mass false positive on `catch (error) {}`.
 
@@ -192,6 +207,14 @@ The tool stays **CommonJS**. Nothing forces ESM: ESLint is `"type": "commonjs"`,
 - Spot-check the `Program` and `FunctionDeclaration` scope handlers in
   `shoptet-no-core-overwrite.js` by hand — a blanket substitution is correct here, but these two are
   the sites where "correct" depended on measured scope semantics.
+- **Perturbation on the `Program` workaround, because a hand spot-check cannot settle it:** the
+  `childScopes.find(s => s.type === 'module' && s.block === node)` step exists only because
+  `getScope()` at `Program` returns the *global* scope even in module mode. If
+  `sourceCode.getScope(programNode)` were to return the module scope directly, the `find` matches
+  nothing and the whole check becomes a silent no-op with no failing test. So: bypass the
+  `childScopes.find` step, use the scope `getScope(programNode)` returns directly, and confirm the
+  rule still fires on a module-mode file that overwrites a core name. Firing either way proves the
+  workaround is safe; firing only with it proves it is still load-bearing.
 - Confirm the espree bump actually deduped, by reading `yarn.lock` rather than `package.json`. Two
   espree copies is the silent-false-negative case.
 - Confirm `overrideConfigFile` still isolates: a target directory with its own eslint config and

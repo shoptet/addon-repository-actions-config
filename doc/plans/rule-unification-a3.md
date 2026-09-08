@@ -14,7 +14,16 @@ Without it the track delivers a one-time alignment that decays, and the decay is
 added on one side and not the other produces no error anywhere, just two tools quietly disagreeing
 about whether a partner's addon is acceptable.
 
-Two mechanisms, deliberately different in kind, because they catch different things.
+Two mechanisms, deliberately different in kind, because they catch different things — and they have
+**different earliest landing dates**, which the slice number flattens.
+
+The rule-set equality test needs only the published packages to exist. It does not need the CLI
+runner, so it can land **with or immediately after [`A2`](./rule-unification-a2.md)** rather than
+waiting for slice 7. Leaving it until the end means rule drift between this repository and the
+packages is undetectable for the entire `B` track, which is where the packages are most actively
+touched. Land the equality test early; the conformance corpus genuinely needs both runners and stays
+here at slice 7. The cross-repo ordering line — in this repository's [`README.md`](./README.md) and
+in the CLI repo's track index — describes the corpus half.
 
 ## Scope
 
@@ -74,7 +83,8 @@ copies of a conformance corpus is the same duplication problem one level further
 ## Definition of done
 
 - The equality test runs in this repository's CI and fails on all four divergence classes, proven by
-  perturbation rather than by reading the code.
+  perturbation rather than by reading the code — landed no later than the first `B` slice, so the
+  packages are never unguarded while the CLI side is being built.
 - The conformance corpus runs here and in the CLI repo, from a single shared source, and both
   runners produce identical results on every shape.
 - The outside-the-tree case is covered and demonstrably fails when [`A1`](./rule-unification-a1.md)'s
