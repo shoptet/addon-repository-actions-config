@@ -11,6 +11,15 @@ on:
     branches: [main, feature/linter-review-tool]
     paths:
       - 'linter_review_tool/**'
+      # The rule packages linter_review_tool consumes (@shoptet/addon-eslint-config,
+      # @shoptet/addon-stylelint-config, @shoptet/addon-html-lint) — a rule
+      # change here is exactly the fail-green hole this trigger exists to close.
+      - 'packages/**'
+      # The workspace root install step (below) resolves the packages' own
+      # runtime deps through the root lockfile/manifest — a drift here can
+      # break --frozen-lockfile on its own, independent of any rule change.
+      - 'yarn.lock'
+      - 'package.json'
       - '.github/workflows/selftest.yml'
       # The reconcile github-script require()s lib/reconcile-utils.js from the
       # tool — run the suite when the workflow changes too, so at least the
@@ -19,6 +28,9 @@ on:
   pull_request:
     paths:
       - 'linter_review_tool/**'
+      - 'packages/**'
+      - 'yarn.lock'
+      - 'package.json'
       - '.github/workflows/selftest.yml'
       - '.github/workflows/checks.workflow.yml'
 
@@ -35,6 +47,18 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+
+      - name: Install rule package dependencies (workspace root)
+        # linter_review_tool's package.json pulls the three @shoptet/addon-*
+        # rule packages via Yarn classic `link:../packages/<name>` (npm publish
+        # rights for the @shoptet scope aren't granted yet — see
+        # doc/plans/rule-unification/a2.md). `link:` only symlinks the package
+        # itself; it does NOT install that package's own dependencies (espree,
+        # globals, stylelint, parse5, etc.), which Node then resolves out of
+        # this repo root's node_modules instead. This step exists solely to
+        # populate that root — delete it once the packages are consumed from
+        # the registry as real (non-link:) dependency versions.
+        run: yarn --frozen-lockfile
 
       - name: Install dependencies
         working-directory: linter_review_tool
