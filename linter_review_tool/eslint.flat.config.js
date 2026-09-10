@@ -42,6 +42,13 @@ module.exports = [
     // file has a config" (see @eslint/config-array's `matchFound` handling),
     // so it must stay scoped to the JS-ish extensions actually handled here.
     files: ['**/*.[jJ][sS]', '**/*.[mM][jJ][sS]', '**/*.[cC][jJ][sS]'],
+    // ESLint 9 flipped this default from off to 'warn'. A partner disabling
+    // no-undef (deliberately 'off' in this profile, see below) then reads as
+    // an "unused" disable directive — surfaced as a bogus CodeQuality finding
+    // (ruleId: null) that also gates as file-level. Keep the pre-9 behaviour.
+    linterOptions: {
+      reportUnusedDisableDirectives: false,
+    },
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
