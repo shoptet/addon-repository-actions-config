@@ -5,5 +5,18 @@
     "claude-md-management@claude-plugins-official": true,
     "github@claude-plugins-official": true,
     "ast-grep@pleaseai": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-changed.mjs\""
+          }
+        ]
+      }
+    ]
   }
 }

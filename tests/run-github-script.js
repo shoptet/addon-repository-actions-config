@@ -24,44 +24,52 @@ const fs = require('fs');
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
-Promise.resolve().then(() => {
-  const [, , scriptPath, fixturePath] = process.argv;
-  const script = fs.readFileSync(scriptPath, 'utf8');
-  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+Promise.resolve()
+  .then(() => {
+    const [, , scriptPath, fixturePath] = process.argv;
+    const script = fs.readFileSync(scriptPath, 'utf8');
+    const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 
-  Object.assign(process.env, fixture.env || {});
+    Object.assign(process.env, fixture.env || {});
 
-  const paged = (data) => async () => ({ data });
-  const github = {
-    rest: {
-      pulls: {
-        get: async () => ({ data: fixture.pr }),
-        listFiles: paged(fixture.files || []),
-        listReviews: paged(fixture.reviews || []),
-      },
-      issues: {
-        listComments: paged(fixture.comments || []),
-        // The body is echoed so tests can assert on what would be posted.
-        createComment: async ({ body }) => {
-          if (fixture.commentError) throw new Error('simulated API failure');
-          console.log(`[createComment] ${body}`);
-          return {};
+    const paged = (data) => async () => ({ data });
+    const github = {
+      rest: {
+        pulls: {
+          get: async () => ({ data: fixture.pr }),
+          listFiles: paged(fixture.files || []),
+          listReviews: paged(fixture.reviews || []),
+        },
+        issues: {
+          listComments: paged(fixture.comments || []),
+          // The body is echoed so tests can assert on what would be posted.
+          createComment: async ({ body }) => {
+            if (fixture.commentError) throw new Error('simulated API failure');
+            console.log(`[createComment] ${body}`);
+            return {};
+          },
         },
       },
-    },
-    paginate: async (endpoint) => (await endpoint()).data,
-  };
+      paginate: async (endpoint) => (await endpoint()).data,
+    };
 
-  const context = {
-    repo: { owner: 'test-owner', repo: 'test-repo' },
-    payload: { pull_request: fixture.pr },
-  };
+    const context = {
+      repo: { owner: 'test-owner', repo: 'test-repo' },
+      payload: { pull_request: fixture.pr },
+    };
 
-  const core = {
-    setFailed: (message) => { console.error(message); process.exitCode = 1; },
-    setOutput: () => {},
-    warning: (message) => console.warn(message),
-  };
+    const core = {
+      setFailed: (message) => {
+        console.error(message);
+        process.exitCode = 1;
+      },
+      setOutput: () => {},
+      warning: (message) => console.warn(message),
+    };
 
-  return new AsyncFunction('github', 'context', 'core', script)(github, context, core);
-}).catch((error) => { console.error(error.stack ?? error.message); process.exit(2); });
+    return new AsyncFunction('github', 'context', 'core', script)(github, context, core);
+  })
+  .catch((error) => {
+    console.error(error.stack ?? error.message);
+    process.exit(2);
+  });

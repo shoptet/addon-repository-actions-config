@@ -93,8 +93,7 @@ async function lintJavaScript(files) {
 
     for (const moduleResult of moduleParseFailures) {
       const [scriptResult] = await scriptEslint.lintFiles([moduleResult.filePath]);
-      const brokenEvenAsScript =
-        !scriptResult || scriptResult.messages.some((m) => m.fatal);
+      const brokenEvenAsScript = !scriptResult || scriptResult.messages.some((m) => m.fatal);
 
       if (brokenEvenAsScript) {
         // Not a module-format issue — the file is genuinely broken JS.

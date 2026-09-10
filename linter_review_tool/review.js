@@ -29,7 +29,13 @@ const IGNORE = [
 async function collect(targetPath, pattern) {
   // nocase: uppercase extensions (Foo.JS) must not silently escape the linter
   // on the case-sensitive CI filesystem (isIgnoredPath is case-insensitive too).
-  return glob(pattern, { nodir: true, cwd: targetPath, absolute: true, ignore: IGNORE, nocase: true });
+  return glob(pattern, {
+    nodir: true,
+    cwd: targetPath,
+    absolute: true,
+    ignore: IGNORE,
+    nocase: true,
+  });
 }
 
 /** Does a path match the IGNORE conventions? (single-file mode + skip listing) */
@@ -61,11 +67,25 @@ async function collectSkipped(targetPath) {
   // not addon source), but they must surface in `skipped` instead of vanishing
   // silently: the Summary's promise is that no coverage gap is silent (round 11).
   const [all, kept] = await Promise.all([
-    Promise.all(allPatterns.map((p) => glob(p, { nodir: true, cwd: targetPath, absolute: true, ignore: ['**/node_modules/**'], nocase: true, dot: true }))),
+    Promise.all(
+      allPatterns.map((p) =>
+        glob(p, {
+          nodir: true,
+          cwd: targetPath,
+          absolute: true,
+          ignore: ['**/node_modules/**'],
+          nocase: true,
+          dot: true,
+        }),
+      ),
+    ),
     Promise.all(patterns.map((p) => collect(targetPath, p))),
   ]);
   const keptSet = new Set(kept.flat());
-  return all.flat().filter((f) => !keptSet.has(f)).sort();
+  return all
+    .flat()
+    .filter((f) => !keptSet.has(f))
+    .sort();
 }
 
 function classifyFile(filePath) {
@@ -86,14 +106,20 @@ function collectSymlinkedDirs(root) {
   const found = [];
   const walk = (dir) => {
     let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (entry.name === 'node_modules') continue;
       const full = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) {
         try {
           if (fs.statSync(full).isDirectory()) found.push(full + path.sep);
-        } catch { /* dangling symlink — nothing behind it to review */ }
+        } catch {
+          /* dangling symlink — nothing behind it to review */
+        }
       } else if (entry.isDirectory()) {
         walk(full);
       }
@@ -132,7 +158,11 @@ async function gatherFiles(targetPath, stats) {
   // Hidden files: dir mode never lints them (they surface in skipped) — and a
   // hidden .js passed directly would be default-ignored by ESLint, remapped to
   // a recommend, and exit 0: a fake-clean (round 13). Same routing as dir mode.
-  if (relative.split(path.sep).some((segment) => segment.startsWith('.') && segment !== '.' && segment !== '..')) {
+  if (
+    relative
+      .split(path.sep)
+      .some((segment) => segment.startsWith('.') && segment !== '.' && segment !== '..')
+  ) {
     return { js: [], styles: [], html: [], skipped: [targetPath] };
   }
   return { js: [], styles: [], html: [], skipped: [], [kind]: [targetPath] };
@@ -164,14 +194,18 @@ async function main() {
     const message = files.skipped.length
       ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/hidden/symlinked) — nothing lintable.`
       : `No reviewable files (.js/.mjs/.cjs/.css/.scss/.less/.html) found in ${targetPath}`;
-    fail(rdjson, message, files.skipped.map((f) => path.relative(process.cwd(), f)));
+    fail(
+      rdjson,
+      message,
+      files.skipped.map((f) => path.relative(process.cwd(), f)),
+    );
   }
 
   // In rdjson mode stdout must stay pure JSON, so log to stderr.
   const info = rdjson ? console.error : console.log;
   info(
     `🔍 Reviewing ${total} file(s) in: ${targetPath} ` +
-      `(js: ${files.js.length}, styles: ${files.styles.length}, html: ${files.html.length})`
+      `(js: ${files.js.length}, styles: ${files.styles.length}, html: ${files.html.length})`,
   );
 
   const rawFindings = [];
@@ -207,7 +241,9 @@ async function main() {
   }
 
   if (skipped.length) {
-    info(`⏭️  ${skipped.length} file(s) skipped (minified/vendored/hidden/symlinked): ${skipped.join(', ')}`);
+    info(
+      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/hidden/symlinked): ${skipped.join(', ')}`,
+    );
   }
   const { blockerCount } = report(findings);
   process.exitCode = blockerCount > 0 ? 1 : 0;
@@ -224,7 +260,9 @@ function fail(rdjson, message, skipped = []) {
   // review state. Still write valid JSON to stdout for any lenient consumer,
   // including the skipped list so the "why" is machine-readable too.
   if (rdjson) {
-    process.stdout.write(JSON.stringify({ source: { name: SOURCE_NAME }, diagnostics: [], skipped }));
+    process.stdout.write(
+      JSON.stringify({ source: { name: SOURCE_NAME }, diagnostics: [], skipped }),
+    );
   }
   console.error(`::error::${message}`);
   process.exitCode = 1;
@@ -296,7 +334,7 @@ function report(findings) {
     else recommendCount++;
 
     console.log(
-      `::${level} file=${relativePath},line=${finding.line},col=${finding.column},title=${title}::${message}`
+      `::${level} file=${relativePath},line=${finding.line},col=${finding.column},title=${title}::${message}`,
     );
   }
 
@@ -304,7 +342,7 @@ function report(findings) {
     console.log('::notice title=CodeReview::✅ No issues found - code looks good!');
   } else {
     console.log(
-      `::notice title=ReviewSummary::Found ${blockerCount} blocker(s) and ${recommendCount} recommendation(s)`
+      `::notice title=ReviewSummary::Found ${blockerCount} blocker(s) and ${recommendCount} recommendation(s)`,
     );
   }
 

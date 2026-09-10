@@ -1,0 +1,9 @@
+node_modules/
+linter_review_tool/node_modules/
+linter_review_tool/test-cases/
+worktrees/
+
+# Prettier's Markdown printer rewrites *italic* -> _italic_ (and other prose
+# normalization) with no config knob to disable it, which would touch nearly
+# every doc in the repo for pure cosmetics. Docs stay hand-formatted.
+*.md
