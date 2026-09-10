@@ -359,17 +359,27 @@ fs.writeFileSync(path.join(outsideSrc, 'evil.js'), 'export const x = eval("1");\
 fs.writeFileSync(path.join(outsideSrc, 'evil-upper.JS'), 'export const y = eval("1");\n');
 const outsideRun = runRaw([outsideSrc, '--rdjson']);
 let outsideJson = null;
-try { outsideJson = JSON.parse(outsideRun.stdout); } catch (e) { /* handled below */ }
+try {
+  outsideJson = JSON.parse(outsideRun.stdout);
+} catch (e) {
+  /* handled below */
+}
 const outsideDiags = (outsideJson && outsideJson.diagnostics) || [];
-const evalBlockers = outsideDiags.filter((d) => d.code.value === 'no-eval' && d.severity === 'ERROR');
-const noEvalBlocker = ['evil.js', 'evil-upper.JS'].every((name) =>
-  evalBlockers.some((d) => d.location.path.endsWith(name))
+const evalBlockers = outsideDiags.filter(
+  (d) => d.code.value === 'no-eval' && d.severity === 'ERROR',
 );
-const noSilentDrop = !outsideDiags.some((d) => /outside of base path|no matching configuration/i.test(d.message));
+const noEvalBlocker = ['evil.js', 'evil-upper.JS'].every((name) =>
+  evalBlockers.some((d) => d.location.path.endsWith(name)),
+);
+const noSilentDrop = !outsideDiags.some((d) =>
+  /outside of base path|no matching configuration/i.test(d.message),
+);
 if (outsideRun.status === 0 && noEvalBlocker && noSilentDrop) {
   pass('target dir outside the tool tree still reports blockers (basePath)');
 } else {
-  fail(`target dir outside the tool tree: status ${outsideRun.status}, diags=${JSON.stringify(outsideDiags)}`);
+  fail(
+    `target dir outside the tool tree: status ${outsideRun.status}, diags=${JSON.stringify(outsideDiags)}`,
+  );
 }
 fs.rmSync(outsideTmp, { recursive: true, force: true });
 

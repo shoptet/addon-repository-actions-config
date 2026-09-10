@@ -280,7 +280,9 @@ module.exports = {
 
       // Destructuring writes: [shoptet.x] = […], ({a: shoptet.y} = {…}),
       // for ([shoptet.x] of list). Walk the pattern for member targets.
-      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(node) {
+      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(
+        node,
+      ) {
         const scope = context.sourceCode.getScope(node);
         const stack = [node.left];
         while (stack.length) {
