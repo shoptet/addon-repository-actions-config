@@ -343,6 +343,36 @@ if (
 }
 fs.rmSync(symTmp, { recursive: true, force: true });
 
+// A target directory outside the tool tree (ROOT) must still be linted with
+// the tool's own ESLint config picking up its blockers — this is exactly the
+// CI topology (target passed as an absolute path, cwd left at ROOT). Without
+// deriving ESLint's `cwd` from the target files, ESLint's flat-config base
+// path resolution silently drops the target as "outside of base path" and
+// the run comes back clean, i.e. green while missing every blocker.
+const outsideTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-outside-'));
+const outsideSrc = path.join(outsideTmp, 'src');
+fs.mkdirSync(outsideSrc);
+fs.writeFileSync(path.join(outsideSrc, 'evil.js'), 'export const x = eval("1");\n');
+// Both casings: the flat config carries an explicit `files` list, so an
+// extension the patterns miss comes back as "no matching configuration" at
+// WARNING — the same silent-green failure by a second route.
+fs.writeFileSync(path.join(outsideSrc, 'evil-upper.JS'), 'export const y = eval("1");\n');
+const outsideRun = runRaw([outsideSrc, '--rdjson']);
+let outsideJson = null;
+try { outsideJson = JSON.parse(outsideRun.stdout); } catch (e) { /* handled below */ }
+const outsideDiags = (outsideJson && outsideJson.diagnostics) || [];
+const evalBlockers = outsideDiags.filter((d) => d.code.value === 'no-eval' && d.severity === 'ERROR');
+const noEvalBlocker = ['evil.js', 'evil-upper.JS'].every((name) =>
+  evalBlockers.some((d) => d.location.path.endsWith(name))
+);
+const noSilentDrop = !outsideDiags.some((d) => /outside of base path|no matching configuration/i.test(d.message));
+if (outsideRun.status === 0 && noEvalBlocker && noSilentDrop) {
+  pass('target dir outside the tool tree still reports blockers (basePath)');
+} else {
+  fail(`target dir outside the tool tree: status ${outsideRun.status}, diags=${JSON.stringify(outsideDiags)}`);
+}
+fs.rmSync(outsideTmp, { recursive: true, force: true });
+
 // rdjson stdout must survive a pipe even past 64 KiB — process.exit() would
 // truncate the async flush mid-JSON with exit 0 (round 11). execFileSync
 // captures through a pipe, which is exactly the failing medium.

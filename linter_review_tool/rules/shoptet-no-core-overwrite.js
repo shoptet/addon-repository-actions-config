@@ -22,15 +22,15 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 // parses the file as a module and reports them at module scope. .mjs is a real
 // module by convention and is exempt. (round 12)
 function shipsAsClassicScript(context) {
-  const filename = context.getFilename();
+  const filename = context.filename;
   if (/\.mjs$/i.test(filename)) return false;
   // Script-parseability IS the question: import/export, import.meta and
   // top-level await all fail it, so this cannot diverge from the linter's
   // usesModuleSyntax again (round 13, shared helper).
-  return parsesAsScript(context.getSourceCode().text);
+  return parsesAsScript(context.sourceCode.text);
 }
 
-// Both casings are Shoptet core globals (both are declared readonly in .eslintrc.js).
+// Both casings are Shoptet core globals (both are declared readonly in eslint.flat.config.js).
 const SHOPTET_GLOBALS = new Set(['shoptet', 'Shoptet']);
 
 /** `shoptet?.x` arrives wrapped in ChainExpression — unwrap before matching. */
@@ -97,7 +97,7 @@ module.exports = {
   },
 
   create(context) {
-    const sourceCode = context.getSourceCode();
+    const sourceCode = context.sourceCode;
 
     function reportCoreFunction(node, name) {
       if (CORE_FUNCTIONS.has(name)) {
@@ -134,7 +134,7 @@ module.exports = {
     return {
       AssignmentExpression(node) {
         if (node.left.type === 'MemberExpression') {
-          if (targetsGlobalShoptet(node.left, context.getScope())) {
+          if (targetsGlobalShoptet(node.left, context.sourceCode.getScope(node))) {
             context.report({
               node,
               messageId: 'shoptetMember',
@@ -149,7 +149,7 @@ module.exports = {
           if (
             inner.object.type === 'Identifier' &&
             GLOBAL_OBJECTS.has(inner.object.name) &&
-            isGlobalBinding(context.getScope(), inner.object.name)
+            isGlobalBinding(context.sourceCode.getScope(node), inner.object.name)
           ) {
             reportCoreFunction(node, memberName(inner));
             return;
@@ -160,7 +160,7 @@ module.exports = {
           if (
             inner.object.type === 'Identifier' &&
             CORE_FUNCTIONS.has(inner.object.name) &&
-            isGlobalBinding(context.getScope(), inner.object.name)
+            isGlobalBinding(context.sourceCode.getScope(node), inner.object.name)
           ) {
             reportCoreFunction(node, inner.object.name);
           }
@@ -171,7 +171,7 @@ module.exports = {
           node.left.type === 'Identifier' &&
           // A partner's own local of the same name (let initColorBox; …) cannot
           // overwrite the global — only an undeclared/global binding gates.
-          isGlobalBinding(context.getScope(), node.left.name)
+          isGlobalBinding(context.sourceCode.getScope(node), node.left.name)
         ) {
           reportCoreFunction(node, node.left.name);
         }
@@ -181,7 +181,7 @@ module.exports = {
         if (!node.id) return;
         // The declaration's binding lives in the ENCLOSING scope. A nested
         // declaration is the partner's own function in both cases.
-        const enclosing = context.getScope().upper;
+        const enclosing = context.sourceCode.getScope(node).upper;
         if (enclosing && topLevelLeaksToGlobal(enclosing.type)) {
           reportCoreName(node, node.id.name);
         }
@@ -194,7 +194,7 @@ module.exports = {
       Program(node) {
         // getScope() at Program returns the GLOBAL scope even in module mode
         // (the module scope is its child) — resolve the actual top-level scope.
-        let scope = context.getScope();
+        let scope = context.sourceCode.getScope(node);
         if (scope.type === 'global') {
           const moduleScope = scope.childScopes.find(
             (s) => s.type === 'module' && s.block === node,
@@ -220,7 +220,7 @@ module.exports = {
         if (
           node.operator === 'delete' &&
           argument.type === 'MemberExpression' &&
-          targetsGlobalShoptet(argument, context.getScope())
+          targetsGlobalShoptet(argument, context.sourceCode.getScope(node))
         ) {
           report(node, argument);
         }
@@ -230,7 +230,7 @@ module.exports = {
       UpdateExpression(node) {
         if (
           node.argument.type === 'MemberExpression' &&
-          targetsGlobalShoptet(node.argument, context.getScope())
+          targetsGlobalShoptet(node.argument, context.sourceCode.getScope(node))
         ) {
           report(node, node.argument);
         }
@@ -240,7 +240,7 @@ module.exports = {
       'ForOfStatement, ForInStatement'(node) {
         if (
           node.left.type === 'MemberExpression' &&
-          targetsGlobalShoptet(node.left, context.getScope())
+          targetsGlobalShoptet(node.left, context.sourceCode.getScope(node))
         ) {
           report(node, node.left);
         }
@@ -258,20 +258,21 @@ module.exports = {
         const isBuiltinObject =
           (base.type === 'Identifier' &&
             base.name === 'Object' &&
-            isGlobalBinding(context.getScope(), 'Object')) ||
+            isGlobalBinding(context.sourceCode.getScope(node), 'Object')) ||
           (base.type === 'MemberExpression' &&
             base.object.type === 'Identifier' &&
             GLOBAL_OBJECTS.has(base.object.name) &&
-            isGlobalBinding(context.getScope(), base.object.name) &&
+            isGlobalBinding(context.sourceCode.getScope(node), base.object.name) &&
             memberName(base) === 'Object');
         const arg0 = unwrapChain(node.arguments[0]);
         if (
           isBuiltinObject &&
           ['assign', 'defineProperty', 'defineProperties'].includes(memberName(callee)) &&
           arg0 &&
-          (isGlobalShoptetRef(arg0, context.getScope()) ||
+          (isGlobalShoptetRef(arg0, context.sourceCode.getScope(node)) ||
             // …including writes INTO a core sub-object: Object.assign(shoptet.config, …)
-            (arg0.type === 'MemberExpression' && targetsGlobalShoptet(arg0, context.getScope())))
+            (arg0.type === 'MemberExpression' &&
+              targetsGlobalShoptet(arg0, context.sourceCode.getScope(node))))
         ) {
           report(node, node.arguments[0]);
         }
@@ -279,10 +280,8 @@ module.exports = {
 
       // Destructuring writes: [shoptet.x] = […], ({a: shoptet.y} = {…}),
       // for ([shoptet.x] of list). Walk the pattern for member targets.
-      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(
-        node,
-      ) {
-        const scope = context.getScope();
+      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(node) {
+        const scope = context.sourceCode.getScope(node);
         const stack = [node.left];
         while (stack.length) {
           const current = stack.pop();

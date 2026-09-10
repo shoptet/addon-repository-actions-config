@@ -20,14 +20,54 @@ const { parsesAsScript } = require('../rules/script-detect');
 const ROOT = path.join(__dirname, '..');
 
 const BASE_OPTIONS = {
-  useEslintrc: false,
-  overrideConfigFile: path.join(ROOT, '.eslintrc.js'),
-  cwd: ROOT,
-  resolvePluginsRelativeTo: ROOT,
+  overrideConfigFile: path.join(ROOT, 'eslint.flat.config.js'),
   plugins: {
     shoptet: require('../rules'),
   },
 };
+
+// In flat config, `cwd` doubles as ESLint's `basePath` — any resolved file
+// outside it is silently dropped to a WARNING ("File ignored because outside
+// of base path"), which the gate does not count, so a hardcoded `cwd: ROOT`
+// makes every finding for a file outside the tool's own directory vanish
+// (the workflow runs this tool against a sibling `src/`, which is exactly
+// that case). The fix is to derive `cwd` from the common ancestor directory
+// of the actual file list being linted, per run, instead of a fixed root.
+//
+// Realpath-vs-as-given: deliberately AS-GIVEN (path.resolve only, no
+// fs.realpathSync). Measured against ESLint 9's own source (`eslint` and
+// `@eslint/config-array` — neither calls `realpath` anywhere): the
+// "external"/basePath check is a plain `path.relative(basePath, filePath)`
+// on the paths exactly as ESLint received them, with no realpath
+// normalization on either side. `os.tmpdir()` on macOS returns a symlink
+// (`/var/folders/...` -> `/private/var/folders/...`): realpath-ing the
+// ancestor while the files passed to `eslint.lintFiles()` stay as-given (as
+// `review.js`'s glob returns them) would make `cwd` and the file paths
+// disagree on which root they share, reintroducing the exact "outside of
+// base path" bug this exists to fix. Keeping both sides as-given is what
+// keeps them consistent.
+function toResolvedDir(filePath) {
+  return path.dirname(path.resolve(filePath));
+}
+
+function commonAncestorDir(filePaths) {
+  if (!filePaths.length) return ROOT; // no files to lint — cwd is irrelevant, keep a sane default
+
+  const dirs = filePaths.map(toResolvedDir);
+  let common = dirs[0].split(path.sep);
+
+  for (let i = 1; i < dirs.length; i += 1) {
+    const parts = dirs[i].split(path.sep);
+    let j = 0;
+    while (j < common.length && j < parts.length && common[j] === parts[j]) j += 1;
+    common = common.slice(0, j);
+  }
+
+  const joined = common.join(path.sep);
+  // Either a single dir (no loop ran) or a multi-file list whose only shared
+  // segment is the root itself (no meaningful common ancestor beyond it).
+  return joined || path.parse(dirs[0]).root;
+}
 
 // no-unused-vars is only trustworthy when the author actually opted into
 // module semantics: a file with no import/export statement parses as a module
@@ -66,7 +106,8 @@ function pushMessages(findings, result) {
 }
 
 async function lintJavaScript(files) {
-  const eslint = new ESLint(BASE_OPTIONS);
+  const cwd = commonAncestorDir(files);
+  const eslint = new ESLint({ ...BASE_OPTIONS, cwd });
   const results = await eslint.lintFiles(files);
   const findings = [];
   const moduleParseFailures = [];
@@ -88,7 +129,8 @@ async function lintJavaScript(files) {
   if (moduleParseFailures.length) {
     const scriptEslint = new ESLint({
       ...BASE_OPTIONS,
-      overrideConfig: { parserOptions: { sourceType: 'script' } },
+      cwd,
+      overrideConfig: { languageOptions: { sourceType: 'script' } },
     });
 
     for (const moduleResult of moduleParseFailures) {

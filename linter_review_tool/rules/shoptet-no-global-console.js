@@ -29,7 +29,7 @@ module.exports = {
   },
 
   create(context) {
-    const sourceCode = context.getSourceCode();
+    const sourceCode = context.sourceCode;
 
     // window.console / globalThis['console'] — the console slot itself.
     function isGlobalConsoleRef(node) {
@@ -38,7 +38,7 @@ module.exports = {
         node.type === 'MemberExpression' &&
         node.object.type === 'Identifier' &&
         GLOBAL_OBJECTS.has(node.object.name) &&
-        isGlobalBinding(context.getScope(), node.object.name) &&
+        isGlobalBinding(context.sourceCode.getScope(node), node.object.name) &&
         memberName(node) === 'console'
       );
     }
@@ -68,7 +68,7 @@ module.exports = {
           node.object.type === 'Identifier' &&
           GLOBAL_OBJECTS.has(node.object.name) &&
           // const self = this — a local binding is not the global object
-          isGlobalBinding(context.getScope(), node.object.name) &&
+          isGlobalBinding(context.sourceCode.getScope(node), node.object.name) &&
           memberName(node) === 'console' &&
           // Only property/method access ON the console (window.console.log —
           // called or not); a bare reference is a read, not output.
