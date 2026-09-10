@@ -77,7 +77,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           # review_tool runtime — independent of the partner build node_version default
-          node-version: '22'
+          node-version: '24'
 
       - name: Install review tool dependencies
         working-directory: review-tool/linter_review_tool
