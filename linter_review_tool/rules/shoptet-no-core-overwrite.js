@@ -196,14 +196,17 @@ module.exports = {
         // (the module scope is its child) — resolve the actual top-level scope.
         let scope = context.getScope();
         if (scope.type === 'global') {
-          const moduleScope = scope.childScopes.find((s) => s.type === 'module' && s.block === node);
+          const moduleScope = scope.childScopes.find(
+            (s) => s.type === 'module' && s.block === node,
+          );
           if (moduleScope) scope = moduleScope;
         }
         if (!topLevelLeaksToGlobal(scope.type)) return;
         for (const stmt of node.body) {
           if (stmt.type === 'VariableDeclaration') {
             for (const declarator of stmt.declarations) {
-              if (declarator.id.type === 'Identifier') reportCoreName(declarator, declarator.id.name);
+              if (declarator.id.type === 'Identifier')
+                reportCoreName(declarator, declarator.id.name);
             }
           } else if (stmt.type === 'ClassDeclaration' && stmt.id) {
             reportCoreName(stmt, stmt.id.name);
@@ -268,8 +271,7 @@ module.exports = {
           arg0 &&
           (isGlobalShoptetRef(arg0, context.getScope()) ||
             // …including writes INTO a core sub-object: Object.assign(shoptet.config, …)
-            (arg0.type === 'MemberExpression' &&
-              targetsGlobalShoptet(arg0, context.getScope())))
+            (arg0.type === 'MemberExpression' && targetsGlobalShoptet(arg0, context.getScope())))
         ) {
           report(node, node.arguments[0]);
         }
@@ -277,7 +279,9 @@ module.exports = {
 
       // Destructuring writes: [shoptet.x] = […], ({a: shoptet.y} = {…}),
       // for ([shoptet.x] of list). Walk the pattern for member targets.
-      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(node) {
+      'AssignmentExpression[left.type=/Pattern$/], ForOfStatement[left.type=/Pattern$/], ForInStatement[left.type=/Pattern$/]'(
+        node,
+      ) {
         const scope = context.getScope();
         const stack = [node.left];
         while (stack.length) {

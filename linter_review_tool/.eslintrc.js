@@ -38,10 +38,7 @@ module.exports = {
     // ignoreRestSiblings: true — `const { password, ...safe } = user` is THE
     // idiomatic key-omission in modern ESM; the "unused" name is the point
     // (round 12).
-    'no-unused-vars': [
-      'error',
-      { vars: 'all', args: 'none', ignoreRestSiblings: true },
-    ],
+    'no-unused-vars': ['error', { vars: 'all', args: 'none', ignoreRestSiblings: true }],
     'no-unreachable': 'error', // F2
     // F2 ❌ — but the everyday callback idioms `cb && cb()` and
     // `cond ? a() : b()` must not gate; genuinely dead expressions still do.
@@ -62,14 +59,8 @@ module.exports = {
     'max-nested-callbacks': ['error', 3], // C4 ❌
     // C1 ⚠️ per the catalog: length alone does not block — the monolith call
     // (cohesion, structure) belongs to the AI/human pass.
-    'max-lines': [
-      'warn',
-      { max: 400, skipBlankLines: true, skipComments: true },
-    ],
-    'max-lines-per-function': [
-      'warn',
-      { max: 50, skipBlankLines: true, skipComments: true },
-    ], // C2
+    'max-lines': ['warn', { max: 400, skipBlankLines: true, skipComments: true }],
+    'max-lines-per-function': ['warn', { max: 50, skipBlankLines: true, skipComments: true }], // C2
     'max-statements': ['warn', 20], // C2
     'complexity': ['warn', 10], // C2
 

@@ -55,7 +55,10 @@ const ruleFunction = (primary) => (root, result) => {
     // a QUOTED url() argument is consumed by the string alternates (leaving a
     // harmless `url()`), the unquoted variant must not swallow past its own
     // closing paren — [^)"'] instead of [^)] keeps `url("a (1) 5pt.png")` safe.
-    const measurable = decl.value.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|url\([^)"']*\)/gi, ' ');
+    const measurable = decl.value.replace(
+      /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|url\([^)"']*\)/gi,
+      ' ',
+    );
     if (!PT_VALUE.test(measurable)) return;
     if (isInsidePrintContext(decl)) return;
     stylelint.utils.report({
