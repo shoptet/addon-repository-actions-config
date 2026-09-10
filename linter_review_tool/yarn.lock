@@ -173,6 +173,18 @@
   resolved "https://registry.yarnpkg.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz#a77ea742fab25775145434eb1d2328cf5013ac33"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
 
+"@shoptet/addon-eslint-config@link:../packages/addon-eslint-config":
+  version "0.0.0"
+  uid ""
+
+"@shoptet/addon-html-lint@link:../packages/addon-html-lint":
+  version "0.0.0"
+  uid ""
+
+"@shoptet/addon-stylelint-config@link:../packages/addon-stylelint-config":
+  version "0.0.0"
+  uid ""
+
 "@types/estree@^1.0.6":
   version "1.0.9"
   resolved "https://registry.yarnpkg.com/@types/estree/-/estree-1.0.9.tgz#cf3f0e876d7bee15a93ab925b82bf570a3904a24"

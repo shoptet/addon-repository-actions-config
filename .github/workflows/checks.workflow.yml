@@ -79,6 +79,19 @@ jobs:
           # review_tool runtime — independent of the partner build node_version default
           node-version: '24'
 
+      - name: Install rule package dependencies (workspace root)
+        working-directory: review-tool
+        # linter_review_tool's package.json pulls the three @shoptet/addon-*
+        # rule packages via Yarn classic `link:../packages/<name>` (npm publish
+        # rights for the @shoptet scope aren't granted yet — see
+        # doc/plans/rule-unification/a2.md). `link:` only symlinks the package
+        # itself; it does NOT install that package's own dependencies (espree,
+        # globals, stylelint, parse5, etc.), which Node then resolves out of
+        # this workspace root's node_modules instead. This step exists solely
+        # to populate that root — delete it once the packages are consumed
+        # from the registry as real (non-link:) dependency versions.
+        run: yarn --frozen-lockfile
+
       - name: Install review tool dependencies
         working-directory: review-tool/linter_review_tool
         # --frozen-lockfile: reproducible install, fail if yarn.lock is out of date.

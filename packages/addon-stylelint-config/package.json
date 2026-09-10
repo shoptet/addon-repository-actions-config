@@ -1,0 +1,35 @@
+{
+  "name": "@shoptet/addon-stylelint-config",
+  "version": "1.0.0",
+  "description": "Shared stylelint config and custom shoptet/* rules for the Shoptet partner-addon deploy gate.",
+  "license": "ISC",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./stylelint.config": "./stylelint.config.js",
+    "./reliable-rules": "./reliable-rules.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "stylelint.config.js",
+    "reliable-rules.js",
+    "stylelint-rules",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shoptet/addon-repository-actions-config.git",
+    "directory": "packages/addon-stylelint-config"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "stylelint": ">=15 <18"
+  },
+  "devDependencies": {
+    "stylelint": "^15.11.0"
+  }
+}

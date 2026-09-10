@@ -1,9 +1,17 @@
+// Plugin OBJECTS, not relative path strings: a relative string passed via
+// stylelint's `configFile` option resolves against the config file's own
+// directory, but the same string passed via the `config` option resolves
+// against the CALLER's cwd instead — a distinction that only matters once
+// this config crosses a package boundary (`configFile` pointed straight at
+// this very file; `config` does not know where it came from). Requiring the
+// plugin modules here and handing stylelint the objects sidesteps both
+// resolution rules entirely.
 module.exports = {
   plugins: [
-    './stylelint-rules/min-font-size',
-    './stylelint-rules/max-z-index',
-    './stylelint-rules/no-testid-selector',
-    './stylelint-rules/no-pt-unit',
+    require('./stylelint-rules/min-font-size'),
+    require('./stylelint-rules/max-z-index'),
+    require('./stylelint-rules/no-testid-selector'),
+    require('./stylelint-rules/no-pt-unit'),
   ],
   rules: {
     // B7 ❌ — binding styles to Shoptet testids (blocker, mirrors the ESLint rule)

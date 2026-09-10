@@ -15,15 +15,23 @@
 const fs = require('fs');
 const path = require('path');
 const { ESLint } = require('eslint');
-const { parsesAsScript } = require('../rules/script-detect');
+const { configs, parsesAsScript } = require('@shoptet/addon-eslint-config');
 
 const ROOT = path.join(__dirname, '..');
 
+// The flat config array (`configs.recommended`) already declares the
+// `shoptet` plugin itself (A2 decision 2) — do NOT also pass a `plugins`
+// option here, or ESLint throws "Cannot redefine plugin 'shoptet'".
+//
+// `overrideConfigFile: true` (rather than a path into the package, which now
+// lives under node_modules) + `overrideConfig` is deliberate (A2 decision 3):
+// pointing `overrideConfigFile` at a path inside a package risks ESLint
+// deriving its base path from that path instead of from `cwd`, which would
+// silently stop `files:` from matching and reintroduce A1's fail-green bug
+// (zero findings, exit 0). Passing the config array directly sidesteps that
+// entirely — `cwd` (set per call below) remains the sole basePath input.
 const BASE_OPTIONS = {
-  overrideConfigFile: path.join(ROOT, 'eslint.flat.config.js'),
-  plugins: {
-    shoptet: require('../rules'),
-  },
+  overrideConfigFile: true,
 };
 
 // In flat config, `cwd` doubles as ESLint's `basePath` — any resolved file
@@ -107,7 +115,7 @@ function pushMessages(findings, result) {
 
 async function lintJavaScript(files) {
   const cwd = commonAncestorDir(files);
-  const eslint = new ESLint({ ...BASE_OPTIONS, cwd });
+  const eslint = new ESLint({ ...BASE_OPTIONS, cwd, overrideConfig: configs.recommended });
   const results = await eslint.lintFiles(files);
   const findings = [];
   const moduleParseFailures = [];
@@ -130,7 +138,11 @@ async function lintJavaScript(files) {
     const scriptEslint = new ESLint({
       ...BASE_OPTIONS,
       cwd,
-      overrideConfig: { languageOptions: { sourceType: 'script' } },
+      // Append (never mutate — `configs.recommended` is a shared module-level
+      // array reused by the eslint instance above) the script-mode override
+      // to the same config array, mirroring the pre-A2 behaviour where this
+      // override was merged on top of the file-loaded config.
+      overrideConfig: [...configs.recommended, { languageOptions: { sourceType: 'script' } }],
     });
 
     for (const moduleResult of moduleParseFailures) {

@@ -1,0 +1,40 @@
+{
+  "name": "@shoptet/addon-eslint-config",
+  "version": "1.0.0",
+  "description": "Shared ESLint flat config and custom shoptet/* rules for the Shoptet partner-addon deploy gate.",
+  "license": "ISC",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./eslint.flat.config": "./eslint.flat.config.js",
+    "./reliable-rules": "./reliable-rules.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "eslint.flat.config.js",
+    "reliable-rules.js",
+    "rules",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shoptet/addon-repository-actions-config.git",
+    "directory": "packages/addon-eslint-config"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.5.0 <11"
+  },
+  "dependencies": {
+    "@eslint-community/eslint-utils": "^4.10.0",
+    "espree": "^10.4.0",
+    "globals": "^17.12.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5"
+  }
+}

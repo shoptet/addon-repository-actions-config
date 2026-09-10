@@ -19,18 +19,23 @@
  * anything this tool can ever report, and — unlike a spread — is stable
  * across ESLint majors.
  *
- * The `shoptet` plugin is deliberately NOT declared here. It stays
- * programmatic in `linters/eslint-linter.js`'s `new ESLint({ plugins: {
- * shoptet: require('../rules') } })` option, which flat config merges into
- * every config object unchanged. Declaring it a second time here would give
- * this file two sources of truth for the same plugin; the ESLint options
- * object is the single one.
+ * The `shoptet` plugin IS declared here (self-contained on purpose): this
+ * config is published as `@shoptet/addon-eslint-config` and consumed by
+ * external runners (this repo's `linter_review_tool` and, from the next
+ * slice, the `shoptet` CLI) that have no equivalent of the old in-repo
+ * `new ESLint({ plugins: { shoptet: require('../rules') } })` wiring to fall
+ * back on. Declaring it here is now the single source of truth for the
+ * plugin — consumers must NOT also pass a `shoptet` plugin option to `ESLint`,
+ * or ESLint throws "Cannot redefine plugin".
  */
 
 const globals = require('globals');
 
 module.exports = [
   {
+    plugins: {
+      shoptet: require('./rules'),
+    },
     // Character-class patterns (not a bare "**/*") rather than the plain
     // lowercase default: flat config would otherwise silently skip a
     // same-content file with an uppercase extension (`bad-upper.JS`) as
