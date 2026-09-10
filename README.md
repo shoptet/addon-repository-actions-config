@@ -153,6 +153,23 @@ The deploy pipeline called from partner repositories:
 Addon Repository will upload this artifact to FTP, remove the artifact from
 GitHub and update custom codes.
 
+### `publish-packages.yml` — shared rule package releases
+
+Publishes the three shared rule packages under `packages/` (see "Shared rule
+packages" below) to npm. Triggers only on `workflow_dispatch` (with a
+`package` input selecting one package or `all`) or a version tag — never on
+an ordinary push or PR, so a package cannot ship as a side effect of merging
+code. Uses npm **trusted publishing (OIDC)**: the workflow
+requests `id-token: write` and exchanges a short-lived OIDC token for a
+registry token at publish time, so there is no `NPM_TOKEN` (or any other
+long-lived publish secret) stored in this repository.
+
+**Currently blocked, not broken:** publish rights in the `@shoptet` scope are
+held by the SOFA/g4 maintainers, and no trusted-publisher registration exists
+yet for these three package names. The workflow is correct and ready, but
+every run's `npm publish` step will fail (or simply never run, since nothing
+tags a release yet) until that registry-side access lands.
+
 ### `shoptet-addon-review/` — AI code-review skill
 
 The heuristic/contextual counterpart of the deterministic linter gate above:
@@ -162,6 +179,52 @@ addon PRs against the FE rules catalog. Install/run instructions →
 `shoptet-addon-review/CONTEXT.md`. (The legacy `review_tool/` prototype it
 superseded was removed together with the introduction of
 `linter_review_tool/`.)
+
+## Shared rule packages
+
+The rules `checks.workflow.yml`'s linter runs (and the ones the separate
+`shoptet` CLI validates against) are published as three plain-CommonJS,
+no-build-step npm packages, versioned independently of this repository and
+of the workflow that calls it:
+
+| package | contents |
+| --- | --- |
+| `@shoptet/addon-eslint-config` | the flat config, the `shoptet/*` ESLint rules, and `RELIABLE_RULES` as a named export |
+| `@shoptet/addon-stylelint-config` | the stylelint config, the `shoptet/*` stylelint rules, and its slice of `RELIABLE_RULES` |
+| `@shoptet/addon-html-lint` | the factual HTML checks (`a11y/img-alt`, `html/no-inline-script`, `html/deprecated-tag`) |
+
+They live under `packages/<name>/` as a Yarn classic workspace;
+`linter_review_tool/` stays outside that workspace and consumes them the same
+way any external partner tooling would.
+
+**Not yet consumed from the registry.** The target state is a registry
+dependency exact-pinned in `linter_review_tool/yarn.lock`. Until publish
+rights land (see the blocker above), `linter_review_tool` depends on the
+packages via Yarn `link:../packages/<name>` instead. That is why CI installs
+at the repository root before installing the tool: `link:` symlinks the
+package but does not install *its* dependencies, which resolve out of the
+workspace root instead. Both the root install steps and this paragraph go away
+when the pins become real versions.
+
+**SemVer policy — read this before adding a rule:**
+- **A new blocking (error-severity) rule is a MAJOR version bump.** It fails
+  partner builds that previously passed a gate they were already relying on
+  — that is a breaking change to the contract the package makes, not a
+  feature addition.
+- A new warning-level (non-blocking) rule, or any change that doesn't alter
+  what gates, is a MINOR bump.
+- Releases go out from CI via npm trusted publishing (OIDC) — see
+  `publish-packages.yml` above. There is no publish token in this
+  repository.
+
+**The rules are pinned; the workflow ref is not — yet.** After this
+extraction, a partner's linter *rules* are locked to whatever package
+version `linter_review_tool` depends on at the time it was released. But
+partner repositories still call `checks.workflow.yml` at `@main` (see the
+caller template above), so a change to *this repository's workflow code*
+still reaches every partner immediately, with no version gate at all. Those
+are two separate axes — package version and workflow ref — and tagging the
+workflow itself is a distinct decision for later, out of scope here.
 
 ## Package managers
 

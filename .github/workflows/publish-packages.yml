@@ -1,0 +1,122 @@
+name: Publish packages
+# Publishes the shared rule packages under packages/* (@shoptet/addon-eslint-config,
+# @shoptet/addon-stylelint-config, @shoptet/addon-html-lint) to npm via trusted
+# publishing (OIDC) — no long-lived NPM_TOKEN in this repository. See
+# doc/plans/rule-unification/a2.md.
+#
+# BLOCKED: npm publish rights in the @shoptet scope are held by the SOFA/g4
+# maintainers and no trusted-publisher config exists yet for these packages
+# (a2.md, "The blocker"). This workflow is wired and correct but every
+# `npm publish` step here will fail until that registry-side config lands —
+# by design, not a bug to "fix" by adding a fallback token.
+#
+# Deliberately not wired to push/pull_request: a rule package only ships on a
+# maintainer's explicit decision (workflow_dispatch) or a version tag, never
+# as a side effect of merging code.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        type: choice
+        options: [all, addon-eslint-config, addon-stylelint-config, addon-html-lint]
+        default: all
+  push:
+    tags:
+      - 'packages/addon-eslint-config/v*'
+      - 'packages/addon-stylelint-config/v*'
+      - 'packages/addon-html-lint/v*'
+
+permissions:
+  id-token: write # required to mint the OIDC token trusted publishing exchanges for a registry token
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # One publish per package, each with its own working-directory — this is
+  # exactly why the packages live under packages/<name>/. Kept as three plain
+  # jobs rather than a matrix because a matrix's `if:` cannot see the matrix
+  # context to select which package a given tag push should publish.
+  publish-addon-eslint-config:
+    name: Publish @shoptet/addon-eslint-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # workflow_dispatch publishes this package when it was explicitly
+    # selected (or "all" was); a tag push only publishes the package whose
+    # prefix it matches.
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-eslint-config')) || startsWith(github.ref, 'refs/tags/packages/addon-eslint-config/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-eslint-config
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        # The npm bundled with even a current Node LTS is not guaranteed to
+        # satisfy the >=11.5.1 floor trusted publishing requires, so upgrade
+        # explicitly rather than relying on whatever setup-node installed.
+        run: npm install -g npm@^11.5.1
+
+      - name: Publish
+        # No install step: these packages are plain CommonJS with no build
+        # step and no dependencies of their own (only peerDependencies), so
+        # there is nothing to build or bundle before publishing.
+        run: npm publish --access public
+
+  publish-addon-stylelint-config:
+    name: Publish @shoptet/addon-stylelint-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-stylelint-config')) || startsWith(github.ref, 'refs/tags/packages/addon-stylelint-config/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-stylelint-config
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        run: npm install -g npm@^11.5.1
+
+      - name: Publish
+        run: npm publish --access public
+
+  publish-addon-html-lint:
+    name: Publish @shoptet/addon-html-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-html-lint')) || startsWith(github.ref, 'refs/tags/packages/addon-html-lint/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-html-lint
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        run: npm install -g npm@^11.5.1
+
+      - name: Publish
+        run: npm publish --access public

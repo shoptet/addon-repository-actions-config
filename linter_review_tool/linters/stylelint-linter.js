@@ -4,10 +4,15 @@
  */
 
 const os = require('os');
-const path = require('path');
 const stylelint = require('stylelint');
+const { configs } = require('@shoptet/addon-stylelint-config');
 
-const CONFIG_FILE = path.join(__dirname, '..', '.stylelintrc.js');
+// Passed via stylelint's `config:` option, not `configFile:` — the config's
+// plugins are now `require()`d objects (A2 decision 4), not path strings
+// relative to a `configFile` on disk. `configFile` would need a real file
+// path on disk to resolve those the old way; `config:` takes the already
+// -resolved config object directly, package boundary and all.
+const CONFIG = configs.recommended;
 
 async function runStylelint(files, customSyntax, findings) {
   if (!files.length) return;
@@ -16,7 +21,7 @@ async function runStylelint(files, customSyntax, findings) {
   // partner could silently drop src/*.css from the gate without it showing in
   // the Summary's skipped list (symmetric with useEslintrc:false on the ESLint
   // side; ESLint additionally runs with cwd = the tool, not the repo).
-  const options = { files, configFile: CONFIG_FILE, ignorePath: os.devNull };
+  const options = { files, config: CONFIG, ignorePath: os.devNull };
   if (customSyntax) options.customSyntax = customSyntax;
 
   const { results } = await stylelint.lint(options);
