@@ -23,7 +23,7 @@ module.exports = {
   create(context) {
     return {
       NewExpression(node) {
-        if (globalCalleeName(node.callee, context.getScope()) === 'XMLHttpRequest') {
+        if (globalCalleeName(node.callee, context.sourceCode.getScope(node)) === 'XMLHttpRequest') {
           context.report({ node, messageId: 'preferFetch' });
         }
       },
