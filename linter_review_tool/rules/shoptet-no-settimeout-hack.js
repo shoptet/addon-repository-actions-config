@@ -20,7 +20,9 @@ function isZeroDelay(node) {
   if (node.type === 'Literal') {
     if (node.value === null || node.value === false) return true;
     if (typeof node.value === 'number') return node.value < 1;
-    return typeof node.value === 'string' && Number(node.value) < 1 && !Number.isNaN(Number(node.value));
+    return (
+      typeof node.value === 'string' && Number(node.value) < 1 && !Number.isNaN(Number(node.value))
+    );
   }
   if (node.type === 'Identifier' && node.name === 'undefined') return true;
   // `0` — an expression-less template coerces exactly like a string literal.
@@ -32,7 +34,12 @@ function isZeroDelay(node) {
   if (node.type === 'UnaryExpression') {
     if (node.operator === 'void') return true; // void <anything> → undefined → 0
     // Any negated numeric literal is clamped to 0 by the browser.
-    if (node.operator === '-' && node.argument.type === 'Literal' && typeof node.argument.value === 'number') return true;
+    if (
+      node.operator === '-' &&
+      node.argument.type === 'Literal' &&
+      typeof node.argument.value === 'number'
+    )
+      return true;
     if (node.operator === '-' || node.operator === '+') return isZeroDelay(node.argument);
   }
   return false;

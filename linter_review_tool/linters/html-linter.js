@@ -53,9 +53,12 @@ function checkElement(node, file, findings) {
   // H2 — deprecated tags
   if (DEPRECATED_TAGS.has(tag)) {
     add(
-      findings, file, node, 'html/deprecated-tag',
+      findings,
+      file,
+      node,
+      'html/deprecated-tag',
       `Deprecated <${tag}> tag. Use a semantic element with a CSS class instead.`,
-      'recommend'
+      'recommend',
     );
   }
 
@@ -64,12 +67,17 @@ function checkElement(node, file, findings) {
   // breaks parse5's tokenization — the attribute set cannot be trusted, so
   // don't claim alt is missing (FN over FP; round 13). Legal HTML attribute
   // names never contain braces, so this can't misfire on real markup.
-  const brokenTokenization = Object.keys(attrs).some((name) => name.includes('{{') || name.includes('}}'));
+  const brokenTokenization = Object.keys(attrs).some(
+    (name) => name.includes('{{') || name.includes('}}'),
+  );
   if (tag === 'img' && !('alt' in attrs) && !brokenTokenization) {
     add(
-      findings, file, node, 'a11y/img-alt',
+      findings,
+      file,
+      node,
+      'a11y/img-alt',
       'Image is missing an alt attribute (use alt="" for decorative images).',
-      'blocker'
+      'blocker',
     );
   }
 
@@ -84,16 +92,23 @@ function checkElement(node, file, findings) {
     // MIME essence only — browsers execute `text/javascript;charset=utf-8`,
     // so parameters must not evade the blocker (post-approval nit).
     const type = (attrs.type || '').split(';')[0].trim().toLowerCase();
-    const isJs = type === '' || type === 'module' || type === 'text/javascript' || type === 'application/javascript';
+    const isJs =
+      type === '' ||
+      type === 'module' ||
+      type === 'text/javascript' ||
+      type === 'application/javascript';
     const text = (node.childNodes || [])
       .filter((child) => child.nodeName === '#text')
       .map((child) => child.value)
       .join('');
     if (isJs && text.trim() !== '') {
       add(
-        findings, file, node, 'html/no-inline-script',
+        findings,
+        file,
+        node,
+        'html/no-inline-script',
         'Inline script content is not linted — move the code to a .js file in src/, where the full rule set applies.',
-        'blocker'
+        'blocker',
       );
     }
   }

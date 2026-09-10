@@ -15,7 +15,11 @@ const GLOBAL_OBJECTS = new Set(['window', 'self', 'globalThis']);
 /** Property name of a member expression, for both `.foo` and `['foo']` forms. */
 function memberName(node) {
   if (!node.computed && node.property.type === 'Identifier') return node.property.name;
-  if (node.computed && node.property.type === 'Literal' && typeof node.property.value === 'string') {
+  if (
+    node.computed &&
+    node.property.type === 'Literal' &&
+    typeof node.property.value === 'string'
+  ) {
     return node.property.value;
   }
   return null;

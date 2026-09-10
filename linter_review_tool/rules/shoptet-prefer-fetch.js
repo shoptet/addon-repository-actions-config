@@ -15,8 +15,7 @@ module.exports = {
       recommended: true,
     },
     messages: {
-      preferFetch:
-        'Prefer fetch + async/await over XMLHttpRequest (and check response.ok).',
+      preferFetch: 'Prefer fetch + async/await over XMLHttpRequest (and check response.ok).',
     },
     schema: [],
   },

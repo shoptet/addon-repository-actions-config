@@ -33,20 +33,30 @@ function parseAddedLines(diff) {
     // Only a bare header counts: added/removed/context lines that CONTAIN
     // "diff --git" start with +/-/space and never match here.
     if (raw.startsWith('diff --git ')) {
-      if (++headers > 1) throw new Error('parseAddedLines expects a single-file diff (got a multi-file diff)');
+      if (++headers > 1)
+        throw new Error('parseAddedLines expects a single-file diff (got a multi-file diff)');
       continue;
     }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
-    if (hunk) { newLine = parseInt(hunk[1], 10); inHunk = true; continue; }
+    if (hunk) {
+      newLine = parseInt(hunk[1], 10);
+      inHunk = true;
+      continue;
+    }
     if (raw.startsWith('\\')) continue; // "\ No newline at end of file"
     // File headers ("+++ b/path") appear only BEFORE the first hunk. Inside a
     // hunk, a line starting with "+++ " is an ADDED line whose content starts
     // with "++ " (e.g. "++ x;") — skipping it there would shift every anchor
     // after it, silently un-gating findings.
     if (!inHunk && (raw.startsWith('+++') || raw.startsWith('---'))) continue;
-    if (raw.startsWith('+')) { lines.add(newLine); newLine++; }
-    else if (raw.startsWith('-')) { /* old side only */ }
-    else { newLine++; }
+    if (raw.startsWith('+')) {
+      lines.add(newLine);
+      newLine++;
+    } else if (raw.startsWith('-')) {
+      /* old side only */
+    } else {
+      newLine++;
+    }
   }
   return lines;
 }
@@ -66,7 +76,14 @@ function findingFingerprint(d) {
   // different findings collide in `wanted` and silently drop one.
   return crypto
     .createHash('sha1')
-    .update(JSON.stringify([d.location.path, d.location.range.start.line, d.code?.value || '', d.message]))
+    .update(
+      JSON.stringify([
+        d.location.path,
+        d.location.range.start.line,
+        d.code?.value || '',
+        d.message,
+      ]),
+    )
     .digest('hex');
 }
 

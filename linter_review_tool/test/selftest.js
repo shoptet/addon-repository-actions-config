@@ -59,13 +59,14 @@ function groupRulesByFile(diagnostics) {
 // catching 7 of its 8 forms, not only when it stops entirely (round 13).
 function formatCounts(counts) {
   if (!counts) return [];
-  return [...counts.entries()]
-    .map(([tag, n]) => (n > 1 ? `${tag}:${n}` : tag))
-    .sort();
+  return [...counts.entries()].map(([tag, n]) => (n > 1 ? `${tag}:${n}` : tag)).sort();
 }
 
 let failures = 0;
-const fail = (msg) => { failures++; console.error(`  ✗ ${msg}`); };
+const fail = (msg) => {
+  failures++;
+  console.error(`  ✗ ${msg}`);
+};
 const pass = (msg) => console.log(`  ✓ ${msg}`);
 
 // ── 1+3: bad fixtures — exact rule sets + completeness ──────────────────────
@@ -73,29 +74,42 @@ console.log('bad/ fixtures:');
 const badDiagnostics = runReview('test-cases/bad');
 const badFindings = groupRulesByFile(badDiagnostics);
 // Filter dotfiles — Finder drops .DS_Store uninvited and it is not a fixture.
-const badFilesOnDisk = fs.readdirSync(path.join(CASES, 'bad')).filter((f) => !f.startsWith('.')).map((f) => `bad/${f}`);
+const badFilesOnDisk = fs
+  .readdirSync(path.join(CASES, 'bad'))
+  .filter((f) => !f.startsWith('.'))
+  .map((f) => `bad/${f}`);
 
 for (const file of badFilesOnDisk) {
-  if (!(file in spec)) { fail(`${file}: missing from expected.json (undocumented fixture)`); continue; }
+  if (!(file in spec)) {
+    fail(`${file}: missing from expected.json (undocumented fixture)`);
+    continue;
+  }
   const expected = [...spec[file]].sort();
   const actual = formatCounts(badFindings.get(file));
   if (JSON.stringify(expected) === JSON.stringify(actual)) {
     pass(`${file}: [${actual.join(', ')}]`);
   } else {
-    fail(`${file}: expected [${expected.join(', ')}] but got [${actual.join(', ') || '(nothing)'}]`);
+    fail(
+      `${file}: expected [${expected.join(', ')}] but got [${actual.join(', ') || '(nothing)'}]`,
+    );
   }
 }
 for (const file of Object.keys(spec)) {
-  if (!badFilesOnDisk.includes(file)) fail(`${file}: listed in expected.json but the file does not exist`);
+  if (!badFilesOnDisk.includes(file))
+    fail(`${file}: listed in expected.json but the file does not exist`);
 }
 
 // ── 2: good fixtures — must be completely clean ─────────────────────────────
 console.log('good/ fixtures:');
 const goodFindings = groupRulesByFile(runReview('test-cases/good'));
-const goodFilesOnDisk = fs.readdirSync(path.join(CASES, 'good')).filter((f) => !f.startsWith('.')).map((f) => `good/${f}`);
+const goodFilesOnDisk = fs
+  .readdirSync(path.join(CASES, 'good'))
+  .filter((f) => !f.startsWith('.'))
+  .map((f) => `good/${f}`);
 for (const file of goodFilesOnDisk) {
   const rules = goodFindings.get(file);
-  if (rules && rules.size) fail(`${file}: expected clean but got [${formatCounts(rules).join(', ')}]`);
+  if (rules && rules.size)
+    fail(`${file}: expected clean but got [${formatCounts(rules).join(', ')}]`);
   else pass(`${file}: clean`);
 }
 
@@ -171,22 +185,36 @@ for (const c of parserCases) {
 // parseAddedLines is single-file by contract — a concatenated multi-file diff
 // must throw, not silently mis-anchor (round 8).
 try {
-  parseAddedLines('diff --git a/a.js b/a.js\n@@ -0,0 +1 @@\n+x\ndiff --git a/b.js b/b.js\n@@ -0,0 +1 @@\n+y');
+  parseAddedLines(
+    'diff --git a/a.js b/a.js\n@@ -0,0 +1 @@\n+x\ndiff --git a/b.js b/b.js\n@@ -0,0 +1 @@\n+y',
+  );
   fail('parseAddedLines: multi-file diff should throw');
 } catch (e) {
-  if (/single-file/.test(e.message)) pass('parseAddedLines: multi-file diff throws (contract enforced)');
+  if (/single-file/.test(e.message))
+    pass('parseAddedLines: multi-file diff throws (contract enforced)');
   else fail(`parseAddedLines: threw the wrong error: ${e.message}`);
 }
 
-const mkFp = (path2, line, rule, message) => findingFingerprint({ location: { path: path2, range: { start: { line } } }, code: { value: rule }, message });
-const mkDiag = (line) => ({ location: { path: 'a.js', range: { start: { line } } }, code: { value: 'no-console' }, message: 'x' });
-if (findingFingerprint(mkDiag(5)) === findingFingerprint(mkDiag(5))) pass('fingerprint is deterministic');
+const mkFp = (path2, line, rule, message) =>
+  findingFingerprint({
+    location: { path: path2, range: { start: { line } } },
+    code: { value: rule },
+    message,
+  });
+const mkDiag = (line) => ({
+  location: { path: 'a.js', range: { start: { line } } },
+  code: { value: 'no-console' },
+  message: 'x',
+});
+if (findingFingerprint(mkDiag(5)) === findingFingerprint(mkDiag(5)))
+  pass('fingerprint is deterministic');
 else fail('fingerprint is not deterministic');
-if (findingFingerprint(mkDiag(5)) !== findingFingerprint(mkDiag(6))) pass('fingerprint distinguishes lines');
+if (findingFingerprint(mkDiag(5)) !== findingFingerprint(mkDiag(6)))
+  pass('fingerprint distinguishes lines');
 else fail('fingerprint does not include the line');
-if (mkFp('a.js', 1, 'a', 'b\nc') !== mkFp('a.js', 1, 'a\nb', 'c')) pass('fingerprint fields cannot bleed across a newline');
+if (mkFp('a.js', 1, 'a', 'b\nc') !== mkFp('a.js', 1, 'a\nb', 'c'))
+  pass('fingerprint fields cannot bleed across a newline');
 else fail('fingerprint is ambiguous for fields containing newlines');
-
 
 // ── fixture hygiene: every test-case file must be classifiable (a .ts with
 // eval would pass "clean" without ever being linted), and subdirectories are
@@ -194,9 +222,14 @@ else fail('fingerprint is ambiguous for fields containing newlines');
 for (const side of ['bad', 'good']) {
   for (const entry of fs.readdirSync(path.join(CASES, side), { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
-    if (entry.isDirectory()) { fail(`test-cases/${side}/${entry.name}: subdirectories are not scanned — flatten it`); continue; }
+    if (entry.isDirectory()) {
+      fail(`test-cases/${side}/${entry.name}: subdirectories are not scanned — flatten it`);
+      continue;
+    }
     if (!/\.(js|mjs|cjs|css|scss|less|html|htm)$/i.test(entry.name)) {
-      fail(`test-cases/${side}/${entry.name}: extension outside the lint patterns — it would pass vacuously`);
+      fail(
+        `test-cases/${side}/${entry.name}: extension outside the lint patterns — it would pass vacuously`,
+      );
     }
   }
 }
@@ -213,14 +246,19 @@ for (const rules of Object.values(spec)) for (const r of rules) pinned.add(r.spl
 for (const rule of RELIABLE_RULES) {
   if (COVERAGE_EXEMPT.has(rule)) continue;
   if (pinned.has(rule)) pass(`${rule}: pinned`);
-  else fail(`${rule}: in RELIABLE_RULES but no fixture pins it — a silent regression would pass CI`);
+  else
+    fail(`${rule}: in RELIABLE_RULES but no fixture pins it — a silent regression would pass CI`);
 }
 
 // ── 6: review.js fail-closed contract (what the workflow gate leans on) ──
 console.log('review.js contract:');
 function runRaw(args) {
   try {
-    const stdout = execFileSync(process.execPath, ['review.js', ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const stdout = execFileSync(process.execPath, ['review.js', ...args], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
     return { status: 0, stdout };
   } catch (e) {
     return { status: e.status, stdout: e.stdout ? e.stdout.toString() : '' };
@@ -234,8 +272,17 @@ if (plainGood.status === 0) pass('plain mode exits 0 on clean input');
 else fail(`plain mode on good/ exited ${plainGood.status}, expected 0`);
 const hardFail = runRaw(['test-cases/does-not-exist', '--rdjson']);
 let hardJson = null;
-try { hardJson = JSON.parse(hardFail.stdout); } catch (e) { /* handled below */ }
-if (hardFail.status === 1 && hardJson && Array.isArray(hardJson.diagnostics) && hardJson.diagnostics.length === 0) {
+try {
+  hardJson = JSON.parse(hardFail.stdout);
+} catch (e) {
+  /* handled below */
+}
+if (
+  hardFail.status === 1 &&
+  hardJson &&
+  Array.isArray(hardJson.diagnostics) &&
+  hardJson.diagnostics.length === 0
+) {
   pass('fail(): exit 1 + valid empty-diagnostics JSON on stdout');
 } else {
   fail(`fail() contract broken: status ${hardFail.status}, stdout ${hardFail.stdout.slice(0, 60)}`);
@@ -249,7 +296,9 @@ const skipJson = JSON.parse(skipRun.stdout);
 if (skipRun.status === 0 && (skipJson.skipped || []).some((f) => f.endsWith('lib.min.js'))) {
   pass('skipped array reports minified files');
 } else {
-  fail(`skipped contract broken: status ${skipRun.status}, skipped=${JSON.stringify(skipJson.skipped)}`);
+  fail(
+    `skipped contract broken: status ${skipRun.status}, skipped=${JSON.stringify(skipJson.skipped)}`,
+  );
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 
@@ -259,7 +308,8 @@ fs.rmSync(tmp, { recursive: true, force: true });
 const symTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-sym-'));
 const outside = path.join(symTmp, 'outside');
 const srcDir = path.join(symTmp, 'src');
-fs.mkdirSync(outside); fs.mkdirSync(srcDir);
+fs.mkdirSync(outside);
+fs.mkdirSync(srcDir);
 fs.writeFileSync(path.join(outside, 'evil.js'), 'export const x = eval("1");\n');
 fs.writeFileSync(path.join(symTmp, 'shared.js'), 'export function used() { return eval("1"); }\n');
 fs.symlinkSync(outside, path.join(srcDir, 'linked-dir'));
@@ -267,7 +317,11 @@ fs.symlinkSync(path.join(symTmp, 'shared.js'), path.join(srcDir, 'linked.js'));
 fs.writeFileSync(path.join(srcDir, 'app.js'), 'export const ok = 1;\n');
 const symRun = runRaw([srcDir, '--rdjson']);
 let symJson = null;
-try { symJson = JSON.parse(symRun.stdout); } catch (e) { /* handled below */ }
+try {
+  symJson = JSON.parse(symRun.stdout);
+} catch (e) {
+  /* handled below */
+}
 const symSkipped = (symJson && symJson.skipped) || [];
 if (symSkipped.some((f) => f.includes('linked-dir'))) {
   pass('symlinked directory surfaces in skipped');
@@ -276,10 +330,16 @@ if (symSkipped.some((f) => f.includes('linked-dir'))) {
 }
 // rdjson mode exits 0 on a successful run regardless of findings (the gate
 // lives in the workflow) — the pin is the diagnostic itself.
-if (symRun.status === 0 && symJson && symJson.diagnostics.some((d) => d.location.path.includes('linked.js'))) {
+if (
+  symRun.status === 0 &&
+  symJson &&
+  symJson.diagnostics.some((d) => d.location.path.includes('linked.js'))
+) {
   pass('symlinked file is linted like any other');
 } else {
-  fail(`symlinked file not linted: status ${symRun.status}, diags=${symJson ? symJson.diagnostics.length : 'n/a'}`);
+  fail(
+    `symlinked file not linted: status ${symRun.status}, diags=${symJson ? symJson.diagnostics.length : 'n/a'}`,
+  );
 }
 fs.rmSync(symTmp, { recursive: true, force: true });
 
@@ -293,11 +353,24 @@ const bigBody = ['export const a = 1;']
 fs.writeFileSync(path.join(bigTmp, 'big.js'), bigBody + '\n');
 const bigRun = runRaw([bigTmp, '--rdjson']);
 let bigJson = null;
-try { bigJson = JSON.parse(bigRun.stdout); } catch (e) { /* handled below */ }
-if (bigRun.status === 0 && bigJson && bigJson.diagnostics.length >= 4000 && bigRun.stdout.length > 65536) {
-  pass(`rdjson stdout survives a pipe past 64 KiB (${bigRun.stdout.length} bytes, ${bigJson.diagnostics.length} findings)`);
+try {
+  bigJson = JSON.parse(bigRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+if (
+  bigRun.status === 0 &&
+  bigJson &&
+  bigJson.diagnostics.length >= 4000 &&
+  bigRun.stdout.length > 65536
+) {
+  pass(
+    `rdjson stdout survives a pipe past 64 KiB (${bigRun.stdout.length} bytes, ${bigJson.diagnostics.length} findings)`,
+  );
 } else {
-  fail(`rdjson pipe contract broken: status ${bigRun.status}, bytes ${bigRun.stdout.length}, parsed ${bigJson ? bigJson.diagnostics.length : 'INVALID JSON'}`);
+  fail(
+    `rdjson pipe contract broken: status ${bigRun.status}, bytes ${bigRun.stdout.length}, parsed ${bigJson ? bigJson.diagnostics.length : 'INVALID JSON'}`,
+  );
 }
 fs.rmSync(bigTmp, { recursive: true, force: true });
 
@@ -308,9 +381,18 @@ fs.writeFileSync(path.join(dotTmp, '.hidden', 'inner.js'), 'export const x = eva
 fs.writeFileSync(path.join(dotTmp, 'app.js'), 'export const ok = 1;\n');
 const dotRun = runRaw([dotTmp, '--rdjson']);
 let dotJson = null;
-try { dotJson = JSON.parse(dotRun.stdout); } catch (e) { /* handled below */ }
+try {
+  dotJson = JSON.parse(dotRun.stdout);
+} catch (e) {
+  /* handled below */
+}
 const dotSkipped = (dotJson && dotJson.skipped) || [];
-if (dotRun.status === 0 && dotJson && dotJson.diagnostics.length === 0 && dotSkipped.some((f) => f.includes('.hidden'))) {
+if (
+  dotRun.status === 0 &&
+  dotJson &&
+  dotJson.diagnostics.length === 0 &&
+  dotSkipped.some((f) => f.includes('.hidden'))
+) {
   pass('dotted paths surface in skipped (not linted, not silent)');
 } else {
   fail(`dot contract broken: status ${dotRun.status}, skipped=${JSON.stringify(dotSkipped)}`);
@@ -320,10 +402,16 @@ fs.rmSync(dotTmp, { recursive: true, force: true });
 // Czech-comment findings must anchor on the line WITH the diacritics, not the
 // block comment's first line (round 11) — the set snapshot cannot see lines.
 {
-  const czechSource = fs.readFileSync(path.join(CASES, 'bad', 'bad-czech-comments.js'), 'utf8').split('\n');
+  const czechSource = fs
+    .readFileSync(path.join(CASES, 'bad', 'bad-czech-comments.js'), 'utf8')
+    .split('\n');
   const wantLine = czechSource.findIndex((l) => l.includes('Třetí řádek')) + 1;
   const czechLines = badDiagnostics
-    .filter((d) => d.code.value === 'shoptet/no-czech-comments' && d.location.path.endsWith('bad-czech-comments.js'))
+    .filter(
+      (d) =>
+        d.code.value === 'shoptet/no-czech-comments' &&
+        d.location.path.endsWith('bad-czech-comments.js'),
+    )
     .map((d) => d.location.range.start.line);
   if (wantLine > 0 && czechLines.includes(wantLine)) {
     pass(`czech comment anchors on the diacritics line (${wantLine})`);
@@ -338,11 +426,22 @@ fs.mkdirSync(path.join(distTmp, 'DIST'));
 fs.writeFileSync(path.join(distTmp, 'DIST', 'app.js'), 'console.log(1);\n');
 const distRun = runRaw([path.join(distTmp, 'DIST', 'app.js'), '--rdjson']);
 let distJson = null;
-try { distJson = JSON.parse(distRun.stdout); } catch (e) { /* handled below */ }
-if (distRun.status === 1 && distJson && distJson.diagnostics.length === 0 && (distJson.skipped || []).length === 1) {
+try {
+  distJson = JSON.parse(distRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+if (
+  distRun.status === 1 &&
+  distJson &&
+  distJson.diagnostics.length === 0 &&
+  (distJson.skipped || []).length === 1
+) {
   pass('single-file mode ignores DIST/ case-insensitively');
 } else {
-  fail(`single-file case contract broken: status ${distRun.status}, diags ${distJson ? distJson.diagnostics.length : 'n/a'}`);
+  fail(
+    `single-file case contract broken: status ${distRun.status}, diags ${distJson ? distJson.diagnostics.length : 'n/a'}`,
+  );
 }
 fs.rmSync(distTmp, { recursive: true, force: true });
 
@@ -365,8 +464,13 @@ const xyzTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-xyz-'));
 fs.writeFileSync(path.join(xyzTmp, 'data.xyz'), 'whatever');
 const xyzRun = runRaw([path.join(xyzTmp, 'data.xyz'), '--rdjson']);
 let xyzJson = null;
-try { xyzJson = JSON.parse(xyzRun.stdout); } catch (e) { /* handled below */ }
-if (xyzRun.status === 1 && xyzJson && xyzJson.diagnostics.length === 0) pass('unsupported file type: exit 1 + valid JSON');
+try {
+  xyzJson = JSON.parse(xyzRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+if (xyzRun.status === 1 && xyzJson && xyzJson.diagnostics.length === 0)
+  pass('unsupported file type: exit 1 + valid JSON');
 else fail(`unsupported-type contract broken: status ${xyzRun.status}`);
 fs.rmSync(xyzTmp, { recursive: true, force: true });
 
@@ -376,21 +480,34 @@ fs.writeFileSync(path.join(tsTmp, 'typed.ts'), 'export const x = eval("1");\n');
 fs.writeFileSync(path.join(tsTmp, 'app.js'), 'export const ok = 1;\n');
 const tsRun = runRaw([tsTmp, '--rdjson']);
 let tsJson = null;
-try { tsJson = JSON.parse(tsRun.stdout); } catch (e) { /* handled below */ }
+try {
+  tsJson = JSON.parse(tsRun.stdout);
+} catch (e) {
+  /* handled below */
+}
 if (tsRun.status === 0 && tsJson && (tsJson.skipped || []).some((f) => f.endsWith('typed.ts'))) {
   pass('foreign source extension (.ts) surfaces in skipped');
 } else {
-  fail(`.ts contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsJson && tsJson.skipped)}`);
+  fail(
+    `.ts contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsJson && tsJson.skipped)}`,
+  );
 }
 fs.rmSync(tsTmp, { recursive: true, force: true });
 
 // Messages are bounded — a 70k-char identifier must not produce a comment-
 // killing 70k message (round 13).
 const longTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-long-'));
-fs.writeFileSync(path.join(longTmp, 'long.js'), 'export {};\nconst x' + 'y'.repeat(70000) + ' = 1;\n');
+fs.writeFileSync(
+  path.join(longTmp, 'long.js'),
+  'export {};\nconst x' + 'y'.repeat(70000) + ' = 1;\n',
+);
 const longRun = runRaw([longTmp, '--rdjson']);
 let longJson = null;
-try { longJson = JSON.parse(longRun.stdout); } catch (e) { /* handled below */ }
+try {
+  longJson = JSON.parse(longRun.stdout);
+} catch (e) {
+  /* handled below */
+}
 const maxLen = longJson ? Math.max(...longJson.diagnostics.map((d) => d.message.length), 0) : -1;
 if (maxLen > 0 && maxLen <= 1020) pass(`finding messages are bounded (max ${maxLen} chars)`);
 else fail(`message bound broken: max ${maxLen}`);
@@ -399,10 +516,15 @@ fs.rmSync(longTmp, { recursive: true, force: true });
 // Testid findings in multi-line templates must anchor on the line WITH the
 // match (round 13) — same class of pin as the czech-comments anchor above.
 {
-  const testidSource = fs.readFileSync(path.join(CASES, 'bad', 'bad-testid.js'), 'utf8').split('\n');
+  const testidSource = fs
+    .readFileSync(path.join(CASES, 'bad', 'bad-testid.js'), 'utf8')
+    .split('\n');
   const wantLine = testidSource.findIndex((l) => l.includes('[data-testid="price"]')) + 1;
   const testidLines = badDiagnostics
-    .filter((d) => d.code.value === 'shoptet/no-testid-selector' && d.location.path.endsWith('bad-testid.js'))
+    .filter(
+      (d) =>
+        d.code.value === 'shoptet/no-testid-selector' && d.location.path.endsWith('bad-testid.js'),
+    )
     .map((d) => d.location.range.start.line);
   if (wantLine > 0 && testidLines.includes(wantLine)) {
     pass(`testid anchors on the matching template line (${wantLine})`);
