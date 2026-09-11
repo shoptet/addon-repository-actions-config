@@ -42,7 +42,7 @@ module.exports = {
           ALWAYS_DEFINED.has(node.argument.name) &&
           // A local variable/parameter named e.g. `screen` is not the global —
           // guarding it is legitimate, not redundant.
-          isGlobalBinding(context.getScope(), node.argument.name)
+          isGlobalBinding(context.sourceCode.getScope(node), node.argument.name)
         ) {
           context.report({
             node,
