@@ -15,7 +15,8 @@ workflows run:
 - `linter_review_tool/` — the deterministic linter (ESLint + custom `shoptet/*` rules,
   stylelint, factual HTML checks) behind the PR gate.
 - `shoptet-addon-review/` — the heuristic/contextual counterpart: an AI code-review Claude Code
-  plugin/skill (`st-addon-review`) that reviews addon PRs against the FE rules catalog. See
+  plugin (`shoptet-addon-review`, skill `st-addon-review`) that reviews addon PRs against the FE
+  rules catalog. See
   `shoptet-addon-review/CONTEXT.md` for what it does and why, `INSTALL.md` for setup.
 - `doc/plans/` — forward-looking initiative plans (never edited to describe what already
   shipped; see `doc/plans/README.md`).
@@ -32,9 +33,14 @@ Linter tool (`linter_review_tool/`):
 cd linter_review_tool
 yarn                                # install deps
 yarn test                           # snapshot-check test-cases/ fixtures against expected.json
-node review.js path/to/addon/src    # run the reliable rule set, same as CI
-node review.js path/to/file.js      # single-file mode
+node review.js path/to/addon/src --rdjson   # exactly what CI runs (Diagnostic JSON, always exits 0)
+node review.js path/to/addon/src            # plain mode: human-readable, exits 1 on blockers
+node review.js path/to/file.js              # single-file mode
 ```
+
+The PR gate runs `--rdjson` and derives the gate from the parsed findings; plain mode is only the
+fail-safe for non-`pull_request` events, where the exit code itself is the gate. Reproduce CI with
+`--rdjson`, and don't rely on the exit code in that mode.
 
 Repository-level tests (run from repo root, no install needed beyond bash/ruby/node/git):
 
@@ -60,10 +66,12 @@ CI (`.github/workflows/ci.yml`) runs `actionlint`, then both `tests/test-*.sh` s
 - `linters/eslint-linter.js`, `stylelint-linter.js`, `html-linter.js` — one per file type.
   HTML checks are factual (parse5-based), not stylistic.
 - `rules/` — custom ESLint plugin `shoptet/*` (e.g. `no-core-overwrite`, `no-testid-selector`,
-  `prefer-fetch`). Each rule file is tagged with a catalog ID comment (`// B6`, `// E2`, …)
-  matching the FE rules catalog `shoptet-addon-review` reviews against.
+  `prefer-fetch`). Every rule file opens with a block JSDoc whose first line is the catalog ID and
+  title (`* B6. Do not overwrite Shoptet core`), matching the FE rules catalog
+  `shoptet-addon-review` reviews against. `rules/global-callee.js` and `rules/script-detect.js` are
+  shared helpers, not rules, and carry no catalog ID.
 - `stylelint-rules/` — custom stylelint plugin (`max-z-index`, `no-pt-unit`, etc.).
-- `profiles.js` — `RELIABLE_RULES`: the *only* rules the tool reports. A rule belongs here only
+- `profiles.js` — `RELIABLE_RULES`: the _only_ rules the tool reports. A rule belongs here only
   when a positive finding is ~zero-false-positive (false negatives are acceptable for a gate).
   Of `RELIABLE_RULES`, only the error-severity subset actually gates the PR; the rest are
   non-blocking recommendations. Heuristic/contextual checks are deliberately out of scope here —
@@ -79,6 +87,12 @@ CI (`.github/workflows/ci.yml`) runs `actionlint`, then both `tests/test-*.sh` s
 When adding or changing a rule: add/update the rule file, add it to `profiles.js` only if it's
 genuinely zero-FP, and add matching fixtures to `test-cases/{good,bad}/` plus an entry in
 `expected.json`.
+
+**The gate always runs the linter from `main`.** `checks.workflow.yml` checks the review tool out
+with a hardcoded `ref: main`, so a rule change on a feature branch has no effect on the partner
+gate until it lands — opening a PR here never exercises it end-to-end (verify locally with
+`review.js`, or via the self-test). Conversely, merging to `main` deploys instantly to every caller
+pinning `@main`, with no staged rollout.
 
 ## Architecture: `checks.workflow.yml`
 
@@ -114,20 +128,11 @@ fails.
 ## `shoptet-addon-review/`
 
 A separate concern from the linter gate: an AI code-review Claude Code plugin
-(`st-addon-review`) that reviews addon PRs against a FE rules catalog, for the semantic/heuristic
+`shoptet-addon-review` (its skill is `st-addon-review`) that reviews addon PRs against a FE rules
+catalog, for the semantic/heuristic
 findings the deterministic linter can't catch (XSS, reimplementing Shoptet core, DOM-vs-dataLayer
 parsing, duplication). `CONTEXT.md` in that directory is the current source of truth for what
 mode it runs in, what's deliberately deferred, and which guardrails must not be relaxed — read it
 before changing behavior there. Key invariants: only catalog-mapped findings can block; the AI's
 own judgment findings are non-binding and capped at `recommended`; the AI never edits the catalog
 or the code, only proposes fixes.
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
