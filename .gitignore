@@ -3,3 +3,7 @@ node_modules/
 .vscode/
 .DS_Store
 dist/
+# Verdaccio storage for the local release rehearsal (scripts/verdaccio.config.yaml)
+local-releases/
+# Feature-branch worktrees are created here by convention, never committed
+.claude/worktrees/

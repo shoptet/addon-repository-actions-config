@@ -226,6 +226,68 @@ still reaches every partner immediately, with no version gate at all. Those
 are two separate axes — package version and workflow ref — and tagging the
 workflow itself is a distinct decision for later, out of scope here.
 
+### Rehearsing a release locally (Verdaccio)
+
+Because the real publish path is blocked registry-side, the whole
+publish-then-consume chain can be rehearsed against a local Verdaccio
+registry instead. This is a developer-machine harness only — it never touches
+`publish-packages.yml`, and nothing it produces leaves your machine.
+
+```bash
+yarn verdaccio:local        # terminal 1: starts Verdaccio on http://localhost:4873/
+yarn release:local          # terminal 2: publishes all three packages, patch bump
+yarn release:local --package=addon-eslint-config --bump=minor
+```
+
+Verdaccio itself runs through `npx verdaccio@6.9.2` (the same version
+`shoptet-partner-cli` pins) rather than being added as a dependency — it would
+otherwise pull a large tree into a root that carries only prettier. Its
+storage lives in the gitignored `local-releases/`; delete that directory to
+reset the registry to empty.
+
+Two properties of `scripts/release-local.js` worth knowing:
+
+- **The committed `packages/*/package.json` files are never written to.** Each
+  package is published from a temporary copy with the version patched in, so
+  repeated local releases leave the working tree clean and the manifest
+  version keeps meaning "what the real OIDC release would ship".
+- **The base version is whatever is already in the local registry**, or the
+  manifest version when that package has never been published there; the
+  requested bump is always applied on top. A first run against a manifest at
+  `1.0.0` with `--bump=patch` therefore publishes `1.0.1`.
+
+The script refuses any registry host that is not loopback or `.test`/`.local`,
+because `npm publish` would otherwise happily reuse a real credential from
+your `.npmrc`.
+
+**Consuming the local packages from `../shoptet-partner-cli`.** That repository
+currently pins these packages as SHA-pinned `github:` dependencies, in
+**three** places — all of which have to point at the local registry for a
+rehearsal, and all of which must be reverted afterwards:
+
+1. the three catalog entries in `pnpm-workspace.yaml`
+2. `packages/test-fixtures/fixtures/scaffolds/addon/package.json`
+3. `packages/test-fixtures/fixtures/scaffolds/theme/package.json`
+
+Replace the `github:…` ranges with the plain version you just published, then
+install with the scope pointed at the local registry (no need to edit that
+repository's committed `.npmrc`):
+
+```bash
+pnpm install --config.@shoptet:registry=http://localhost:4873/
+```
+
+Two caveats, both verified:
+
+- That repository sets `minimumReleaseAge: 1440`, so a just-published version
+  is age-gated and pnpm appends the versions it let through to
+  `minimumReleaseAgeExclude` in the committed `pnpm-workspace.yaml`. Revert
+  that too.
+- The two scaffold fixtures pin only `@shoptet/addon-eslint-config` and
+  `@shoptet/addon-stylelint-config` — **not** `@shoptet/addon-html-lint` — so a
+  scaffold-then-install test path proves nothing about that third package. Only
+  the workspace catalog covers all three.
+
 ## Package managers
 
 The build workflow supports **npm, Yarn and pnpm**. The package manager is resolved in this order:

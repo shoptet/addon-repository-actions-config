@@ -6,7 +6,12 @@
   ],
   "scripts": {
     "format": "prettier --write .",
-    "check:format": "prettier --check ."
+    "check:format": "prettier --check .",
+    "verdaccio:local": "npx --yes verdaccio@6.9.2 --config scripts/verdaccio.config.yaml",
+    "release:local": "node scripts/release-local.js",
+    "release:local:patch": "node scripts/release-local.js --bump=patch",
+    "release:local:minor": "node scripts/release-local.js --bump=minor",
+    "release:local:major": "node scripts/release-local.js --bump=major"
   },
   "devDependencies": {
     "prettier": "^3.3.3"
