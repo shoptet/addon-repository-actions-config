@@ -103,7 +103,12 @@ function readManifest(packageDir) {
 }
 
 /** The highest version of `name` in the target registry, or undefined when it has never been
- * published there. A missing package is the normal first-run case, not an error. */
+ * published there. A missing package is the normal first-run case, not an error.
+ *
+ * This resolves through Verdaccio's npmjs uplink, so once these names exist on the public
+ * registry the bump base becomes the *published* version rather than the last local one. That is
+ * the desired behaviour for a rehearsal of a real release; delete `local-releases/` if you want a
+ * clean slate instead. */
 function publishedVersion(name, registryUrl) {
   try {
     const out = execFileSync(
