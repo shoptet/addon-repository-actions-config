@@ -193,6 +193,15 @@ of the workflow that calls it:
 | `@shoptet/addon-stylelint-config` | the stylelint config, the `shoptet/*` stylelint rules, and its slice of `RELIABLE_RULES` |
 | `@shoptet/addon-html-lint` | the factual HTML checks (`a11y/img-alt`, `html/no-inline-script`, `html/deprecated-tag`) |
 
+A fourth package, `@shoptet/addon-lint-conformance`, holds no rules — it is the shared **discovery
+conformance corpus** (directory shapes + expected file-discovery outcomes: skipped/minified/vendored
+files, symlinked directories, a target outside the runner's own tree, fail-closed on "everything
+skipped") that both this repo's `linter_review_tool/test/conformance.js` and the `shoptet` CLI's own
+conformance run test their file-walking against, from one shared source. See
+`packages/addon-lint-conformance/README.md` for the manifest schema and
+`doc/plans/rule-unification/a3.md` for why file discovery needed its own mechanism separate from the
+rule-set equality test.
+
 They live under `packages/<name>/` as a Yarn classic workspace;
 `linter_review_tool/` stays outside that workspace and consumes them the same
 way any external partner tooling would.

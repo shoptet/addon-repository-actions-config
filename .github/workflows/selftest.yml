@@ -2,6 +2,11 @@ name: Linter self-test
 # CI for this repository itself (NOT the reusable partner workflow): verifies
 # the rule set against the fixtures in linter_review_tool/test-cases via
 # test/selftest.js, so a rule regression can't ship to partners unnoticed.
+# Since A3, `yarn test` (see linter_review_tool/package.json) also runs
+# test/rule-equality.js (this repo's effective rule set vs the shared
+# packages' declared RELIABLE_RULES, by id+severity) and test/conformance.js
+# (the shared discovery corpus from @shoptet/addon-lint-conformance) — see
+# doc/plans/rule-unification/a3.md.
 on:
   push:
     # main + the LIVE branch partners consume pre-merge: the PR run covers the
@@ -11,9 +16,11 @@ on:
     branches: [main, feature/linter-review-tool]
     paths:
       - 'linter_review_tool/**'
-      # The rule packages linter_review_tool consumes (@shoptet/addon-eslint-config,
-      # @shoptet/addon-stylelint-config, @shoptet/addon-html-lint) — a rule
-      # change here is exactly the fail-green hole this trigger exists to close.
+      # The packages linter_review_tool consumes (@shoptet/addon-eslint-config,
+      # @shoptet/addon-stylelint-config, @shoptet/addon-html-lint, and — since
+      # A3 — @shoptet/addon-lint-conformance, the shared discovery corpus) —
+      # a rule or corpus change here is exactly the fail-green hole this
+      # trigger exists to close.
       - 'packages/**'
       # The workspace root install step (below) resolves the packages' own
       # runtime deps through the root lockfile/manifest — a drift here can
