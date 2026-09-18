@@ -23,6 +23,7 @@
 //   yarn release:local --bump=minor
 //   yarn release:local --package=addon-eslint-config
 //   yarn release:local --package=addon-eslint-config --package=addon-html-lint --bump=major
+//   yarn release:local --package=addon-lint-conformance
 //
 // The registry defaults to http://localhost:4873/ and can be overridden with
 // SHOPTET_LOCAL_REGISTRY_URL.
@@ -35,7 +36,12 @@ const { join } = require('node:path');
 const REPO_ROOT = join(__dirname, '..');
 const PACKAGES_DIR = join(REPO_ROOT, 'packages');
 const DEFAULT_REGISTRY_URL = 'http://localhost:4873/';
-const KNOWN_PACKAGES = ['addon-eslint-config', 'addon-stylelint-config', 'addon-html-lint'];
+const KNOWN_PACKAGES = [
+  'addon-eslint-config',
+  'addon-stylelint-config',
+  'addon-html-lint',
+  'addon-lint-conformance',
+];
 const BUMP_TYPES = ['patch', 'minor', 'major'];
 
 function parseArgs(argv) {
