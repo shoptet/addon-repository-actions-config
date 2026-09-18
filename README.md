@@ -244,7 +244,7 @@ registry instead. This is a developer-machine harness only — it never touches
 
 ```bash
 yarn verdaccio:local        # terminal 1: starts Verdaccio on http://localhost:4873/
-yarn release:local          # terminal 2: publishes all three packages, patch bump
+yarn release:local          # terminal 2: publishes all four packages, patch bump
 yarn release:local --package=addon-eslint-config --bump=minor
 ```
 
@@ -295,7 +295,7 @@ scaffold-then-install test path proves nothing about that third package. Only
 the workspace catalog (which `registry:mode` does cover) pins all three.
 
 **Not yet consumed from a registry at all — `link:` only.** `linter_review_tool/`
-depends on all three packages via Yarn `link:../packages/<name>` (see "Shared
+depends on all four packages via Yarn `link:../packages/<name>` (see "Shared
 rule packages" above), so nothing in this repo actually reads the
 `@shoptet:registry=` line `registry:mode --mode=local` writes here. It is
 written anyway, for symmetry with the CLI repo and so nothing needs to change
