@@ -310,11 +310,11 @@ jobs:
     uses: shoptet/addon-repository-actions-config/.github/workflows/default.workflow.yml@main
     with:
       package_manager: pnpm # npm | yarn | pnpm
-      node_version: '20'    # optional — Node.js for the build (default '22')
+      node_version: '20'    # optional — Node.js for the build (default '24')
 ```
 
 The build workflow also accepts a `node_version` input (passed to
-`actions/setup-node`), defaulting to `'22'` — set it when an addon needs a
+`actions/setup-node`), defaulting to `'24'` — set it when an addon needs a
 different Node major.
 
 ## Node version
