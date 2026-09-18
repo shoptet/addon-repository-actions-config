@@ -1,0 +1,28 @@
+{
+  "name": "@shoptet/addon-lint-conformance",
+  "version": "1.0.0",
+  "description": "Shared discovery conformance corpus (directory shapes + expected outcomes) for the Shoptet partner-addon deploy gate's file-discovery layer — consumed by both shoptet/addon-repository-actions-config's linter_review_tool and shoptet/partner-cli's `shoptet validate`.",
+  "license": "ISC",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./corpus.json": "./corpus.json",
+    "./materialize": "./materialize.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "corpus.json",
+    "materialize.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shoptet/addon-repository-actions-config.git",
+    "directory": "packages/addon-lint-conformance"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

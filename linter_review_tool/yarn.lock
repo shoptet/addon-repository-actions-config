@@ -181,6 +181,10 @@
   version "0.0.0"
   uid ""
 
+"@shoptet/addon-lint-conformance@link:../packages/addon-lint-conformance":
+  version "0.0.0"
+  uid ""
+
 "@shoptet/addon-stylelint-config@link:../packages/addon-stylelint-config":
   version "0.0.0"
   uid ""

@@ -1,0 +1,139 @@
+{
+  "$comment": "Discovery conformance corpus (A3/B4). Shared directory shapes and expected file-discovery outcomes, consumed identically by shoptet/addon-repository-actions-config's linter_review_tool and by shoptet/partner-cli's `shoptet validate`. See README.md for the manifest schema. Content, not code: no linter-specific assumption belongs here beyond 'ESLint would flag eval() as a blocker' and 'ESLint would flag var as a blocker', both of which are stock eslint:recommended-family facts every consumer of @shoptet/addon-eslint-config shares.",
+  "shapes": [
+    {
+      "id": "skip-minified",
+      "description": "A *.min.js file is a candidate lint target but must be skipped and visibly reported as skipped, never silently dropped.",
+      "files": {
+        "src/app.js": "export const ok = 1;\n",
+        "src/vendor-lib.min.js": "!function(){eval(\"1\")}();"
+      },
+      "expect": {
+        "skippedPaths": ["src/vendor-lib.min.js"],
+        "findings": [],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "skip-bundle",
+      "description": "A *.bundle.js file (a build output, not authored source) must be skipped and visibly reported.",
+      "files": {
+        "src/app.js": "export const ok = 1;\n",
+        "src/app.bundle.js": "eval(\"1\");"
+      },
+      "expect": {
+        "skippedPaths": ["src/app.bundle.js"],
+        "findings": [],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "skip-dist-dir",
+      "description": "Anything under a dist/ directory is a build artifact, not authored source, and must be skipped.",
+      "files": {
+        "src/app.js": "export const ok = 1;\n",
+        "src/dist/built.js": "eval(\"1\");"
+      },
+      "expect": {
+        "skippedDirs": ["src/dist"],
+        "findings": [],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "skip-vendor-dir",
+      "description": "Anything under a vendor/ directory is a vendored copy, not authored source, and must be skipped.",
+      "files": {
+        "src/app.js": "export const ok = 1;\n",
+        "src/vendor/lib.js": "eval(\"1\");"
+      },
+      "expect": {
+        "skippedDirs": ["src/vendor"],
+        "findings": [],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "skip-dotfile",
+      "description": "A dotfile (hidden file) is tooling, not addon source, and must never be linted.",
+      "files": {
+        "src/app.js": "export const ok = 1;\n",
+        "src/.hidden.js": "eval(\"1\");"
+      },
+      "expect": {
+        "skippedPaths": ["src/.hidden.js"],
+        "findings": [],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "skip-symlinked-dir",
+      "description": "A symlinked directory is never descended into by discovery — surfaced as skipped instead of silently vanishing or (worse) escaping the review tree. Symlinked directories cannot be committed portably (git stores them as regular files pointing elsewhere on some platforms, and CI checkouts vary), so the runner must CREATE the symlink at materialization time from this manifest entry rather than the corpus shipping one.",
+      "files": {
+        "outside-linked/evil.js": "export const x = eval(\"1\");\n",
+        "src/app.js": "export const ok = 1;\n"
+      },
+      "symlinks": [{ "target": "outside-linked", "linkPath": "src/linked-dir" }],
+      "expect": {
+        "skippedPaths": ["src/linked-dir"],
+        "findingsExcludePaths": ["src/linked-dir/evil.js"],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "symlinked-file-is-linted",
+      "description": "A symlinked FILE (as opposed to a directory) is linted like any other file — only symlinked directories are a discovery gap.",
+      "files": {
+        "shared.js": "export function used() { return eval(\"1\"); }\n",
+        "src/app.js": "export const ok = 1;\n"
+      },
+      "symlinks": [{ "target": "shared.js", "linkPath": "src/linked.js" }],
+      "expect": {
+        "findings": [{ "ruleId": "no-eval", "severity": "blocker", "path": "src/linked.js" }],
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "outside-tree-still-blocks",
+      "description": "THE load-bearing case: a target directory OUTSIDE the runner's own installation tree must still report findings, and a known blocker must still gate. This is the shape that fails green when a flat-config-style basePath (or equivalent 'resolve relative to my own install dir') bug drops every file outside that root to a non-blocking recommendation/warning. Materialize this shape into a location that is provably NOT inside the runner's own source tree.",
+      "files": {
+        "src/evil.js": "export const x = eval(\"1\");\n",
+        "src/legacy-var.js": "var leftover = 1;\nconsole.log(leftover);\n"
+      },
+      "outsideRunnerTree": true,
+      "expect": {
+        "findings": [
+          { "ruleId": "no-eval", "severity": "blocker", "path": "src/evil.js" },
+          { "ruleId": "no-var", "severity": "blocker", "path": "src/legacy-var.js" },
+          { "ruleId": "no-console", "severity": "blocker", "path": "src/legacy-var.js" }
+        ],
+        "forbidMessagePattern": "outside of base path|no matching configuration",
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "all-candidates-skipped-fail-closed",
+      "description": "When every discovered candidate is skipped (minified/vendored/hidden/symlinked), the run must fail closed — a non-zero/hard-failure outcome that is visibly distinguishable from '0 findings because the code is clean'. A silent exit-0 here is the single worst failure mode this corpus exists to catch: it reads exactly like a passing gate.",
+      "files": {
+        "src/vendor-lib.min.js": "eval(\"1\");"
+      },
+      "expect": {
+        "failClosed": true,
+        "skippedPaths": ["src/vendor-lib.min.js"]
+      }
+    },
+    {
+      "id": "known-blocker-parity",
+      "description": "A single, minimal file with one well-known, stock (non-shoptet/*) blocker. Both runners must report the identical rule id and severity for it — this is the cross-repo parity floor the corpus checks on every shape, made explicit as its own case so a parity break can never hide behind a more complicated shape.",
+      "files": {
+        "src/known-blocker.js": "export const x = eval(\"1\");\n"
+      },
+      "expect": {
+        "findings": [
+          { "ruleId": "no-eval", "severity": "blocker", "path": "src/known-blocker.js" }
+        ],
+        "exitCode": 0
+      }
+    }
+  ]
+}

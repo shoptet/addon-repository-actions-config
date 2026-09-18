@@ -4,7 +4,9 @@
 
 This repository's `linter_review_tool/` rule set becomes the single authority for Shoptet g3 addon
 linting, published as three npm packages that both this repo's gate **and** the `shoptet` CLI's
-`validate` command consume.
+`validate` command consume. A fourth package, `@shoptet/addon-lint-conformance`
+([`A3`](./a3.md)), holds the shared discovery conformance corpus both runners test their file-walking
+against — it carries no rules of its own.
 
 The other half of the track lives in
 [`shoptet/partner-cli`](https://github.com/shoptet/partner-cli), under
@@ -20,7 +22,7 @@ track exists to remove, one layer up.
 | [`A0`](./a0.md) | land the in-flight branches, freeze the rule set | done, retroactively — see [`a0-baseline.md`](./a0-baseline.md) |
 | [`A1`](./a1.md) | ESLint 8 → 9, flat config, and the `cwd`/basePath fix | implemented on `zibby` (not `main`, not published) |
 | [`A2`](./a2.md) | extract and publish the three packages | implemented on `zibby` (not `main`, not published); npm publish itself still blocked |
-| [`A3`](./a3.md) | the equality test and the discovery conformance corpus | not started |
+| [`A3`](./a3.md) | the equality test and the discovery conformance corpus | implemented on `zibby` (not `main`, not published) |
 
 Cross-repo order: **A0 → A1 → A2 → B1 → B2 → B3 → A3/B4**, where the `B` slices are in the CLI repo.
 
