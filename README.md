@@ -261,32 +261,37 @@ because `npm publish` would otherwise happily reuse a real credential from
 your `.npmrc`.
 
 **Consuming the local packages from `../shoptet-partner-cli`.** That repository
-currently pins these packages as SHA-pinned `github:` dependencies, in
-**three** places — all of which have to point at the local registry for a
-rehearsal, and all of which must be reverted afterwards:
+runs `pnpm registry:mode --mode=local` (from its own root, after the two
+commands above) to point **both** repos at the registry you just published to
+in one step — its own `pnpm-workspace.yaml` catalog entries, its `.npmrc`
+`@shoptet:registry=` scope line, this repo's `.npmrc` scope line (unused today
+— `linter_review_tool/` still depends on these three packages via `link:`, see
+below), and the `minimumReleaseAge: 1440` cooldown's
+`minimumReleaseAgeExclude` list, all four rewritten and reverted together.
+`pnpm registry:mode --mode=git` restores the committed SHA-pinned state
+afterwards. Full usage: that repository's `scripts/release-local/README.md`
+("Registry mode") and
+[its ADR 0077](https://github.com/shoptet/shoptet-partner-cli/blob/main/doc/decisions/0077-registry-mode-switch.md).
 
-1. the three catalog entries in `pnpm-workspace.yaml`
-2. `packages/test-fixtures/fixtures/scaffolds/addon/package.json`
-3. `packages/test-fixtures/fixtures/scaffolds/theme/package.json`
+**Not covered by that command**, because it edits development-time
+configuration, not test fixtures: `packages/test-fixtures/fixtures/scaffolds/
+{addon,theme}/package.json` in that repository — the scaffold-matrix goldens,
+regenerated from `packages/create/src/package-json.ts`'s own constants
+(`pnpm --filter @shoptet/create run emit-scaffold-fixtures`), which
+`registry:mode --status` only ever *reports* on, never rewrites (those
+constants ship to partners and must never point at a developer's local
+registry). Those two fixtures pin only `@shoptet/addon-eslint-config` and
+`@shoptet/addon-stylelint-config` — **not** `@shoptet/addon-html-lint` — so a
+scaffold-then-install test path proves nothing about that third package. Only
+the workspace catalog (which `registry:mode` does cover) pins all three.
 
-Replace the `github:…` ranges with the plain version you just published, then
-install with the scope pointed at the local registry (no need to edit that
-repository's committed `.npmrc`):
-
-```bash
-pnpm install --config.@shoptet:registry=http://localhost:4873/
-```
-
-Two caveats, both verified:
-
-- That repository sets `minimumReleaseAge: 1440`, so a just-published version
-  is age-gated and pnpm appends the versions it let through to
-  `minimumReleaseAgeExclude` in the committed `pnpm-workspace.yaml`. Revert
-  that too.
-- The two scaffold fixtures pin only `@shoptet/addon-eslint-config` and
-  `@shoptet/addon-stylelint-config` — **not** `@shoptet/addon-html-lint` — so a
-  scaffold-then-install test path proves nothing about that third package. Only
-  the workspace catalog covers all three.
+**Not yet consumed from a registry at all — `link:` only.** `linter_review_tool/`
+depends on all three packages via Yarn `link:../packages/<name>` (see "Shared
+rule packages" above), so nothing in this repo actually reads the
+`@shoptet:registry=` line `registry:mode --mode=local` writes here. It is
+written anyway, for symmetry with the CLI repo and so nothing needs to change
+here the day `linter_review_tool` starts depending on these packages as
+ordinary registry dependencies instead.
 
 ## Package managers
 
