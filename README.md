@@ -2,6 +2,9 @@
 
 Reusable GitHub Actions workflows for Shoptet addon (partner) repositories.
 
+See [`doc/overview.md`](doc/overview.md) for a quick-orientation map of the repository's
+structure and how its packages/workflows reference each other (including a dependency graph).
+
 ## Workflows
 
 ### `checks.workflow.yml` — automated pull request review
