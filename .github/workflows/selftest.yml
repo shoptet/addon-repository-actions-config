@@ -56,7 +56,7 @@ jobs:
           node-version: '24'
 
       - name: Install rule package dependencies (workspace root)
-        # linter_review_tool's package.json pulls the three @shoptet/addon-*
+        # linter_review_tool's package.json pulls the four @shoptet/addon-*
         # rule packages via Yarn classic `link:../packages/<name>` (npm publish
         # rights for the @shoptet scope aren't granted yet — see
         # doc/plans/rule-unification/a2.md). `link:` only symlinks the package

@@ -77,10 +77,20 @@ jobs:
         # explicitly rather than relying on whatever setup-node installed.
         run: npm install -g npm@^11.5.1
 
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
       - name: Publish
-        # No install step: these packages are plain CommonJS with no build
-        # step and no dependencies of their own (only peerDependencies), so
-        # there is nothing to build or bundle before publishing.
+        # No install step: some of these packages do have real dependencies
+        # (this one: espree, globals, @eslint-community/eslint-utils), but
+        # none of the four packages under packages/* declare a
+        # prepare/prepack/prepublishOnly script, so npm has nothing to run
+        # before packing — there is nothing to build or bundle here.
         run: npm publish --access public
 
   publish-addon-stylelint-config:
@@ -103,6 +113,14 @@ jobs:
 
       - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
         run: npm install -g npm@^11.5.1
+
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
 
       - name: Publish
         run: npm publish --access public
@@ -128,6 +146,14 @@ jobs:
       - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
         run: npm install -g npm@^11.5.1
 
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
       - name: Publish
         run: npm publish --access public
 
@@ -151,6 +177,14 @@ jobs:
 
       - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
         run: npm install -g npm@^11.5.1
+
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
 
       - name: Publish
         run: npm publish --access public

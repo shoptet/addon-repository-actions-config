@@ -49,8 +49,8 @@ gives the exact per-file wiring:
 file-discovery code, to prove both runners agree without either owning a private copy of the test
 data.
 
-Per each package's `package.json`, all four are pinned to a git SHA by both consuming repos "the
-same way ... until npm publish rights land" — `publish-packages.yml`'s own header states this is
+Per `linter_review_tool/package.json`, all four are consumed via Yarn `link:../packages/<name>`,
+not a registry version or a git SHA pin — `publish-packages.yml`'s own header states publishing is
 currently **blocked**: npm publish rights in the `@shoptet` scope are held by other maintainers
 and no trusted-publisher (OIDC) config exists yet, so the workflow is wired but every `npm
 publish` step fails by design until that lands.
@@ -121,9 +121,10 @@ graph TD
 - **`selftest.yml`** — runs the linter's own `yarn test` (selftest + rule-equality + conformance)
   whenever `linter_review_tool/**`, `packages/**`, or `checks.workflow.yml` changes.
 - **`publish-packages.yml`** — publishes all four `packages/*` to npm via OIDC trusted publishing;
-  its own header states this is currently blocked pending registry-side config, and is
-  deliberately not wired to `push`/`pull_request` (only ships on a dedicated trigger, per the
-  file's comments).
+  its own header states this is currently blocked pending registry-side config. Its `on:` block is
+  `workflow_dispatch` plus `push` on each package's own version tag (e.g.
+  `packages/addon-eslint-config/v*`) — `pull_request` is the one deliberately excluded trigger
+  (only ships on a maintainer's explicit decision or a version tag, per the file's comments).
 
 ## `shoptet-addon-review/`
 

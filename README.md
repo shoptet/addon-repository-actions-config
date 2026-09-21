@@ -158,7 +158,7 @@ GitHub and update custom codes.
 
 ### `publish-packages.yml` — shared rule package releases
 
-Publishes the three shared rule packages under `packages/` (see "Shared rule
+Publishes the four shared packages under `packages/` (see "Shared rule
 packages" below) to npm. Triggers only on `workflow_dispatch` (with a
 `package` input selecting one package or `all`) or a version tag — never on
 an ordinary push or PR, so a package cannot ship as a side effect of merging
@@ -169,7 +169,7 @@ long-lived publish secret) stored in this repository.
 
 **Currently blocked, not broken:** publish rights in the `@shoptet` scope are
 held by the SOFA/g4 maintainers, and no trusted-publisher registration exists
-yet for these three package names. The workflow is correct and ready, but
+yet for these four package names. The workflow is correct and ready, but
 every run's `npm publish` step will fail (or simply never run, since nothing
 tags a release yet) until that registry-side access lands.
 
@@ -229,13 +229,18 @@ when the pins become real versions.
   `publish-packages.yml` above. There is no publish token in this
   repository.
 
-**The rules are pinned; the workflow ref is not — yet.** After this
-extraction, a partner's linter *rules* are locked to whatever package
-version `linter_review_tool` depends on at the time it was released. But
-partner repositories still call `checks.workflow.yml` at `@main` (see the
-caller template above), so a change to *this repository's workflow code*
-still reaches every partner immediately, with no version gate at all. Those
-are two separate axes — package version and workflow ref — and tagging the
+**Neither the rules nor the workflow ref are pinned yet.** With
+`linter_review_tool` depending on the packages via `link:../packages/<name>`
+(see "Not yet consumed from the registry" above) there is no version pin at
+all — a rule edit merged to `main` reaches every caller's next PR run
+immediately, because `checks.workflow.yml` also checks the review tool out at
+a hardcoded `ref: main`. Once the packages are consumed as real registry
+versions, a partner's rules will be locked to whatever version
+`linter_review_tool` depends on at the time it was released — but partner
+repositories will still call `checks.workflow.yml` at `@main` (see the caller
+template above), so a change to *this repository's workflow code* will keep
+reaching every partner immediately, with no version gate at all. Those are
+two separate axes — package version and workflow ref — and tagging the
 workflow itself is a distinct decision for later, out of scope here.
 
 ### Rehearsing a release locally (Verdaccio)
@@ -257,7 +262,7 @@ otherwise pull a large tree into a root that carries only prettier. Its
 storage lives in the gitignored `local-releases/`; delete that directory to
 reset the registry to empty.
 
-Two properties of `scripts/release-local.js` worth knowing:
+Three properties of `scripts/release-local.js` worth knowing:
 
 - **The committed `packages/*/package.json` files are never written to.** Each
   package is published from a temporary copy with the version patched in, so
@@ -267,6 +272,12 @@ Two properties of `scripts/release-local.js` worth knowing:
   manifest version when that package has never been published there; the
   requested bump is always applied on top. A first run against a manifest at
   `1.0.0` with `--bump=patch` therefore publishes `1.0.1`.
+- **The rehearsal does not exercise npm's own packing.** The temp tree is
+  assembled by copying each `manifest.files` entry verbatim, whereas a real
+  `npm publish` expands globs in `files`, always includes `package.json`/
+  `README`/`LICENSE`, and honours `.npmignore`. A `files`/`.npmignore` mistake
+  that would make `publish-packages.yml` ship a broken tarball would not
+  surface in this rehearsal.
 
 The script refuses any registry host that is not loopback or `.test`/`.local`,
 because `npm publish` would otherwise happily reuse a real credential from
@@ -277,7 +288,7 @@ runs `pnpm registry:mode --mode=local` (from its own root, after the two
 commands above) to point **both** repos at the registry you just published to
 in one step — its own `pnpm-workspace.yaml` catalog entries, its `.npmrc`
 `@shoptet:registry=` scope line, this repo's `.npmrc` scope line (unused today
-— `linter_review_tool/` still depends on these three packages via `link:`, see
+— `linter_review_tool/` still depends on these four packages via `link:`, see
 below), and the `minimumReleaseAge: 1440` cooldown's
 `minimumReleaseAgeExclude` list, all four rewritten and reverted together.
 `pnpm registry:mode --mode=git` restores the committed SHA-pinned state
@@ -357,6 +368,7 @@ The resolved package manager is used for the `setup-node` dependency cache, the 
 ## Local usage
 
 ```bash
+yarn --frozen-lockfile   # repo root — installs the packages/* deps the link: deps resolve to
 cd linter_review_tool
 yarn
 node review.js path/to/addon/src   # same reliable rule set as CI

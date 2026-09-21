@@ -1,5 +1,5 @@
 # Committed Verdaccio config for `yarn verdaccio:local` — a local-only npm registry for
-# `yarn release:local` to publish the three `packages/*` rule packages into, so the whole
+# `yarn release:local` to publish the four `packages/*` rule packages into, so the whole
 # publish-then-consume path can be rehearsed before the real `@shoptet` scope publish rights land
 # (see README's "Shared rule packages" and `.github/workflows/publish-packages.yml`, which this
 # harness deliberately does not touch).

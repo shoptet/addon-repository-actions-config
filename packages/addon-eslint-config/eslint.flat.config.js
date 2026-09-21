@@ -176,7 +176,8 @@ module.exports = [
       // B6 ❌ — `shoptet = {}` (replacing the whole core object) must gate just
       // like overwriting a single property does (shoptet/no-core-overwrite).
       // NOTE: on ESLint 9 this also duplicates a `no-implicit-globals` finding
-      // on the same line in module mode — accepted, tracked separately.
+      // on the same line in module mode — accepted, tracked in
+      // doc/plans/rule-unification/a0-baseline.md, "What the ordering slip actually cost".
       'no-global-assign': 'error',
     },
   },

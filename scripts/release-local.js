@@ -72,7 +72,9 @@ function parseArgs(argv) {
 /** Loopback per RFC 5735 / RFC 4291, plus the `.test`/`.local` names RFC 6761 and RFC 6762 reserve
  * for local use — the only hosts that can never be a real public registry. */
 function isLocalHost(hostname) {
-  const host = hostname.toLowerCase();
+  // WHATWG URL keeps the brackets on an IPv6 literal (`new URL('http://[::1]/').hostname ===
+  // '[::1]'`), so strip them before comparing or `::1` is unreachable.
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host)) return true;
   return host.endsWith('.test') || host.endsWith('.local');
 }
