@@ -78,6 +78,18 @@ jobs:
         with:
           # review_tool runtime — independent of the partner build node_version default
           node-version: '24'
+          # Both installs below are Yarn classic and both lockfiles are
+          # committed in the review tool's checkout, so the download half of
+          # each install can come from the runner cache instead of the network
+          # on every partner PR. Both paths must already exist when this step
+          # runs — they do: the review-tool checkout above is the previous
+          # step. setup-node's cache needs no extra permissions in the caller
+          # (it uses the run's own cache scope), so this adds nothing to the
+          # permissions block callers must declare.
+          cache: 'yarn'
+          cache-dependency-path: |
+            review-tool/yarn.lock
+            review-tool/linter_review_tool/yarn.lock
 
       - name: Install rule package dependencies (workspace root)
         working-directory: review-tool

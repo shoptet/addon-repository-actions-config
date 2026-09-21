@@ -69,14 +69,16 @@ function parseArgs(argv) {
   return { dirs: dirs.length > 0 ? [...new Set(dirs)] : [...KNOWN_PACKAGES], bump };
 }
 
-/** Loopback per RFC 5735 / RFC 4291, plus the `.test`/`.local` names RFC 6761 and RFC 6762 reserve
- * for local use — the only hosts that can never be a real public registry. */
+/** Loopback per RFC 5735 / RFC 4291, plus the `.test` names RFC 6761 reserves for local use —
+ * the only hosts that can never be a real public registry. `.local` (RFC 6762, mDNS) is
+ * deliberately excluded: it resolves via multicast DNS to *other machines on the network*, so it
+ * doesn't guarantee "this machine" the way `.test` does. */
 function isLocalHost(hostname) {
   // WHATWG URL keeps the brackets on an IPv6 literal (`new URL('http://[::1]/').hostname ===
   // '[::1]'`), so strip them before comparing or `::1` is unreachable.
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host)) return true;
-  return host.endsWith('.test') || host.endsWith('.local');
+  return host.endsWith('.test');
 }
 
 /** Refuse to publish anywhere but this machine. `npm publish` will happily reuse whatever real
@@ -94,7 +96,7 @@ function assertLocalRegistry(registryUrl) {
   throw new Error(
     `Refusing to publish to non-local registry host "${hostname}" (${registryUrl}). ` +
       `This script publishes with whatever npm credentials are configured, so this could ship ` +
-      `the packages for real. Only loopback (localhost, 127.0.0.0/8, ::1) and \`.test\`/\`.local\` ` +
+      `the packages for real. Only loopback (localhost, 127.0.0.0/8, ::1) and \`.test\` ` +
       `hosts are allowed. The real release goes out from CI — see publish-packages.yml.`,
   );
 }
@@ -143,10 +145,25 @@ function bumpVersion(version, bump) {
   return `${major}.${minor}.${patch + 1}`;
 }
 
+/** Normalise a registry URL to the form npm's own "nerf-dart" auth-config keys expect: origin +
+ * path, always with a trailing slash (`http://localhost:4873` -> `http://localhost:4873/`,
+ * `http://localhost:4873/npm` -> `http://localhost:4873/npm/`). Without this, a registry URL
+ * without a trailing slash produces a `--//host:_authToken=` flag that npm never matches, since
+ * npm always looks up `//host/:_authToken` (with the trailing slash). `DEFAULT_REGISTRY_URL`
+ * already has the slash, so this only matters for a hand-set `SHOPTET_LOCAL_REGISTRY_URL` — done
+ * once here, at the point the URL is read from the env, so every downstream use (the auth flag,
+ * `--registry`, the host guard) sees the same normalised value. */
+function normalizeRegistryUrl(registryUrl) {
+  const parsed = new URL(registryUrl);
+  if (!parsed.pathname.endsWith('/')) parsed.pathname += '/';
+  return parsed.href;
+}
+
 /** `npm publish` refuses to even attempt the request without *some* token configured for the
  * target registry, even one that accepts anonymous publish the way this Verdaccio config does.
  * A single CLI flag scoped to exactly this registry's host satisfies that client-side
- * precondition without touching the developer's real `.npmrc`. */
+ * precondition without touching the developer's real `.npmrc`. Assumes `registryUrl` is already
+ * normalised (trailing slash) by `normalizeRegistryUrl`. */
 function dummyAuthTokenFlag(registryUrl) {
   return `--//${registryUrl.replace(/^https?:\/\//, '')}:_authToken=shoptet-release-local`;
 }
@@ -195,7 +212,9 @@ function publishOne(packageDirName, version, registryUrl) {
 
 function main() {
   const { dirs, bump } = parseArgs(process.argv.slice(2));
-  const registryUrl = process.env.SHOPTET_LOCAL_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
+  const registryUrl = normalizeRegistryUrl(
+    process.env.SHOPTET_LOCAL_REGISTRY_URL ?? DEFAULT_REGISTRY_URL,
+  );
   assertLocalRegistry(registryUrl);
 
   const plan = dirs.map((dir) => {
@@ -206,6 +225,20 @@ function main() {
 
   console.log(`release-local: ${registryUrl} (${bump})`);
   for (const entry of plan) console.log(`  ${entry.name}: ${entry.from} -> ${entry.to}`);
+
+  // Same pre-publish guard publish-packages.yml runs: pack each package with
+  // npm's own packer and load the resulting tarball, so a `files`/`.npmignore`
+  // mistake the copy-based temp tree below cannot see fails the rehearsal too.
+  // Note: this packs the committed dir at its manifest version, while the
+  // rehearsal publishes a temp copy with a bumped version — it validates the
+  // files/exports contract, not the exact artifact shipped below.
+  for (const entry of plan) {
+    execFileSync(
+      process.execPath,
+      [join(__dirname, 'verify-pack.js'), join(PACKAGES_DIR, entry.dir)],
+      { stdio: 'inherit' },
+    );
+  }
 
   for (const entry of plan) publishOne(entry.dir, entry.to, registryUrl);
 

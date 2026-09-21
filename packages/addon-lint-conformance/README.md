@@ -36,7 +36,7 @@ rights land (`A2`).
 | `files` | `{ [relativePath]: content }` | Plain files to write, relative to the shape's materialized root. Directories are created as needed. |
 | `symlinks` | `{ target, linkPath }[]` | *(optional)* Symlinks to create at materialize time, both paths relative to the shape's root. See "Why materialize, not commit" — these are never committed as real symlinks in this package. |
 | `outsideRunnerTree` | `boolean` | *(optional, documentation only)* `true` marks a shape whose expectations only make sense when the runner under test is NOT rooted inside the directory this shape materializes into. Every shape already materializes outside any package's own source tree (temp dirs always do) — this flag exists so a reader immediately understands *why* a shape is shaped the way it is, not to trigger different runner behaviour. |
-| `expect` | object | The outcome a conforming runner must produce. See below. |
+| `expect` | object | The outcome a conforming runner must produce. See below. Must contain at least one *effective* assertion — an empty `expect`, or one whose only fields are empty arrays, describes a shape that runs but proves nothing; a consumer's runner is expected to reject it. |
 
 `expect` fields (a runner uses only the ones relevant to what it can observe — not every runner
 necessarily exposes all of these, but if it exposes the underlying concept, it must match):
@@ -69,5 +69,8 @@ failure class it catches in `description` — per this track's own rule (see `a3
 done), every shape should be traceable to a specific way discovery can fail, not "for coverage's
 sake". Then both consumers need a corresponding assertion — this package intentionally does not
 enforce that by itself (it is data, not a test runner), so a new shape with no consumer reading it is
-a silent no-op on both sides. `linter_review_tool/test/conformance.js`'s own header names where its
+a silent no-op on both sides. Because of that, each consumer pins the shape ids it requires on its own
+side (this repo: `REQUIRED_SHAPE_IDS` in `linter_review_tool/test/conformance.js`) — adding a shape
+here never breaks an existing consumer, but removing one does, which is the point.
+`linter_review_tool/test/conformance.js`'s own header names where its
 per-shape assertions live if you need a worked example of turning an `expect` block into a real check.

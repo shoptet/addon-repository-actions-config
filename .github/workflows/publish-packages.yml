@@ -48,8 +48,21 @@ defaults:
 jobs:
   # One publish per package, each with its own working-directory — this is
   # exactly why the packages live under packages/<name>/. Kept as four plain
-  # jobs rather than a matrix because a matrix's `if:` cannot see the matrix
-  # context to select which package a given tag push should publish.
+  # jobs rather than a matrix because a job-level `if:` can't see `matrix`,
+  # and a setup-job matrix (a job emitting `fromJSON(needs.setup.outputs...)`)
+  # wasn't worth the indirection at this size.
+  #
+  # Applies to all four jobs below: no install step. Some of these packages do
+  # have real dependencies (addon-eslint-config: espree, globals,
+  # @eslint-community/eslint-utils), but none of the four declare a
+  # prepare/prepack/prepublishOnly script, so npm has nothing to run before
+  # packing — there is nothing to build or bundle here. The `Verify packed
+  # tarball` step needs no install either: scripts/verify-pack.js installs the
+  # tarball it just packed into a throwaway directory of its own. That step is
+  # the only thing that exercises npm's packing before the irreversible
+  # publish — everything else in this repo consumes the packages through Yarn
+  # `link:`, which symlinks the working tree and so resolves files whether or
+  # not `files` would actually ship them.
   publish-addon-eslint-config:
     name: Publish @shoptet/addon-eslint-config
     runs-on: ubuntu-latest
@@ -85,12 +98,10 @@ jobs:
           [ "$tag_version" = "$manifest_version" ] || {
             echo "tag $tag_version != package.json $manifest_version"; exit 1; }
 
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
+
       - name: Publish
-        # No install step: some of these packages do have real dependencies
-        # (this one: espree, globals, @eslint-community/eslint-utils), but
-        # none of the four packages under packages/* declare a
-        # prepare/prepack/prepublishOnly script, so npm has nothing to run
-        # before packing — there is nothing to build or bundle here.
         run: npm publish --access public
 
   publish-addon-stylelint-config:
@@ -121,6 +132,9 @@ jobs:
           manifest_version="$(node -p 'require("./package.json").version')"
           [ "$tag_version" = "$manifest_version" ] || {
             echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
 
       - name: Publish
         run: npm publish --access public
@@ -154,6 +168,9 @@ jobs:
           [ "$tag_version" = "$manifest_version" ] || {
             echo "tag $tag_version != package.json $manifest_version"; exit 1; }
 
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
+
       - name: Publish
         run: npm publish --access public
 
@@ -185,6 +202,9 @@ jobs:
           manifest_version="$(node -p 'require("./package.json").version')"
           [ "$tag_version" = "$manifest_version" ] || {
             echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
 
       - name: Publish
         run: npm publish --access public

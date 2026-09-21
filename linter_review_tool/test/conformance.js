@@ -29,6 +29,60 @@ const { corpus, materializeShape } = require('@shoptet/addon-lint-conformance');
 
 const ROOT = path.join(__dirname, '..');
 
+/**
+ * The shapes THIS repo requires the corpus to contain. The corpus is shared
+ * and published: it "intentionally does not enforce [consumer coverage] by
+ * itself (it is data, not a test runner), so a new shape with no consumer
+ * reading it is a silent no-op on both sides" (the package README, "Adding a
+ * shape") — so each consumer pins what it reads, exactly as `expected.json`
+ * pins the selftest's fixtures. An explicit id list, not a count: deleting
+ * `skip-dist-dir` while adding any other shape keeps a count green. Missing
+ * ids fail; EXTRA shapes in the corpus deliberately do not, so the corpus can
+ * grow for the CLI (`B4`) without breaking this repo — the per-shape loop
+ * prints every shape it ran, so a new one is never invisible.
+ */
+const REQUIRED_SHAPE_IDS = [
+  'skip-minified',
+  'skip-bundle',
+  'skip-dist-dir',
+  'skip-vendor-dir',
+  'skip-dotfile',
+  'skip-symlinked-dir',
+  'symlinked-file-is-linted',
+  'outside-tree-still-blocks',
+  'all-candidates-skipped-fail-closed',
+  'known-blocker-parity',
+];
+
+/** Every `expect` key this runner knows how to act on (the README's schema). */
+const KNOWN_EXPECT_KEYS = new Set([
+  'skippedPaths',
+  'skippedDirs',
+  'findings',
+  'findingsExcludePaths',
+  'forbidMessagePattern',
+  'failClosed',
+  'exitCode',
+]);
+
+/**
+ * Does this `expect` block assert anything at all? Counting keys is not
+ * enough: several shapes legitimately carry `"findings": []`, so `{ findings:
+ * [] }` would pass a naive key check while asserting nothing whatsoever.
+ */
+function assertsSomething(expect) {
+  if (!expect) return false;
+  const nonEmptyList = ['skippedPaths', 'skippedDirs', 'findings', 'findingsExcludePaths'].some(
+    (k) => Array.isArray(expect[k]) && expect[k].length > 0,
+  );
+  return (
+    nonEmptyList ||
+    typeof expect.forbidMessagePattern === 'string' ||
+    expect.failClosed === true ||
+    expect.exitCode !== undefined
+  );
+}
+
 let failures = 0;
 function pass(msg) {
   console.log(`  ✓ ${msg}`);
@@ -95,12 +149,34 @@ function checkShape(shape) {
       }
     }
 
+    // `skippedDirs` is a CONJUNCTION (see the package README's schema table):
+    // no file under the directory produced a finding AND the gap is visible
+    // somewhere in the runner's skipped output. The second conjunct is the
+    // load-bearing one — without it, a runner that filters dist/ and vendor/
+    // out of its glob (instead of discovering them and then reporting them as
+    // skipped) would still satisfy the first conjunct while the coverage gap
+    // it exists to prove has gone silent.
     for (const relDir of expect.skippedDirs || []) {
+      // The corpus always spells paths with '/', the runner reports them in
+      // the host's separator — normalize before any prefix comparison.
+      const nativeDir = relDir.split('/').join(path.sep);
       const anyDiagUnderDir = diagnostics.some((d) =>
-        toRelative(dir, path.resolve(ROOT, d.location.path)).startsWith(relDir + path.sep),
+        toRelative(dir, path.resolve(ROOT, d.location.path)).startsWith(nativeDir + path.sep),
       );
       if (anyDiagUnderDir) {
         fail(`${shape.id}: expected nothing under "${relDir}" to produce findings, but it did`);
+        ok = false;
+      }
+      // A runner may report the directory itself, any file beneath it, or
+      // both — all three satisfy "the gap is visible".
+      const gapVisible = skippedRel.some(
+        (p) => p === nativeDir || p.startsWith(nativeDir + path.sep),
+      );
+      if (!gapVisible) {
+        fail(
+          `${shape.id}: nothing under "${relDir}" appears in skipped — the coverage gap is silent; ` +
+            `got [${skippedRel.join(', ')}]`,
+        );
         ok = false;
       }
     }
@@ -152,6 +228,41 @@ function main() {
   for (const shape of corpus.shapes) {
     checkShape(shape);
   }
+
+  // ── Completeness: the suite must not be able to shrink silently ──────────
+  // Mirrors selftest.js's two-directional expected.json checks. Without these,
+  // emptying one shape's `expect` or deleting a shape outright still prints
+  // "All conformance shapes matched."
+  console.log('corpus completeness:');
+  const presentIds = new Set(corpus.shapes.map((s) => s.id));
+  const missingIds = REQUIRED_SHAPE_IDS.filter((id) => !presentIds.has(id));
+  if (missingIds.length) {
+    fail(
+      `corpus is missing shape(s) this repo requires: [${missingIds.join(', ')}] — ` +
+        `a discovery guarantee lost its only check`,
+    );
+  } else {
+    pass(`all ${REQUIRED_SHAPE_IDS.length} required shape id(s) present`);
+  }
+
+  let everyShapeAsserts = true;
+  for (const shape of corpus.shapes) {
+    if (!assertsSomething(shape.expect)) {
+      fail(`${shape.id}: its \`expect\` block asserts nothing — the shape runs but proves nothing`);
+      everyShapeAsserts = false;
+    }
+    const unknownKeys = Object.keys(shape.expect || {}).filter((k) => !KNOWN_EXPECT_KEYS.has(k));
+    if (unknownKeys.length) {
+      fail(
+        `${shape.id}: \`expect\` key(s) [${unknownKeys.join(', ')}] are not ones this runner ` +
+          `acts on — either a typo (e.g. "skippedDir" for "skippedDirs"), or a new corpus ` +
+          `field this repo has not implemented yet. Both are coverage gaps: fix the typo, ` +
+          `or add the check here.`,
+      );
+      everyShapeAsserts = false;
+    }
+  }
+  if (everyShapeAsserts) pass('every shape asserts at least one observable outcome');
 
   // Explicitly confirm the corpus is not vendored — a copy sitting under
   // this tool's own tree would defeat the "single source of truth" promise

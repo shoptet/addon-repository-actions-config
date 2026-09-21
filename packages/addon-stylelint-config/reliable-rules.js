@@ -18,11 +18,35 @@ const RELIABLE_RULES = new Set([
   'color-no-invalid-hex',
   'shoptet/min-font-size',
   'shoptet/max-z-index',
-  // Stylesheet that fails to parse — stylelint reports it as a regular warning
-  // with rule 'CssSyntaxError' and severity error (NOT via result.parseErrors),
-  // so this is what makes broken CSS gate, mirroring CodeQuality for JS.
+  // runner-synthesized (see RUNNER_RULES) — parse-failure catch-alls
   'CssSyntaxError',
   'stylelint/parse-error',
 ]);
 
-module.exports = { RELIABLE_RULES };
+/**
+ * Runner-synthesized rule ids — the subset of `RELIABLE_RULES` that no rule
+ * in this package's config can ever emit.
+ *
+ * They are produced by the *runner* that drives stylelint (in this repository,
+ * `linter_review_tool/linters/stylelint-linter.js`) out of parse failures
+ * rather than by any configured rule. They are part of `RELIABLE_RULES`
+ * because a consumer's `isReliable(ruleId)` filter runs over the same
+ * allowlist — leaving them out would silently drop the findings and let
+ * unparseable CSS pass the gate.
+ *
+ * A consumer that reuses this package is responsible for emitting them itself;
+ * nothing in this package will do it. `RELIABLE_RULES` stays the full union,
+ * so existing consumers are unaffected.
+ */
+const RUNNER_RULES = new Set([
+  // A stylesheet that fails to parse: stylelint reports it as a regular
+  // warning with rule 'CssSyntaxError' and severity error (NOT via
+  // result.parseErrors), which is what makes broken CSS gate — mirroring
+  // CodeQuality for JS.
+  'CssSyntaxError',
+  // Defensive channel for `result.parseErrors`; ordinary syntax errors
+  // surface as CssSyntaxError instead, so this one has no fixture.
+  'stylelint/parse-error',
+]);
+
+module.exports = { RELIABLE_RULES, RUNNER_RULES };

@@ -57,14 +57,14 @@ const RELIABLE_RULES = new Set([
   // textbook production leftover — deterministic, zero-FP, parity with the
   // zero-console policy (round 12)
   'no-debugger',
-  // fatal parse errors surface with no ruleId → mapped to this catch-all
+  // runner-synthesized (see RUNNER_RULES): fatal parse errors surface with
+  // no ruleId → mapped to this catch-all
   'CodeQuality',
 
   // ── Custom Shoptet rules with trustworthy positives ──
-  // Synthetic entry: emitted by the runner (`linters/eslint-linter.js` in
-  // linter_review_tool), not by a rule object in this package — a file
-  // parses as script but not as ES module.
-  'shoptet/es-module-required', // file parses as script but not as ES module
+  // runner-synthesized (see RUNNER_RULES): a file parses as script but not
+  // as ES module
+  'shoptet/es-module-required',
   'shoptet/no-testid-selector', // [data-testid] attribute selector
   'shoptet/no-redundant-checks', // typeof shoptet/dataLayer/screen
   'shoptet/no-settimeout-hack', // setTimeout(fn, 0)
@@ -74,4 +74,27 @@ const RELIABLE_RULES = new Set([
   'shoptet/no-global-console', // window./globalThis./self.console access
 ]);
 
-module.exports = { RELIABLE_RULES };
+/**
+ * Runner-synthesized rule ids — the subset of `RELIABLE_RULES` that no rule
+ * object in this package can ever emit.
+ *
+ * They are produced by the *runner* that drives ESLint (in this repository,
+ * `linter_review_tool/linters/eslint-linter.js`) out of conditions ESLint
+ * itself reports without a `ruleId`, or does not report at all. They are part
+ * of `RELIABLE_RULES` because a consumer's `isReliable(ruleId)` filter runs
+ * over the same allowlist — leaving them out would silently drop the findings.
+ *
+ * A consumer that reuses this package is responsible for emitting them itself;
+ * nothing in this package will do it. `RELIABLE_RULES` stays the full union,
+ * so existing consumers are unaffected.
+ */
+const RUNNER_RULES = new Set([
+  // fatal parse error — ESLint reports it with no ruleId, the runner maps it
+  // onto this catch-all id
+  'CodeQuality',
+  // file parses as script but not as ES module — detected by the runner via
+  // `parsesAsScript`, not by any rule
+  'shoptet/es-module-required',
+]);
+
+module.exports = { RELIABLE_RULES, RUNNER_RULES };

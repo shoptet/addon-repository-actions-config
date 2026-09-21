@@ -41,7 +41,7 @@ gives the exact per-file wiring:
 | `linters/stylelint-linter.js` | `@shoptet/addon-stylelint-config` (`configs`) |
 | `linters/html-linter.js` | `@shoptet/addon-html-lint` (`lintHtmlSource`) |
 | `profiles.js` | all three rule packages' `RELIABLE_RULES` export |
-| `test/rule-equality.js` | all three rule packages' `RELIABLE_RULES` (asserts this repo's effective rule set equals each package's own declared set) |
+| `test/rule-equality.js` | all three rule packages' `RELIABLE_RULES`, plus the ESLint/stylelint packages' `RUNNER_RULES` (the ids in that allowlist the runner, not the package, emits — asserts this repo's effective rule set equals each package's own declared set) |
 | `test/conformance.js` | `@shoptet/addon-lint-conformance` (`corpus`, `materializeShape`) — runs `review.js` against materialized shapes and asserts file-discovery parity |
 
 `@shoptet/addon-lint-conformance`'s own `README.md` additionally names the external consumer:

@@ -49,9 +49,17 @@
  * catch-alls emitted by `linters/stylelint-linter.js`) — are not entries in
  * any package's `rules` object by construction, so they are exempted from
  * the "declared severity" side the same way test/selftest.js already exempts
- * `stylelint/parse-error` from fixture-coverage. Their severity is instead
- * cross-checked directly against the runner source that emits them, listed
- * in RUNNER_SYNTHESIZED below.
+ * `stylelint/parse-error` from fixture-coverage.
+ *
+ * WHICH ids those are is read from each package's own `RUNNER_RULES` named
+ * export, not from a list in this file. Their SEVERITY is not: a
+ * runner-synthesized finding's severity is a property of this repository's
+ * runner (`linters/*.js`), which is the thing that constructs the finding —
+ * the package can only declare that it expects the id to come from
+ * elsewhere. So severity stays in the local RUNNER_SEVERITY map below,
+ * cross-checked against the runner source, and its key set is asserted equal
+ * to the union of the packages' `RUNNER_RULES` so the two can never drift
+ * apart silently.
  */
 
 const fs = require('fs');
@@ -149,11 +157,12 @@ function measureHtmlDeclaredSeverities() {
 // name and IS reliable there.
 const DELIBERATE_EXCLUSIONS = new Set(['stylelint:shoptet/no-testid-selector']);
 
-// Rule ids the runner synthesizes itself rather than any package's config —
-// cross-checked against the source that actually emits them (comment on each
-// line names the file/behaviour), not against a config object that doesn't
-// exist for them.
-const RUNNER_SYNTHESIZED = {
+// Severity of each runner-synthesized rule id, cross-checked against the
+// runner source that actually emits it (the comment on each line names the
+// file/behaviour) — there is no config object to read it off. The id set
+// itself comes from the packages' `RUNNER_RULES` exports; `assertRunnerRules`
+// below asserts the two agree.
+const RUNNER_SEVERITY = {
   // linters/eslint-linter.js: fatal parse error, no ruleId from ESLint itself
   CodeQuality: 'blocker',
   // linters/eslint-linter.js: file parses as script but not as ES module
@@ -195,18 +204,64 @@ function main() {
   const effective = loadEffectiveSeverities();
 
   const packages = [
-    { name: 'eslint', reliable: eslintPkg.RELIABLE_RULES, declared: declaredEslint },
-    { name: 'stylelint', reliable: stylelintPkg.RELIABLE_RULES, declared: declaredStylelint },
-    { name: 'html', reliable: htmlPkg.RELIABLE_RULES, declared: declaredHtml },
+    {
+      name: 'eslint',
+      reliable: eslintPkg.RELIABLE_RULES,
+      declared: declaredEslint,
+      runner: eslintPkg.RUNNER_RULES,
+    },
+    {
+      name: 'stylelint',
+      reliable: stylelintPkg.RELIABLE_RULES,
+      declared: declaredStylelint,
+      runner: stylelintPkg.RUNNER_RULES,
+    },
+    // The HTML package's checks are all emitted by the package itself, so it
+    // declares no RUNNER_RULES export at all — an empty set, not a missing one.
+    { name: 'html', reliable: htmlPkg.RELIABLE_RULES, declared: declaredHtml, runner: new Set() },
   ];
+
+  // ── Case 0: the packages' own `RUNNER_RULES` exports must be (a) a subset
+  // of that package's `RELIABLE_RULES` — a runner id nothing allowlists can
+  // never reach output — and (b) collectively exactly the id set this test
+  // knows a runner severity for. (b) is what keeps consuming the export from
+  // weakening the test: the packages own the membership, this repo's runner
+  // owns the severity, and a package adding or dropping a runner id without
+  // the runner following fails here rather than silently skipping a rule.
+  const beforeCase0 = failures;
+  const runnerIdsFromPackages = new Set();
+  for (const { name, reliable, runner } of packages) {
+    for (const ruleId of runner) {
+      runnerIdsFromPackages.add(ruleId);
+      if (!reliable.has(ruleId)) {
+        fail(`[${name}] ${ruleId}: in RUNNER_RULES but not in that package's RELIABLE_RULES`);
+      }
+    }
+  }
+  for (const ruleId of runnerIdsFromPackages) {
+    if (!(ruleId in RUNNER_SEVERITY)) {
+      fail(
+        `${ruleId}: exported in a package's RUNNER_RULES but this test knows no runner severity`,
+      );
+    }
+  }
+  for (const ruleId of Object.keys(RUNNER_SEVERITY)) {
+    if (!runnerIdsFromPackages.has(ruleId)) {
+      fail(`${ruleId}: has a runner severity here but no package exports it in RUNNER_RULES`);
+    }
+  }
+  if (failures === beforeCase0) {
+    pass('RUNNER_RULES ⊆ RELIABLE_RULES in every package, and matches the runner severity map');
+  }
 
   // ── Case 3: a rule CONFIGURED (declared, non-off) but ABSENT from
   // RELIABLE_RULES — configured yet never reportable. Not itself a bug (see
   // profiles.js's own comment — absence is a trust decision), but it must be
   // a DELIBERATE one: flag it so a silent drop is visible, not undetectable.
-  for (const { name, reliable, declared } of packages) {
+  const beforeCase3 = failures;
+  for (const { name, reliable, declared, runner } of packages) {
     for (const ruleId of Object.keys(declared)) {
-      if (RUNNER_SYNTHESIZED[ruleId]) continue;
+      if (runner.has(ruleId)) continue;
       if (reliable.has(ruleId)) continue;
       if (DELIBERATE_EXCLUSIONS.has(`${name}:${ruleId}`)) continue;
       fail(
@@ -215,15 +270,15 @@ function main() {
       );
     }
   }
-  if (failures === 0) pass('every configured rule is in its package’s RELIABLE_RULES');
+  if (failures === beforeCase3) pass('every configured rule is in its package’s RELIABLE_RULES');
 
   // ── Case 4: a rule in RELIABLE_RULES that NOTHING configures — an orphan
   // allowlist entry, usually a typo or a rule removed from config without
   // being removed from the allowlist too.
   const beforeCase4 = failures;
-  for (const { name, reliable, declared } of packages) {
+  for (const { name, reliable, declared, runner } of packages) {
     for (const ruleId of reliable) {
-      if (RUNNER_SYNTHESIZED[ruleId]) continue;
+      if (runner.has(ruleId)) continue;
       if (ruleId in declared) continue;
       fail(`[${name}] ${ruleId}: in RELIABLE_RULES but nothing configures it`);
     }
@@ -239,26 +294,37 @@ function main() {
   //     the level that matters (whether it blocks the PR) whenever declared
   //     says blocker and effective says recommend or absent;
   //   - case 2: severity differs outright.
+  //
+  // Iterated per PACKAGE, not over one merged `{ruleId: severity}` map. A
+  // merged map is keyed by bare rule id, so two packages declaring the same
+  // id collapse into whichever was spread last — and
+  // `shoptet/no-testid-selector` is declared by both the ESLint config
+  // ('error') and the stylelint config (`true`). That id is in the ESLint
+  // package's RELIABLE_RULES but deliberately NOT in the stylelint one, so
+  // only the ESLint declaration can ever govern output; a merged map would
+  // compare the stylelint declaration instead and report a divergence
+  // against the wrong package the moment the two severities differ.
+  //
+  // Restricting the comparison to `reliable` pairs loses no detection:
+  // Case 3 already flags a rule that is configured but absent from
+  // RELIABLE_RULES, and Case 4 the reverse orphan.
   const beforeCase12 = failures;
-  const allDeclared = {
-    ...declaredEslint,
-    ...declaredStylelint,
-    ...declaredHtml,
-    ...RUNNER_SYNTHESIZED,
-  };
-  for (const [ruleId, effectiveSeverity] of Object.entries(effective)) {
-    if (!(ruleId in allDeclared)) {
-      // Pinned by a fixture but not declared anywhere — only possible for a
-      // rule id that belongs to none of the three packages, which the
-      // completeness check below also catches from the other direction.
-      continue;
-    }
-    const declaredSeverity = allDeclared[ruleId];
-    if (declaredSeverity !== effectiveSeverity) {
-      fail(
-        `${ruleId}: declared ${declaredSeverity} in its package's config but ` +
-          `review.js effectively reports it as ${effectiveSeverity} (test-cases/expected.json)`,
-      );
+  for (const { name, reliable, declared, runner } of packages) {
+    for (const ruleId of reliable) {
+      if (DELIBERATE_EXCLUSIONS.has(`${name}:${ruleId}`)) continue;
+      const effectiveSeverity = effective[ruleId];
+      // Not pinned by any fixture — the completeness check below catches it
+      // from the other direction.
+      if (effectiveSeverity === undefined) continue;
+      const declaredSeverity = runner.has(ruleId) ? RUNNER_SEVERITY[ruleId] : declared[ruleId];
+      // Not declared by this package's own config — Case 4's territory.
+      if (declaredSeverity === undefined) continue;
+      if (declaredSeverity !== effectiveSeverity) {
+        fail(
+          `[${name}] ${ruleId}: declared ${declaredSeverity} in its package's config but ` +
+            `review.js effectively reports it as ${effectiveSeverity} (test-cases/expected.json)`,
+        );
+      }
     }
   }
   if (failures === beforeCase12) {

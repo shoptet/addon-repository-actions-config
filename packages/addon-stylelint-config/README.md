@@ -15,7 +15,26 @@ partner-addon deploy gate. Plain CommonJS, no build step.
 - `stylelint-rules/` — the 4 plugin rules (`max-z-index`, `min-font-size`,
   `no-pt-unit`, `no-testid-selector`).
 - `reliable-rules.js` — the stylelint slice of `RELIABLE_RULES`, exported as a
-  named `Set`.
+  named `Set`. It also exports `RUNNER_RULES`, see below.
+
+## Runner-emitted rule ids
+
+Two ids in `RELIABLE_RULES` are **not** emitted by any rule in this package's
+config:
+
+| id | emitted when |
+| --- | --- |
+| `CssSyntaxError` | a stylesheet fails to parse — stylelint reports it as a regular warning with this rule id and severity `error` (not via `result.parseErrors`) |
+| `stylelint/parse-error` | defensive channel for `result.parseErrors`; ordinary syntax errors surface as `CssSyntaxError` instead |
+
+They are in `RELIABLE_RULES` because a consumer's `isReliable(ruleId)` filter
+runs over that same allowlist: leaving them out would silently drop those
+findings and let unparseable CSS pass the gate. **A consumer that reuses this
+package has to emit them itself** — nothing here will.
+
+The distinction is machine-readable as the named export `RUNNER_RULES` (a
+`Set`, always a subset of `RELIABLE_RULES`). `RELIABLE_RULES` remains the full
+union, so existing consumers are unaffected.
 
 ## Usage
 
@@ -24,6 +43,7 @@ const stylelintConfig = require('@shoptet/addon-stylelint-config');
 
 // stylelintConfig.configs.recommended — pass via stylelint's `config` option.
 // stylelintConfig.RELIABLE_RULES — the stylelint slice of the allowlist.
+// stylelintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
 
 ## SemVer policy

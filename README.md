@@ -277,9 +277,25 @@ Three properties of `scripts/release-local.js` worth knowing:
   `npm publish` expands globs in `files`, always includes `package.json`/
   `README`/`LICENSE`, and honours `.npmignore`. A `files`/`.npmignore` mistake
   that would make `publish-packages.yml` ship a broken tarball would not
-  surface in this rehearsal.
+  surface in this rehearsal. That gap is covered separately by
+  `scripts/verify-pack.js` (below), which `publish-packages.yml` runs before
+  every `npm publish`.
 
-The script refuses any registry host that is not loopback or `.test`/`.local`,
+**Pre-publish tarball verification (`scripts/verify-pack.js`).** Each publish
+job runs `node ../../scripts/verify-pack.js .` immediately before
+`npm publish`. The script `npm pack`s the package, installs the resulting
+tarball (plus its peer dependencies) into a throwaway directory, and
+`require()`s every subpath declared in `exports` from that installed copy,
+then asserts the root entry point still exposes its documented export names.
+Loading from the installed tarball rather than the working tree is the whole
+point: everything else in this repo consumes the packages through Yarn
+`link:`, which symlinks the working tree and therefore resolves files whether
+or not `files` would actually ship them. The export-name assertion is "at
+least these names", so adding an export is not a breaking change; removing or
+renaming one fails the publish. Run it by hand the same way:
+`node scripts/verify-pack.js packages/addon-html-lint`.
+
+The script refuses any registry host that is not loopback or `.test`,
 because `npm publish` would otherwise happily reuse a real credential from
 your `.npmrc`.
 
