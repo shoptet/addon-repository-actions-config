@@ -355,7 +355,10 @@ fs.mkdirSync(outsideSrc);
 fs.writeFileSync(path.join(outsideSrc, 'evil.js'), 'export const x = eval("1");\n');
 // Both casings: the flat config carries an explicit `files` list, so an
 // extension the patterns miss comes back as "no matching configuration" at
-// WARNING — the same silent-green failure by a second route.
+// WARNING — the same silent-green failure by a second route. review.js's glob
+// collects `.JS` (`nocase: true`), so the config must match it too: that is the
+// `**/*.[jJ][sS]`-style `files` in packages/addon-eslint-config/eslint.flat.config.js.
+// Config matching is string-based minimatch, so a plain `**/*.js` fails on every OS.
 fs.writeFileSync(path.join(outsideSrc, 'evil-upper.JS'), 'export const y = eval("1");\n');
 const outsideRun = runRaw([outsideSrc, '--rdjson']);
 let outsideJson = null;

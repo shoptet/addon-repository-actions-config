@@ -122,6 +122,9 @@ function checkShape(shape) {
     const expect = shape.expect;
     const json = result.json || { diagnostics: [], skipped: [] };
     const diagnostics = json.diagnostics || [];
+    // review.js emits skipped and location.path relative to ITS cwd (runReview
+    // pins that to ROOT), so path.resolve(ROOT, p) recovers the absolute path
+    // before re-relativising to the target dir — same idiom below.
     const skippedRel = (json.skipped || []).map((p) => toRelative(dir, path.resolve(ROOT, p)));
 
     let ok = true;
