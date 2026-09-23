@@ -20,6 +20,7 @@
   ],
   "bad/bad-core-mutations.js": [
     "no-global-assign@blocker",
+    "no-implicit-globals@blocker",
     "shoptet/no-core-overwrite@blocker:7"
   ],
   "bad/bad-core-nested.js": [

@@ -1,0 +1,210 @@
+name: Publish packages
+# Publishes the shared packages under packages/* (@shoptet/addon-eslint-config,
+# @shoptet/addon-stylelint-config, @shoptet/addon-html-lint, and — since A3 —
+# @shoptet/addon-lint-conformance, the shared discovery corpus, which carries
+# no rules of its own but ships the same way) to npm via trusted publishing
+# (OIDC) — no long-lived NPM_TOKEN in this repository. See
+# doc/plans/rule-unification/a2.md and a3.md.
+#
+# BLOCKED: npm publish rights in the @shoptet scope are held by the SOFA/g4
+# maintainers and no trusted-publisher config exists yet for these packages
+# (a2.md, "The blocker"). This workflow is wired and correct but every
+# `npm publish` step here will fail until that registry-side config lands —
+# by design, not a bug to "fix" by adding a fallback token.
+#
+# Deliberately not wired to push/pull_request: a rule package only ships on a
+# maintainer's explicit decision (workflow_dispatch) or a version tag, never
+# as a side effect of merging code.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        type: choice
+        options:
+          [
+            all,
+            addon-eslint-config,
+            addon-stylelint-config,
+            addon-html-lint,
+            addon-lint-conformance,
+          ]
+        default: all
+  push:
+    tags:
+      - 'packages/addon-eslint-config/v*'
+      - 'packages/addon-stylelint-config/v*'
+      - 'packages/addon-html-lint/v*'
+      - 'packages/addon-lint-conformance/v*'
+
+permissions:
+  id-token: write # required to mint the OIDC token trusted publishing exchanges for a registry token
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # One publish per package, each with its own working-directory — this is
+  # exactly why the packages live under packages/<name>/. Kept as four plain
+  # jobs rather than a matrix because a job-level `if:` can't see `matrix`,
+  # and a setup-job matrix (a job emitting `fromJSON(needs.setup.outputs...)`)
+  # wasn't worth the indirection at this size.
+  #
+  # Applies to all four jobs below: no install step. Some of these packages do
+  # have real dependencies (addon-eslint-config: espree, globals,
+  # @eslint-community/eslint-utils), but none of the four declare a
+  # prepare/prepack/prepublishOnly script, so npm has nothing to run before
+  # packing — there is nothing to build or bundle here. The `Verify packed
+  # tarball` step needs no install either: scripts/verify-pack.js installs the
+  # tarball it just packed into a throwaway directory of its own. That step is
+  # the only thing that exercises npm's packing before the irreversible
+  # publish — everything else in this repo consumes the packages through Yarn
+  # `link:`, which symlinks the working tree and so resolves files whether or
+  # not `files` would actually ship them.
+  publish-addon-eslint-config:
+    name: Publish @shoptet/addon-eslint-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # workflow_dispatch publishes this package when it was explicitly
+    # selected (or "all" was); a tag push only publishes the package whose
+    # prefix it matches.
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-eslint-config')) || startsWith(github.ref, 'refs/tags/packages/addon-eslint-config/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-eslint-config
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        # The npm bundled with even a current Node LTS is not guaranteed to
+        # satisfy the >=11.5.1 floor trusted publishing requires, so upgrade
+        # explicitly rather than relying on whatever setup-node installed.
+        run: npm install -g npm@^11.5.1
+
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
+
+      - name: Publish
+        run: npm publish --access public
+
+  publish-addon-stylelint-config:
+    name: Publish @shoptet/addon-stylelint-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-stylelint-config')) || startsWith(github.ref, 'refs/tags/packages/addon-stylelint-config/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-stylelint-config
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        run: npm install -g npm@^11.5.1
+
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
+
+      - name: Publish
+        run: npm publish --access public
+
+  publish-addon-lint-conformance:
+    name: Publish @shoptet/addon-lint-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-lint-conformance')) || startsWith(github.ref, 'refs/tags/packages/addon-lint-conformance/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-lint-conformance
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        run: npm install -g npm@^11.5.1
+
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
+
+      - name: Publish
+        run: npm publish --access public
+
+  publish-addon-html-lint:
+    name: Publish @shoptet/addon-html-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.package == 'all' || inputs.package == 'addon-html-lint')) || startsWith(github.ref, 'refs/tags/packages/addon-html-lint/v') }}
+    defaults:
+      run:
+        working-directory: packages/addon-html-lint
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for OIDC trusted publishing (needs npm >=11.5.1)
+        run: npm install -g npm@^11.5.1
+
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag_version="${GITHUB_REF_NAME##*/v}"
+          manifest_version="$(node -p 'require("./package.json").version')"
+          [ "$tag_version" = "$manifest_version" ] || {
+            echo "tag $tag_version != package.json $manifest_version"; exit 1; }
+
+      - name: Verify packed tarball
+        run: node ../../scripts/verify-pack.js .
+
+      - name: Publish
+        run: npm publish --access public

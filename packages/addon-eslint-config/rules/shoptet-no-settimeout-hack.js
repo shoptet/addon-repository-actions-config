@@ -75,7 +75,7 @@ module.exports = {
 
     return {
       CallExpression(node) {
-        if (globalCalleeName(node.callee, context.getScope()) !== 'setTimeout') {
+        if (globalCalleeName(node.callee, context.sourceCode.getScope(node)) !== 'setTimeout') {
           return;
         }
 
@@ -94,7 +94,7 @@ module.exports = {
         const hasZeroDelay =
           node.arguments.length === 1 ||
           isZeroDelay(delayArg) ||
-          resolvesToZeroConst(delayArg, context.getScope());
+          resolvesToZeroConst(delayArg, context.sourceCode.getScope(node));
 
         if (hasZeroDelay) {
           context.report({ node, messageId: 'zeroTimeout' });

@@ -77,7 +77,39 @@ jobs:
         uses: actions/setup-node@v6
         with:
           # review_tool runtime — independent of the partner build node_version default
-          node-version: '22'
+          node-version: '24'
+          # Both installs below are Yarn classic and both lockfiles are
+          # committed in the review tool's checkout, so the download half of
+          # each install can come from the runner cache instead of the network
+          # on every partner PR. Both paths must already exist when this step
+          # runs — they do: the review-tool checkout above is the previous
+          # step. setup-node's cache needs no extra permissions in the caller
+          # (it uses the run's own cache scope), so this adds nothing to the
+          # permissions block callers must declare.
+          cache: 'yarn'
+          cache-dependency-path: |
+            review-tool/yarn.lock
+            review-tool/linter_review_tool/yarn.lock
+
+      - name: Install rule package dependencies (workspace root)
+        working-directory: review-tool
+        # linter_review_tool's package.json pulls the four @shoptet/addon-*
+        # packages via Yarn classic `link:../packages/<name>` (npm publish
+        # rights for the @shoptet scope aren't granted yet — see
+        # doc/plans/rule-unification/a2.md). `link:` only symlinks the package
+        # itself; it does NOT install that package's own dependencies (espree,
+        # globals, stylelint, parse5, etc.), which Node then resolves out of
+        # this workspace root's node_modules instead. This step exists solely
+        # to populate that root — delete it once the packages are consumed
+        # from the registry as real (non-link:) dependency versions.
+        #
+        # --production: the gate only ever loads runtime deps, so the root
+        # install skips every devDependency (prettier, the second eslint copy)
+        # — 39 MB / 189 packages down to 18 MB / 157. This works only because
+        # `stylelint` is declared in the root package.json's `dependencies`:
+        # packages/addon-stylelint-config/stylelint-rules/*.js all
+        # `require('stylelint')` at gate runtime and resolve it from this root.
+        run: yarn --frozen-lockfile --production
 
       - name: Install review tool dependencies
         working-directory: review-tool/linter_review_tool

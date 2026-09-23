@@ -1,0 +1,37 @@
+# Committed Verdaccio config for `yarn verdaccio:local` — a local-only npm registry for
+# `yarn release:local` to publish the four `packages/*` rule packages into, so the whole
+# publish-then-consume path can be rehearsed before the real `@shoptet` scope publish rights land
+# (see README's "Shared rule packages" and `.github/workflows/publish-packages.yml`, which this
+# harness deliberately does not touch).
+#
+# Storage and the htpasswd file live in `local-releases/` at the repository root (gitignored, never
+# committed). The paths below are relative to *this file's own directory*, not the cwd Verdaccio is
+# started from — that is how Verdaccio resolves relative config paths.
+#
+# `publish`/`unpublish: $all` (anonymous, not `$authenticated`) is deliberate: this registry only
+# ever holds throwaway local builds of this repository's own packages, so there is nothing here
+# worth gating behind a login.
+storage: ../local-releases/storage
+auth:
+  htpasswd:
+    file: ../local-releases/htpasswd
+    # -1 disables self-registration entirely — pointless here, since `$all` above never checks
+    # whether a token belongs to a registered user in the first place.
+    max_users: -1
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+packages:
+  '@*/*':
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: npmjs
+  '**':
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: npmjs
+log:
+  type: stdout
+  format: pretty

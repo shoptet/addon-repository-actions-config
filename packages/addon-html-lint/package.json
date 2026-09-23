@@ -1,0 +1,30 @@
+{
+  "name": "@shoptet/addon-html-lint",
+  "version": "1.0.0",
+  "description": "Factual HTML checks (a11y/img-alt, html/no-inline-script, html/deprecated-tag) for the Shoptet partner-addon deploy gate.",
+  "license": "ISC",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./reliable-rules": "./reliable-rules.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "reliable-rules.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shoptet/addon-repository-actions-config.git",
+    "directory": "packages/addon-html-lint"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "parse5": "^6.0.1"
+  }
+}

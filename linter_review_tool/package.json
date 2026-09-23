@@ -4,7 +4,10 @@
   "description": "Automated code review system for Shoptet addons using ESLint with custom rules",
   "scripts": {
     "review": "node review.js",
-    "test": "node test/selftest.js"
+    "test": "node test/selftest.js && node test/rule-equality.js && node test/conformance.js",
+    "test:selftest": "node test/selftest.js",
+    "test:rule-equality": "node test/rule-equality.js",
+    "test:conformance": "node test/conformance.js"
   },
   "keywords": [
     "shoptet",
@@ -15,11 +18,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@eslint-community/eslint-utils": "^4.4.0",
-    "eslint": "^8.57.0",
-    "espree": "^9.6.1",
+    "@shoptet/addon-eslint-config": "link:../packages/addon-eslint-config",
+    "@shoptet/addon-html-lint": "link:../packages/addon-html-lint",
+    "@shoptet/addon-lint-conformance": "link:../packages/addon-lint-conformance",
+    "@shoptet/addon-stylelint-config": "link:../packages/addon-stylelint-config",
+    "eslint": "^9.39.5",
     "glob": "^10.3.0",
-    "parse5": "^6.0.1",
     "postcss": "^8.4.28",
     "postcss-less": "^6.0.0",
     "postcss-scss": "^4.0.9",

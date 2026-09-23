@@ -2,6 +2,9 @@
 
 Reusable GitHub Actions workflows for Shoptet addon (partner) repositories.
 
+See [`doc/overview.md`](doc/overview.md) for a quick-orientation map of the repository's
+structure and how its packages/workflows reference each other (including a dependency graph).
+
 ## Workflows
 
 ### `checks.workflow.yml` — automated pull request review
@@ -153,6 +156,23 @@ The deploy pipeline called from partner repositories:
 Addon Repository will upload this artifact to FTP, remove the artifact from
 GitHub and update custom codes.
 
+### `publish-packages.yml` — shared rule package releases
+
+Publishes the four shared packages under `packages/` (see "Shared rule
+packages" below) to npm. Triggers only on `workflow_dispatch` (with a
+`package` input selecting one package or `all`) or a version tag — never on
+an ordinary push or PR, so a package cannot ship as a side effect of merging
+code. Uses npm **trusted publishing (OIDC)**: the workflow
+requests `id-token: write` and exchanges a short-lived OIDC token for a
+registry token at publish time, so there is no `NPM_TOKEN` (or any other
+long-lived publish secret) stored in this repository.
+
+**Currently blocked, not broken:** publish rights in the `@shoptet` scope are
+held by the SOFA/g4 maintainers, and no trusted-publisher registration exists
+yet for these four package names. The workflow is correct and ready, but
+every run's `npm publish` step will fail (or simply never run, since nothing
+tags a release yet) until that registry-side access lands.
+
 ### `shoptet-addon-review/` — AI code-review skill
 
 The heuristic/contextual counterpart of the deterministic linter gate above:
@@ -162,6 +182,155 @@ addon PRs against the FE rules catalog. Install/run instructions →
 `shoptet-addon-review/CONTEXT.md`. (The legacy `review_tool/` prototype it
 superseded was removed together with the introduction of
 `linter_review_tool/`.)
+
+## Shared rule packages
+
+The rules `checks.workflow.yml`'s linter runs (and the ones the separate
+`shoptet` CLI validates against) are published as three plain-CommonJS,
+no-build-step npm packages, versioned independently of this repository and
+of the workflow that calls it:
+
+| package | contents |
+| --- | --- |
+| `@shoptet/addon-eslint-config` | the flat config, the `shoptet/*` ESLint rules, and `RELIABLE_RULES` as a named export |
+| `@shoptet/addon-stylelint-config` | the stylelint config, the `shoptet/*` stylelint rules, and its slice of `RELIABLE_RULES` |
+| `@shoptet/addon-html-lint` | the factual HTML checks (`a11y/img-alt`, `html/no-inline-script`, `html/deprecated-tag`) |
+
+A fourth package, `@shoptet/addon-lint-conformance`, holds no rules — it is the shared **discovery
+conformance corpus** (directory shapes + expected file-discovery outcomes: skipped/minified/vendored
+files, symlinked directories, a target outside the runner's own tree, fail-closed on "everything
+skipped") that both this repo's `linter_review_tool/test/conformance.js` and the `shoptet` CLI's own
+conformance run test their file-walking against, from one shared source. See
+`packages/addon-lint-conformance/README.md` for the manifest schema and
+`doc/plans/rule-unification/a3.md` for why file discovery needed its own mechanism separate from the
+rule-set equality test.
+
+They live under `packages/<name>/` as a Yarn classic workspace;
+`linter_review_tool/` stays outside that workspace and consumes them the same
+way any external partner tooling would.
+
+**Not yet consumed from the registry.** The target state is a registry
+dependency exact-pinned in `linter_review_tool/yarn.lock`. Until publish
+rights land (see the blocker above), `linter_review_tool` depends on the
+packages via Yarn `link:../packages/<name>` instead. That is why CI installs
+at the repository root before installing the tool: `link:` symlinks the
+package but does not install *its* dependencies, which resolve out of the
+workspace root instead. Both the root install steps and this paragraph go away
+when the pins become real versions.
+
+**SemVer policy — read this before adding a rule:**
+- **A new blocking (error-severity) rule is a MAJOR version bump.** It fails
+  partner builds that previously passed a gate they were already relying on
+  — that is a breaking change to the contract the package makes, not a
+  feature addition.
+- A new warning-level (non-blocking) rule, or any change that doesn't alter
+  what gates, is a MINOR bump.
+- Releases go out from CI via npm trusted publishing (OIDC) — see
+  `publish-packages.yml` above. There is no publish token in this
+  repository.
+
+**Neither the rules nor the workflow ref are pinned yet.** With
+`linter_review_tool` depending on the packages via `link:../packages/<name>`
+(see "Not yet consumed from the registry" above) there is no version pin at
+all — a rule edit merged to `main` reaches every caller's next PR run
+immediately, because `checks.workflow.yml` also checks the review tool out at
+a hardcoded `ref: main`. Once the packages are consumed as real registry
+versions, a partner's rules will be locked to whatever version
+`linter_review_tool` depends on at the time it was released — but partner
+repositories will still call `checks.workflow.yml` at `@main` (see the caller
+template above), so a change to *this repository's workflow code* will keep
+reaching every partner immediately, with no version gate at all. Those are
+two separate axes — package version and workflow ref — and tagging the
+workflow itself is a distinct decision for later, out of scope here.
+
+### Rehearsing a release locally (Verdaccio)
+
+Because the real publish path is blocked registry-side, the whole
+publish-then-consume chain can be rehearsed against a local Verdaccio
+registry instead. This is a developer-machine harness only — it never touches
+`publish-packages.yml`, and nothing it produces leaves your machine.
+
+```bash
+yarn verdaccio:local        # terminal 1: starts Verdaccio on http://localhost:4873/
+yarn release:local          # terminal 2: publishes all four packages, patch bump
+yarn release:local --package=addon-eslint-config --bump=minor
+```
+
+Verdaccio itself runs through `npx verdaccio@6.9.2` (the same version
+`shoptet-partner-cli` pins) rather than being added as a dependency — it would
+otherwise pull a large tree into a root that carries only prettier. Its
+storage lives in the gitignored `local-releases/`; delete that directory to
+reset the registry to empty.
+
+Three properties of `scripts/release-local.js` worth knowing:
+
+- **The committed `packages/*/package.json` files are never written to.** Each
+  package is published from a temporary copy with the version patched in, so
+  repeated local releases leave the working tree clean and the manifest
+  version keeps meaning "what the real OIDC release would ship".
+- **The base version is whatever is already in the local registry**, or the
+  manifest version when that package has never been published there; the
+  requested bump is always applied on top. A first run against a manifest at
+  `1.0.0` with `--bump=patch` therefore publishes `1.0.1`.
+- **The rehearsal does not exercise npm's own packing.** The temp tree is
+  assembled by copying each `manifest.files` entry verbatim, whereas a real
+  `npm publish` expands globs in `files`, always includes `package.json`/
+  `README`/`LICENSE`, and honours `.npmignore`. A `files`/`.npmignore` mistake
+  that would make `publish-packages.yml` ship a broken tarball would not
+  surface in this rehearsal. That gap is covered separately by
+  `scripts/verify-pack.js` (below), which `publish-packages.yml` runs before
+  every `npm publish`.
+
+**Pre-publish tarball verification (`scripts/verify-pack.js`).** Each publish
+job runs `node ../../scripts/verify-pack.js .` immediately before
+`npm publish`. The script `npm pack`s the package, installs the resulting
+tarball (plus its peer dependencies) into a throwaway directory, and
+`require()`s every subpath declared in `exports` from that installed copy,
+then asserts the root entry point still exposes its documented export names.
+Loading from the installed tarball rather than the working tree is the whole
+point: everything else in this repo consumes the packages through Yarn
+`link:`, which symlinks the working tree and therefore resolves files whether
+or not `files` would actually ship them. The export-name assertion is "at
+least these names", so adding an export is not a breaking change; removing or
+renaming one fails the publish. Run it by hand the same way:
+`node scripts/verify-pack.js packages/addon-html-lint`.
+
+The script refuses any registry host that is not loopback or `.test`,
+because `npm publish` would otherwise happily reuse a real credential from
+your `.npmrc`.
+
+**Consuming the local packages from `../shoptet-partner-cli`.** That repository
+runs `pnpm registry:mode --mode=local` (from its own root, after the two
+commands above) to point **both** repos at the registry you just published to
+in one step — its own `pnpm-workspace.yaml` catalog entries, its `.npmrc`
+`@shoptet:registry=` scope line, this repo's `.npmrc` scope line (unused today
+— `linter_review_tool/` still depends on these four packages via `link:`, see
+below), and the `minimumReleaseAge: 1440` cooldown's
+`minimumReleaseAgeExclude` list, all four rewritten and reverted together.
+`pnpm registry:mode --mode=git` restores the committed SHA-pinned state
+afterwards. Full usage: that repository's `scripts/release-local/README.md`
+("Registry mode") and
+[its ADR 0077](https://github.com/shoptet/shoptet-partner-cli/blob/main/doc/decisions/0077-registry-mode-switch.md).
+
+**Not covered by that command**, because it edits development-time
+configuration, not test fixtures: `packages/test-fixtures/fixtures/scaffolds/
+{addon,theme}/package.json` in that repository — the scaffold-matrix goldens,
+regenerated from `packages/create/src/package-json.ts`'s own constants
+(`pnpm --filter @shoptet/create run emit-scaffold-fixtures`), which
+`registry:mode --status` only ever *reports* on, never rewrites (those
+constants ship to partners and must never point at a developer's local
+registry). Those two fixtures pin only `@shoptet/addon-eslint-config` and
+`@shoptet/addon-stylelint-config` — **not** `@shoptet/addon-html-lint` — so a
+scaffold-then-install test path proves nothing about that third package. Only
+the workspace catalog (which `registry:mode` does cover) pins all three.
+
+**Not yet consumed from a registry at all — `link:` only.** `linter_review_tool/`
+depends on all four packages via Yarn `link:../packages/<name>` (see "Shared
+rule packages" above), so nothing in this repo actually reads the
+`@shoptet:registry=` line `registry:mode --mode=local` writes here. It is
+written anyway, for symmetry with the CLI repo and so nothing needs to change
+here the day `linter_review_tool` starts depending on these packages as
+ordinary registry dependencies instead.
 
 ## Package managers
 
@@ -185,11 +354,11 @@ jobs:
     uses: shoptet/addon-repository-actions-config/.github/workflows/default.workflow.yml@main
     with:
       package_manager: pnpm # npm | yarn | pnpm
-      node_version: '20'    # optional — Node.js for the build (default '22')
+      node_version: '20'    # optional — Node.js for the build (default '24')
 ```
 
 The build workflow also accepts a `node_version` input (passed to
-`actions/setup-node`), defaulting to `'22'` — set it when an addon needs a
+`actions/setup-node`), defaulting to `'24'` — set it when an addon needs a
 different Node major.
 
 ## Node version
@@ -215,6 +384,7 @@ The resolved package manager is used for the `setup-node` dependency cache, the 
 ## Local usage
 
 ```bash
+yarn --frozen-lockfile   # repo root — installs the packages/* deps the link: deps resolve to
 cd linter_review_tool
 yarn
 node review.js path/to/addon/src   # same reliable rule set as CI

@@ -2,6 +2,11 @@ name: Linter self-test
 # CI for this repository itself (NOT the reusable partner workflow): verifies
 # the rule set against the fixtures in linter_review_tool/test-cases via
 # test/selftest.js, so a rule regression can't ship to partners unnoticed.
+# Since A3, `yarn test` (see linter_review_tool/package.json) also runs
+# test/rule-equality.js (this repo's effective rule set vs the shared
+# packages' declared RELIABLE_RULES, by id+severity) and test/conformance.js
+# (the shared discovery corpus from @shoptet/addon-lint-conformance) — see
+# doc/plans/rule-unification/a3.md.
 on:
   push:
     # main + the LIVE branch partners consume pre-merge: the PR run covers the
@@ -11,6 +16,21 @@ on:
     branches: [main, feature/linter-review-tool]
     paths:
       - 'linter_review_tool/**'
+      # The packages linter_review_tool consumes (@shoptet/addon-eslint-config,
+      # @shoptet/addon-stylelint-config, @shoptet/addon-html-lint, and — since
+      # A3 — @shoptet/addon-lint-conformance, the shared discovery corpus) —
+      # a rule or corpus change here is exactly the fail-green hole this
+      # trigger exists to close.
+      - 'packages/**'
+      # The workspace root install step (below) resolves the packages' own
+      # runtime deps through the root lockfile/manifest — a drift here can
+      # break --frozen-lockfile on its own, independent of any rule change.
+      - 'yarn.lock'
+      - 'package.json'
+      # The pre-publish tarball check (verify-pack job below) — a `files`
+      # regression in packages/** and a change to the check itself both need
+      # to run it.
+      - 'scripts/verify-pack.js'
       - '.github/workflows/selftest.yml'
       # The reconcile github-script require()s lib/reconcile-utils.js from the
       # tool — run the suite when the workflow changes too, so at least the
@@ -19,6 +39,10 @@ on:
   pull_request:
     paths:
       - 'linter_review_tool/**'
+      - 'packages/**'
+      - 'yarn.lock'
+      - 'package.json'
+      - 'scripts/verify-pack.js'
       - '.github/workflows/selftest.yml'
       - '.github/workflows/checks.workflow.yml'
 
@@ -34,7 +58,26 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
+
+      - name: Install rule package dependencies (workspace root)
+        # linter_review_tool's package.json pulls the four @shoptet/addon-*
+        # rule packages via Yarn classic `link:../packages/<name>` (npm publish
+        # rights for the @shoptet scope aren't granted yet — see
+        # doc/plans/rule-unification/a2.md). `link:` only symlinks the package
+        # itself; it does NOT install that package's own dependencies (espree,
+        # globals, stylelint, parse5, etc.), which Node then resolves out of
+        # this repo root's node_modules instead. This step exists solely to
+        # populate that root — delete it once the packages are consumed from
+        # the registry as real (non-link:) dependency versions.
+        #
+        # --production mirrors checks.workflow.yml's root install exactly. The
+        # gate installs the root without devDependencies, so this job must
+        # too: a rule file that require()s something only present at the root
+        # as a devDependency would pass a full install here and then break the
+        # gate (fail-closed and red, but broken). The suite is green against a
+        # --production root, so the two stay aligned for free.
+        run: yarn --frozen-lockfile --production
 
       - name: Install dependencies
         working-directory: linter_review_tool
@@ -43,3 +86,27 @@ jobs:
       - name: Run self-test
         working-directory: linter_review_tool
         run: yarn test
+
+  verify-pack:
+    name: Packed tarballs load
+    # The same check publish-packages.yml runs immediately before every
+    # `npm publish` — run here too so a `files`/`.npmignore` regression
+    # surfaces on the PR that introduces it rather than at the irreversible
+    # moment. No install step: scripts/verify-pack.js installs each tarball it
+    # packs into a throwaway directory of its own.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Verify packed tarballs
+        run: |
+          for pkg in packages/*/; do
+            node scripts/verify-pack.js "$pkg"
+          done

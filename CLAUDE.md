@@ -30,9 +30,13 @@ since many of its "Known limitations" bullets encode deliberate tradeoffs, not b
 Linter tool (`linter_review_tool/`):
 
 ```bash
+yarn --frozen-lockfile                      # repo root — installs the packages/* deps the link: deps resolve to
 cd linter_review_tool
-yarn                                # install deps
-yarn test                           # snapshot-check test-cases/ fixtures against expected.json
+yarn                                        # install deps
+yarn test                                   # runs all three below, in order
+yarn test:selftest                          # snapshot-check test-cases/ fixtures against expected.json
+yarn test:rule-equality                     # this repo's effective rule set == the shared packages' declared set (A3)
+yarn test:conformance                       # shared discovery corpus (@shoptet/addon-lint-conformance) against review.js (A3)
 node review.js path/to/addon/src --rdjson   # exactly what CI runs (Diagnostic JSON, always exits 0)
 node review.js path/to/addon/src            # plain mode: human-readable, exits 1 on blockers
 node review.js path/to/file.js              # single-file mode
@@ -55,8 +59,9 @@ If you rename a step or job referenced by `grab.call(...)` in either test script
 corresponding name there too — it aborts loudly otherwise.
 
 CI (`.github/workflows/ci.yml`) runs `actionlint`, then both `tests/test-*.sh` scripts.
-`.github/workflows/selftest.yml` runs the linter's own `yarn test` self-test whenever
-`linter_review_tool/**` or `checks.workflow.yml` changes.
+`.github/workflows/selftest.yml` runs the linter's own `yarn test` (selftest + rule-equality +
+conformance, as of A3) whenever `linter_review_tool/**`, `packages/**` or `checks.workflow.yml`
+changes.
 
 ## Architecture: the linter tool (`linter_review_tool/`)
 
@@ -65,17 +70,20 @@ CI (`.github/workflows/ci.yml`) runs `actionlint`, then both `tests/test-*.sh` s
   `*.bundle.*`, then dispatches each file to the matching linter.
 - `linters/eslint-linter.js`, `stylelint-linter.js`, `html-linter.js` — one per file type.
   HTML checks are factual (parse5-based), not stylistic.
-- `rules/` — custom ESLint plugin `shoptet/*` (e.g. `no-core-overwrite`, `no-testid-selector`,
-  `prefer-fetch`). Every rule file opens with a block JSDoc whose first line is the catalog ID and
-  title (`* B6. Do not overwrite Shoptet core`), matching the FE rules catalog
-  `shoptet-addon-review` reviews against. `rules/global-callee.js` and `rules/script-detect.js` are
-  shared helpers, not rules, and carry no catalog ID.
-- `stylelint-rules/` — custom stylelint plugin (`max-z-index`, `no-pt-unit`, etc.).
-- `profiles.js` — `RELIABLE_RULES`: the _only_ rules the tool reports. A rule belongs here only
-  when a positive finding is ~zero-false-positive (false negatives are acceptable for a gate).
-  Of `RELIABLE_RULES`, only the error-severity subset actually gates the PR; the rest are
-  non-blocking recommendations. Heuristic/contextual checks are deliberately out of scope here —
-  that's `shoptet-addon-review`'s job.
+- `packages/addon-eslint-config/rules/` — custom ESLint plugin `shoptet/*` (e.g. `no-core-overwrite`,
+  `no-testid-selector`, `prefer-fetch`). Every rule file opens with a block JSDoc whose first line
+  is the catalog ID and title (`* B6. Do not overwrite Shoptet core`), matching the FE rules
+  catalog `shoptet-addon-review` reviews against. `rules/global-callee.js` and
+  `rules/script-detect.js` are shared helpers, not rules, and carry no catalog ID.
+- `packages/addon-stylelint-config/stylelint-rules/` — custom stylelint plugin (`max-z-index`,
+  `no-pt-unit`, etc.).
+- `profiles.js` — assembles `RELIABLE_RULES` at load time from each rule package's own
+  `reliable-rules.js` (`packages/addon-eslint-config`, `packages/addon-stylelint-config`,
+  `packages/addon-html-lint`); it hardcodes no rule id itself. `RELIABLE_RULES` is the _only_ set
+  the tool reports — a rule belongs there only when a positive finding is ~zero-false-positive
+  (false negatives are acceptable for a gate). Of `RELIABLE_RULES`, only the error-severity subset
+  actually gates the PR; the rest are non-blocking recommendations. Heuristic/contextual checks
+  are deliberately out of scope here — that's `shoptet-addon-review`'s job.
 - `lib/reconcile-utils.js` — shared logic for reconciling findings across pushes (fingerprint =
   `file | line | rule | message`); required directly by the `checks.workflow.yml` github-script
   blocks, which is why `selftest.yml` also triggers on changes to that workflow file.
@@ -83,10 +91,20 @@ CI (`.github/workflows/ci.yml`) runs `actionlint`, then both `tests/test-*.sh` s
   set) fixtures. `test-cases/expected.json` is the machine-checked source of truth mapping every
   `bad/` fixture to its expected ruleIds; `test/selftest.js` enforces it. A fixture missing from
   the spec (or a spec entry without a matching file) fails the test.
+- `test/rule-equality.js` (A3) — asserts this repo's effective rule set equals the shared packages'
+  declared `RELIABLE_RULES` + config severity, by rule id and severity only (never message text or
+  report ranges — see `doc/plans/rule-unification/a3.md`). Reads `RELIABLE_RULES` from each
+  package's own named export, never a local copy.
+- `test/conformance.js` (A3) — runs the shared discovery corpus
+  (`@shoptet/addon-lint-conformance`, `packages/addon-lint-conformance/`) against `review.js`:
+  minified/bundle/`dist/`/`vendor/`/dotfile/symlinked-directory skipping, a target directory
+  outside this tool's own tree, and fail-closed-on-all-skipped. This is the layer the other three
+  rule packages don't cover — see `packages/addon-lint-conformance/README.md` for the manifest
+  schema.
 
-When adding or changing a rule: add/update the rule file, add it to `profiles.js` only if it's
-genuinely zero-FP, and add matching fixtures to `test-cases/{good,bad}/` plus an entry in
-`expected.json`.
+When adding or changing a rule: add/update the rule file, add it to that rule package's
+`reliable-rules.js` only if it's genuinely zero-FP, and add matching fixtures to
+`test-cases/{good,bad}/` plus an entry in `expected.json`.
 
 **The gate always runs the linter from `main`.** `checks.workflow.yml` checks the review tool out
 with a hardcoded `ref: main`, so a rule change on a feature branch has no effect on the partner
