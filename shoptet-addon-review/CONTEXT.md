@@ -169,8 +169,8 @@ repo / across rules**, and it **closed a finding one question too early**.
   Turn it on once pending output is repeatedly good enough that you'd submit it unchanged. The
   service identity (`shoptet-ai-reviewer`) belongs to that stage, not to pending.
 - **Rule backlog** (section J accessibility = runtime) — parked. The codes of addon-reviewer's
-  retired platform rules are not free: A6–A10, A12, A15, B9–B12, B14–B16, F7 and G7 (A11 and
-  B13 were never used by them). A code is never reused (see the record format in
+  retired platform rules are not free: A6–A10, A12, A15, B9–B16, F7 and G7 (B13 was its
+  original "Consent & GDPR", replaced by P1; A11 was never used). A code is never reused (see the record format in
   `rules-catalog.md`), so a backlog rule gets a new code. **P1 (cookie consent
   for tracking) was codified from the backlog on 2026-07-22** — the judgment channel found it in
   the wild (datixo PR #3, persistent tracking without `shoptet.consent`) and, being judgment, it
