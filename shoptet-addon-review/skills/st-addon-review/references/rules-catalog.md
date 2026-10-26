@@ -743,13 +743,18 @@
 - **Tool:** —
 - **Problem:** Third-party libraries (Fancybox, Splide) mixed with the addon's own code;
   obfuscation configured beyond the boilerplate's build step (e.g. function names exempted via
-  `reservedNames`).
+  `reservedNames`); source committed already obfuscated or minified-only, with no readable
+  original in the repo.
 - **Why:** Mixed-in vendor code prevents caching and tree-shaking and complicates reviewing the
   own code. Exempted function names mean the code relies on global names, so the obfuscation
-  does not hide them anyway.
+  does not hide them anyway. Committed obfuscated source cannot be reviewed at all: nobody can
+  see what it does (the classic way to hide a skimmer).
 - **Solution:** Vendor libraries into separate files; `DefinePlugin` for dev/prod switching;
   keep tree-shaking in mind. The production obfuscation from the boilerplate's build step is
-  accepted; don't flag it.
+  accepted; don't flag it. The boilerplate runs `new WebpackObfuscatorPlugin()` with default
+  options in the production build (the 2024 template and `shoptet-bender` pass
+  `{ rotateStringArray: true }`); any other option is "beyond it". Commit the readable source
+  and let the build obfuscate it.
 
 ### G3 — ES modules / an order-independent build
 - **ID:** G3
