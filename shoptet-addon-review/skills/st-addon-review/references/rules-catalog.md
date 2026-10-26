@@ -775,12 +775,17 @@
 - **Severity:** ❌ blocking
 - **Owner:** Both
 - **Tool:** actionlint / CI validation — **not ESLint**
-- **Problem:** A missing/misconfigured GitHub workflow file for deploy; the repo has `master`
-  but the configuration only expects `main`.
-- **Why:** Without correct configuration the addon won't deploy (the deploy runs only from the
-  expected branch).
-- **Solution:** Add the workflow file; add both `master` and `main` to the configuration; the
-  deploy runs via Actions from the main branch.
+- **Problem:** No GitHub workflow calls Shoptet's deploy workflow
+  (`shoptet/addon-repository-actions-config/.github/workflows/default.workflow.yml`, or the
+  `deploy.workflow.yml` wrapper), or its `push` trigger does not cover the branch the addon
+  deploys from, i.e. the branch the PR targets (a repo on `main` only is fine).
+- **Why:** Without it the addon won't deploy: the deploy runs only on a push to a branch the
+  workflow covers.
+- **Solution:** A workflow that calls the deploy workflow, with `push` on the branch the addon
+  deploys from (`main` or `master`).
+- **Note:** Not a finding for the partner. `.github/workflows/` is a protected path the partner
+  cannot change in a PR, so a gap is for the Shoptet reviewer to fix; report it to them, never
+  in the partner's review.
 
 ### G5 — Assets / fonts / CDN / images
 - **ID:** G5
