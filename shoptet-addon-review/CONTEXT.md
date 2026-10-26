@@ -168,7 +168,9 @@ repo / across rules**, and it **closed a finding one question too early**.
 - **Fully automatic `submit` (no human) is WRITTEN but NOT CHOSEN.** The default is `pending`.
   Turn it on once pending output is repeatedly good enough that you'd submit it unchanged. The
   service identity (`shoptet-ai-reviewer`) belongs to that stage, not to pending.
-- **Rule backlog** (A6–A11, section J accessibility = runtime) — parked. **P1 (cookie consent
+- **Rule backlog** (section J accessibility = runtime) — parked. Codes A6–A10 and A12 are not free
+  for it: addon-reviewer's retired platform rules used them, and a code is never reused (see
+  the record format in `rules-catalog.md`); a backlog rule gets a new code. **P1 (cookie consent
   for tracking) was codified from the backlog on 2026-07-22** — the judgment channel found it in
   the wild (datixo PR #3, persistent tracking without `shoptet.consent`) and, being judgment, it
   couldn't block (invariant 3); exactly the codification path the design counts on.

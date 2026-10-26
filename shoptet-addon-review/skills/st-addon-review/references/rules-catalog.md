@@ -713,15 +713,18 @@
 - **Severity:** ⚠️ recommended
 - **Owner:** AI
 - **Tool:** —
-- **Problem:** A newly added dependency runs install scripts (`preinstall` / `install` /
-  `postinstall`). The lockfile shows it: `"hasInstallScript": true` in `package-lock.json`,
-  `requiresBuild: true` in `pnpm-lock.yaml`.
+- **Problem:** Install-time scripts the PR introduces: a newly added dependency that runs
+  install scripts (`preinstall` / `install` / `postinstall`), or `preinstall` / `install` /
+  `postinstall` / `prepare` scripts the PR adds to the addon's own `package.json`. Only
+  `package-lock.json` marks a dependency's scripts (`"hasInstallScript": true`); `pnpm-lock.yaml`
+  (v9) and `yarn.lock` do not, so for those only the addon's own scripts can be seen.
 - **Why:** Shoptet builds the addon from the repository, so these scripts run on Shoptet's build
   machine, and on every developer's install.
 - **Solution:** Prefer a package without install scripts; if the dependency is needed, say why
   in the PR.
 - **Note:** The review cannot see vulnerability databases or the registry. Don't report a
-  package as vulnerable or unmaintained by guess. Unused packages and lockfiles are F6.
+  package as vulnerable or unmaintained, or as running install scripts the lockfile does not
+  mark, by guess. Unused packages and lockfiles are F6.
 
 ---
 
