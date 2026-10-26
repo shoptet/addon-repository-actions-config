@@ -9,6 +9,7 @@
 **Record format** — every rule has the same fields in the same order:
 `ID`, `Severity`, `Owner`, `Tool`, `Gate` (conditional rules only), `Problem`, `Why`, `Solution`, `Code replacement` (optional), `Note` (optional).
 
+- **ID:** stable and never reused, so the numbering has gaps (retired or skipped codes).
 - **Severity:** `❌ blocking` · `⚠️ recommended` · `💡 tip` · `❌/⚠️ conditional (see Gate)` · `⚠️/💡 (non-blocking)`
 - **Owner:** `Linter` (mechanical, enforceable) · `AI` (contextual judgment) · `Both` (linter does the mechanical part, AI the context)
 - **Tool:** the specific tool; `—` = none (purely AI). Tools other than ESLint are marked.
@@ -23,7 +24,7 @@
 - **ID:** A1
 - **Severity:** ❌/⚠️ conditional (see Gate)
 - **Owner:** Both
-- **Tool:** `eslint-plugin-no-unsanitized`
+- **Tool:** `eslint-plugin-no-unsanitized`; `no-eval`, `no-implied-eval`
 - **Gate:** Severity scales with the **source and the attack surface** — but the finding is
   **always reported** and A1 **never drops below ⚠️ `recommended`** (no 💡, no silence). The
   Gate question (binary): *Can an untrusted actor supply the value AND does it render to
@@ -45,16 +46,23 @@
     of the concrete value.
   - **The escaping requirement does not change with severity:** ⚠️ doesn't mean "don't fix it",
     it means "it doesn't block the merge". The Solution below applies to both branches alike.
+  - **Exception — `eval` and string timers:** `eval(...)` and a string passed to
+    `setTimeout`/`setInterval` are **always ❌**, whatever the source, because the linter blocks
+    them the same way (`no-eval`, `no-implied-eval`). `new Function(...)`, which the linter does
+    not catch, follows the Gate above like any other sink.
 - **Problem:** Data (from an API, configuration, a user) is inserted into the DOM without
   sanitization — `element.innerHTML = data`, `JSON.stringify` straight into HTML, `.replace()`
-  over an HTML string.
+  over an HTML string; or a string is run as code (`eval`, `new Function`, a string in
+  `setTimeout`/`setInterval`).
 - **Why:** An attacker can inject `<script>`/`onerror` and run foreign code on the e-shop. The
   most common blocking problem of all.
 - **Solution:** For text use `textContent` instead of `innerHTML`; for HTML sanitize
   (allowlist) or build via the DOM API (`createElement`/`append`), possibly DOMPurify; use
-  a builder element and insert values as text.
+  a builder element and insert values as text. Pass a function to `setTimeout`/`setInterval`,
+  parse data with `JSON.parse`, and don't build code from strings.
 - **Note:** `eslint-plugin-no-unsanitized` flags `innerHTML =` and similar sinks; the AI judges
-  the real risk and the quality of the sanitization.
+  the real risk and the quality of the sanitization. `no-eval` and `no-implied-eval` flag
+  `eval` and string timers.
 - **Note (overlap with E1):** Building HTML by concatenation (`'<div>' + apiData + '</div>'`)
   **is not just E1** (style) — if the string contains an **unsanitized value from an API /
   configuration / user, it is A1** (severity per the Gate above). Concatenation is a typical
@@ -124,6 +132,51 @@
 - **Solution:** Always `rel="noopener noreferrer"`.
 - **Note:** Links are built as HTML strings (not JSX) → `react/jsx-no-target-blank` won't
   catch it; the mechanical part is runtime, not ESLint.
+
+### A13 — External runtime scripts
+- **ID:** A13
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** A judgment on the concrete script, not a lookup table. The Gate question (binary):
+  *Can the code that runs on the e-shop change after this review without a new addon
+  release?* YES → ❌ / NO → ⚠️. Weigh:
+  - **Who controls the content:** the partner's own server or an arbitrary host can change it
+    at any time.
+  - **Whether the version is fixed:** an exact versioned file with SRI cannot change; `latest`,
+    an unversioned URL, or a missing `integrity` can.
+  - **What the script can reach:** checkout/payment pages and customer data raise the stakes.
+  - **Exception:** a well-known provider's official SDK that cannot be bundled by design (maps,
+    a payment gateway), loaded from the provider's own origin, is usually not a finding, even
+    though the provider can change it.
+  - When unsure, doubt plays in favor of security.
+- **Problem:** The addon loads executable code from another domain at runtime: `<script src>`
+  to a third-party host, an injected script element, `import()` of a remote URL.
+- **Why:** The remote file can change after the review (supply chain / Magecart) and runs with
+  full access to the e-shop page.
+- **Solution:** Bundle dependencies into the build. If a remote script is unavoidable, use an
+  exact versioned file with `integrity` (SRI) and `crossorigin`.
+- **Note (G5):** Fonts, images and other non-executable assets on a foreign CDN are G5, not A13.
+
+### A14 — Capturing checkout / payment input
+- **ID:** A14
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** Gate question (binary): *Can what the customer enters in checkout or payment UI
+  leave the page or be stored by the addon, or can the addon redirect or cover that UI?*
+  YES → ❌ / NO → ⚠️.
+  - ❌: values from checkout/payment fields are sent anywhere or written to storage; the addon
+    rewrites a form's `action`/`target`; it places an overlay or iframe over payment UI.
+  - ⚠️: the addon listens on checkout fields only to adjust its own UI on the page, and nothing
+    read from them leaves the page. Ask what it needs the values for.
+- **Problem:** Event listeners (`input`/`change`/`keydown`/`paste`) on checkout or payment
+  fields, serialization of checkout forms, rewriting a form's `action`/`target`, overlays or
+  iframes positioned over payment UI.
+- **Why:** Each of these is a card-skimming vector regardless of stated intent, and checkout
+  data includes the customer's personal and payment details.
+- **Solution:** Don't read checkout or payment fields. Take order data the addon legitimately
+  needs from the dataLayer (B1), on the page where it is available.
 
 ---
 
@@ -655,6 +708,21 @@
   Remove unused dependencies. An empty lockfile is also an empty file → run it through the F5
   lens too.
 
+### F8 — Dependencies with install scripts
+- **ID:** F8
+- **Severity:** ⚠️ recommended
+- **Owner:** AI
+- **Tool:** —
+- **Problem:** A newly added dependency runs install scripts (`preinstall` / `install` /
+  `postinstall`). The lockfile shows it: `"hasInstallScript": true` in `package-lock.json`,
+  `requiresBuild: true` in `pnpm-lock.yaml`.
+- **Why:** Shoptet builds the addon from the repository, so these scripts run on Shoptet's build
+  machine, and on every developer's install.
+- **Solution:** Prefer a package without install scripts; if the dependency is needed, say why
+  in the PR.
+- **Note:** The review cannot see vulnerability databases or the registry. Don't report a
+  package as vulnerable or unmaintained by guess. Unused packages and lockfiles are F6.
+
 ---
 
 # G. Build, tooling and files
@@ -906,7 +974,9 @@
     analytical → the gate applies. Doubt plays in favor of privacy.
 - **Problem:** The addon creates a persistent visitor identifier or sends tracking data
   (visited URLs, referrer, behavioral events) to an external API without verifying cookie
-  consent via `shoptet.consent`.
+  consent via `shoptet.consent`. Sending means any channel, not only `fetch`/XHR:
+  `navigator.sendBeacon`, a tracking-pixel image URL, a WebSocket, a hidden iframe, a rewritten
+  form `action`.
 - **Why:** Shoptet **explicitly requires** addons to run analytics/marketing cookies (and
   equivalent localStorage tracking) only with the visitor's consent — see the
   [official documentation](https://developers.shoptet.com/3rd-party-marketing-and-analytics-cookies-in-add-ons/).
