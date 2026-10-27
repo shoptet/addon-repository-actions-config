@@ -1,6 +1,6 @@
 # Rules catalog — Shoptet addons
 
-**`catalog_version: 2026-10-26`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
+**`catalog_version: 2026-10-27`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
 
 > A machine-readable catalog for the review agent. It contains **only the rules (A–J, P)**. Human orientation (process, marks, checklist) → `SKILL.md` and `CONTEXT.md`.
 >
