@@ -1,6 +1,6 @@
 # Rules catalog — Shoptet addons
 
-**`catalog_version: 2026-07-28`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
+**`catalog_version: 2026-10-26`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
 
 > A machine-readable catalog for the review agent. It contains **only the rules (A–J, P)**. Human orientation (process, marks, checklist) → `SKILL.md` and `CONTEXT.md`.
 >
@@ -170,7 +170,7 @@
 - **Severity:** ⚠️ recommended
 - **Owner:** AI
 - **Tool:** —
-- **Problem:** Custom/random breakpoints (e.g. `550px`, `767px`) that don't match the template.
+- **Problem:** Custom/random breakpoints (e.g. `550px`, `800px`) that don't match the template.
 - **Why:** The addon then wraps at different points than the rest of the template —
   inconsistent behavior across devices.
 - **Solution:** Read from `shoptet.config.breakpoints`, or use the official values: min-width
@@ -437,9 +437,9 @@
 - **Problem:** Generic names for variables, `localStorage` keys and element `id`s.
 - **Why:** Crashes of other addons or the e-shop.
 - **Solution:** Wrap in a namespace and give a unique prefix (e.g. `elevate_`) to variables,
-  `localStorage` keys and `id`s; don't use the author's name in identifiers. The single
-  allowed prefix derives from `package.json` and is enforced by the custom ESLint rule
-  (deterministically); the AI judges the quality of the rest of the name.
+  `localStorage` keys and `id`s. The single allowed prefix derives from `package.json` and is
+  enforced by the custom ESLint rule (deterministically); the AI judges the quality of the rest
+  of the name.
 
 ---
 
@@ -673,12 +673,20 @@
 - **Severity:** ⚠️ recommended
 - **Owner:** AI
 - **Tool:** —
-- **Problem:** Third-party libraries (Fancybox, Splide) mixed with the addon's own code; an
-  obfuscator despite the exempted function names.
+- **Problem:** Third-party libraries (Fancybox, Splide) mixed with the addon's own code;
+  obfuscation configured beyond the boilerplate's build step (e.g. function names exempted via
+  `reservedNames`); source committed already obfuscated or minified-only, with no readable
+  original in the repo.
 - **Why:** Mixed-in vendor code prevents caching and tree-shaking and complicates reviewing the
-  own code.
+  own code. Exempted function names mean the code relies on global names, so the obfuscation
+  does not hide them anyway. Committed obfuscated source cannot be reviewed at all: nobody can
+  see what it does (the classic way to hide a skimmer).
 - **Solution:** Vendor libraries into separate files; `DefinePlugin` for dev/prod switching;
-  keep tree-shaking in mind.
+  keep tree-shaking in mind. The production obfuscation from the boilerplate's build step is
+  accepted; don't flag it. The boilerplate runs `new WebpackObfuscatorPlugin()` with default
+  options in the production build (the 2024 template and `shoptet-bender` pass
+  `{ rotateStringArray: true }`); any other option is "beyond it". Commit the readable source
+  and let the build obfuscate it.
 
 ### G3 — ES modules / an order-independent build
 - **ID:** G3

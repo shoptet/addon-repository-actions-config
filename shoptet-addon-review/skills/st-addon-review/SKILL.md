@@ -325,7 +325,7 @@ therefore written in Czech — the examples below model that):
 ```json
 {
   "summary": "The Czech summary message following the template below.",
-  "catalog_version": "2026-07-28",
+  "catalog_version": "2026-10-26",
   "linter_available": true,
   "recommended_verdict": "request_changes",
   "findings": [
@@ -528,7 +528,7 @@ comment — invisible when rendered, readable via the API (standard bot practice
 danger-js):
 
 ```
-<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-07-28"} -->
+<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-10-26"} -->
 ```
 
 - `rule_id` — leave empty on a `judgment` finding.
