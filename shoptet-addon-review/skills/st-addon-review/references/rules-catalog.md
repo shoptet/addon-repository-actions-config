@@ -1,8 +1,8 @@
 # Rules catalog — Shoptet addons
 
-**`catalog_version: 2026-10-27`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
+**`catalog_version: 2026-11-16`** — the catalog version. The catalog evolves independently of the skill; on **every substantive rule change** (adding/removing a rule, changing a severity or a Gate) bump this value (date of the last change). The agent **must copy it into the output JSON** as the top-level `catalog_version` field (see `SKILL.md`, *Output contract*), so that for every finding it is clear which version of the rules it was produced against.
 
-> A machine-readable catalog for the review agent. It contains **only the rules (A–J, P)**. Human orientation (process, marks, checklist) → `SKILL.md` and `CONTEXT.md`.
+> A machine-readable catalog for the review agent. It contains **only the rules (A–K, P)**. Human orientation (process, marks, checklist) → `SKILL.md` and `CONTEXT.md`.
 >
 > **Rules B1 / B4 / B6 require knowledge of the Shoptet environment** (dataLayer keys, always-available globals, the list of core functions). The agent gets that from the companion file **`shoptet-reference.md`**, which is handed over together with this catalog. Without it, B1/B4/B6 are systematically weak.
 
@@ -645,9 +645,18 @@
 
 ### F2 — Unused / dead code and files
 - **ID:** F2
-- **Severity:** ❌ blocking
+- **Severity:** ❌/⚠️ conditional (see Gate)
 - **Owner:** Both
 - **Tool:** ESLint `no-unused-vars` (variables) + knip / ts-prune (files)
+- **Gate:** Gate question (binary): *Is the code demonstrably dead — nothing in the shipped
+  build reaches it (an unused variable or import, an unreachable branch, a file the build never
+  includes) — with no visible reason to keep it?* YES → ❌. NO, because a reason may exist (an
+  admin preview or configurator uses it, a build flag switches it on, it is the addon
+  template's boilerplate, it is a public API the README documents) → ❓, ask instead of
+  blocking. An export no module imports, in a bundle where it has no runtime effect → ⚠️.
+  **Dead means the shipped build never reaches it** — verify it (a `grep` on the symbol across
+  the repo: 0 reads) before reporting, and look for the reason it is there before you call it
+  dead.
 - **Problem:** Unused variables (an `index` that is never read), unbuilt files, unneeded
   folders.
 - **Why:** Increases code size and maintenance and invites mistakes (what is used and what
@@ -964,6 +973,47 @@
   technique G4); `onblur` validation is not accessible, and don't disable the submit.
 - **Note:** Axe runtime reveals missing `aria-label`s, contrast etc.; the AI makes a static
   best effort and part of it can't be caught from a static HTML string.
+
+---
+
+# K. Functionality
+
+### K1 — The addon does what it promises and leaves the e-shop's own controls working
+- **ID:** K1
+- **Severity:** ❌/⚠️ conditional (see Gate)
+- **Owner:** AI
+- **Tool:** —
+- **Gate:** Gate question (binary): *Does the finding name a concrete flow — a template, a page
+  or checkout step, a Shoptet event or a native control — in which the addon's promised main
+  function demonstrably fails, or a native control of the e-shop demonstrably stops doing its
+  job, traced in the code (and, where it rests on platform behavior, in the platform
+  sources)?* YES → ❌. NO, but the failure is plausible and rests on something the review could
+  not see (the shop's configuration, a template whose markup was not available, server
+  behavior) → ⚠️. A hypothetical edge case with no named flow, or a missing nice-to-have, is
+  not a K1 finding (❓ at most). **The promise** is what the PR title and description and the
+  README say the addon does; the rule is about that function and about the e-shop's own
+  controls, in a flow you can name.
+- **Problem:** The addon does not do what it promises, or it breaks a native control, in a flow
+  that can be named. Typical shapes: a check the description promises that the code never
+  performs; a handler bound to an event that also fires on other actions (a shipping change,
+  a step load, a header search) and so repeats or misfires; a selector that matches a duplicate
+  or a differently placed element in another template, or nothing at all; a pattern that also
+  matches a native control (a back button) and hijacks it.
+- **Why:** The addon runs on a live e-shop. A promised function that does not work is a defect
+  the e-shop owner pays for, and a native control (checkout navigation, cart, a consent step)
+  that stops working costs orders.
+- **Solution:** Make the handler right for every action that fires the event (compare the
+  state it acts on, not only that it was called); narrow the selector to the element meant, or
+  scope it to its container; match a native control exactly, not by a pattern that also covers
+  its neighbors; implement the promised behavior or take the promise out of the description.
+- **Note (overlap):** The same defect can be described by a rule that is more exact — **B5**
+  (lifecycle / idempotency: a non-idempotent re-run on AJAX updates), **B8** (side effects
+  reaching outside the addon: a selector that hits foreign elements, a global event), the
+  E-rules (JavaScript practice). When an existing rule describes the defect exactly, cite that
+  rule and not K1. K1 is for what they do not describe: the addon's promised function, and the
+  e-shop's own controls, in a named flow.
+
+---
 
 # P. Privacy / GDPR
 
