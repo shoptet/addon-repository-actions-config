@@ -1008,8 +1008,10 @@
   its neighbors; implement the promised behavior or take the promise out of the description.
 - **Note (overlap):** The same defect can be described by a rule that is more exact — **B5**
   (lifecycle / idempotency: a non-idempotent re-run on AJAX updates), **B8** (side effects
-  reaching outside the addon: a selector that hits foreign elements, a global event), the
-  E-rules (JavaScript practice). When an existing rule describes the defect exactly, cite that
+  reaching outside the addon: a selector that hits foreign elements, a global event),
+  **I4** (a number or price parsed wrongly, e.g. "1 500 W" read as 1, so the amount or the
+  function is wrong), **A2** (unhandled input throws and interrupts the rest of the addon's
+  initialization), the E-rules (JavaScript practice). When an existing rule describes the defect exactly, cite that
   rule and not K1. K1 is for what they do not describe: the addon's promised function, and the
   e-shop's own controls, in a named flow.
 
