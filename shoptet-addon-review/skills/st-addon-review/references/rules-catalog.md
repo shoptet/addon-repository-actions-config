@@ -650,7 +650,8 @@
 - **Tool:** ESLint `no-unused-vars` (variables) + knip / ts-prune (files)
 - **Gate:** Gate question (binary): *Is the code demonstrably dead — nothing in the shipped
   build reaches it (an unused variable or import, an unreachable branch, a file the build never
-  includes) — with no visible reason to keep it?* YES → ❌. NO, because a reason may exist (an
+  includes — not an export a bundle keeps without runtime effect, which is ⚠️ below) — with no
+  visible reason to keep it?* YES → ❌. NO, because a reason may exist (an
   admin preview or configurator uses it, a build flag switches it on, it is the addon
   template's boilerplate, it is a public API the README documents) → ❓, ask instead of
   blocking. An export no module imports, in a bundle where it has no runtime effect → ⚠️.
@@ -987,7 +988,7 @@
   or checkout step, a Shoptet event or a native control — in which the addon's promised main
   function demonstrably fails, or a native control of the e-shop demonstrably stops doing its
   job, traced in the code (and, where it rests on platform behavior, in the platform
-  sources)?* YES → ❌. NO, but the failure is plausible and rests on something the review could
+  sources, `shoptet/templates-assets`, see `shoptet-reference.md`)?* YES → ❌. NO, but the failure is plausible and rests on something the review could
   not see (the shop's configuration, a template whose markup was not available, server
   behavior) → ⚠️. A hypothetical edge case with no named flow, or a missing nice-to-have, is
   not a K1 finding (❓ at most). **The promise** is what the PR title and description and the
