@@ -654,7 +654,8 @@
   visible reason to keep it?* YES → ❌. NO, because a reason may exist (an
   admin preview or configurator uses it, a build flag switches it on, it is the addon
   template's boilerplate, it is a public API the README documents) → ❓, ask instead of
-  blocking. An export no module imports, in a bundle where it has no runtime effect → ⚠️.
+  blocking. An export no module imports, in a bundle where it has no runtime effect, **and
+  with no visible reason to keep it** → ⚠️ (with a possible reason, ❓ as above).
   **Dead means the shipped build never reaches it** — verify it (a `grep` on the symbol across
   the repo: 0 reads) before reporting, and look for the reason it is there before you call it
   dead.
