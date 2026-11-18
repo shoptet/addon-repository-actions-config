@@ -82,3 +82,9 @@ declare const brand: unique symbol;
 export type Branded = string & { [brand]: true };
 const HOSTS = { 'api.example.com': 'reason' };
 export type Host = keyof typeof HOSTS;
+
+// A class used from a nested scope before its declaration line.
+export function fail(): never {
+  throw new AppError('failed');
+}
+class AppError extends Error {}

@@ -183,7 +183,7 @@
     "CodeQuality@blocker"
   ],
   "bad/bad-tdz.js": [
-    "no-use-before-define@blocker"
+    "no-use-before-define@blocker:2"
   ],
   "bad/bad-template-markup.html": [
     "a11y/img-alt@blocker",

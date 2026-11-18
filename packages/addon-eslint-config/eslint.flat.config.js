@@ -161,8 +161,11 @@ const javascriptConfig = {
     // TDZ / use-before-define (catches ReferenceError on const/let/class used early).
     // variables: false is the right cut — a reference from a NESTED scope (the
     // "function above its config" pattern) cannot throw at runtime and must not
-    // gate; a genuine same-scope TDZ still does.
-    'no-use-before-define': ['error', { functions: false, classes: true, variables: false }],
+    // gate; a genuine same-scope TDZ still does. classes: false is the same cut
+    // for classes (`function fail() { throw new AppError() }` above
+    // `class AppError`). Accepted false negative: a nested reference that runs
+    // during module load, before the class line.
+    'no-use-before-define': ['error', { functions: false, classes: false, variables: false }],
     'no-var': 'error', // D1
     'no-implicit-globals': 'error', // D1
     'no-redeclare': 'error', // D1
