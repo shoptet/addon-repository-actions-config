@@ -9,10 +9,20 @@ build step.
 
 - `eslint.flat.config.js` — the flat config (ESLint 9/10). It declares the
   `shoptet` plugin itself, so consumers do not need to register it separately.
-- `rules/` — the 7 `shoptet/*` rules (`no-core-overwrite`, `no-czech-comments`,
-  `no-global-console`, `no-redundant-checks`, `no-settimeout-hack`,
-  `no-testid-selector`, `prefer-fetch`), `rules/index.js` (the plugin object),
-  and two shared helpers (`global-callee.js`, `script-detect.js`).
+  Three blocks: JavaScript (`.js/.mjs/.cjs`, espree); TypeScript and JSX
+  (`.ts/.tsx/.mts/.cts/.jsx`, the typescript-eslint parser — syntax only, no
+  `tsconfig`, no type-aware rules) with the core rules that misread type
+  syntax swapped for their `@typescript-eslint/*` counterparts; and a JSX-only
+  block exempting common JSX-factory imports (`h`, `Fragment`, …) from
+  unused-vars. See the repository README's known limitations for what the
+  TypeScript block deliberately does not check.
+- `rules/` — the 8 `shoptet/*` rules (`camelcase` — TypeScript files only,
+  `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
+  `no-redundant-checks`, `no-settimeout-hack`, `no-testid-selector`,
+  `prefer-fetch`), `rules/index.js` (the plugin object), and two shared helpers
+  (`global-callee.js`, `script-detect.js`). The rules look through
+  TypeScript's type-only wrappers (`(window as any).shoptet = …`) and treat an
+  ambient `declare const shoptet: X` as the global it describes.
 - `reliable-rules.js` — the ESLint slice of `RELIABLE_RULES`, exported as a
   named `Set`. This is the allowlist of rules whose positive findings are
   trustworthy enough to gate a build. It also exports `RUNNER_RULES`, see
@@ -44,7 +54,9 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.configs.recommended — the flat config array, ready to pass as
 //   `overrideConfig` (with `overrideConfigFile: true`) to `new ESLint(...)`.
 // eslintConfig.plugin — the `shoptet` plugin object standalone.
-// eslintConfig.parsesAsScript — script-vs-module detection helper.
+// eslintConfig.parsesAsScript(source, filename?) — script-vs-module detection
+//   helper. Pass the filename for TypeScript/JSX: without it the source is
+//   parsed as plain JavaScript, as before.
 // eslintConfig.RELIABLE_RULES — the ESLint slice of the allowlist.
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```

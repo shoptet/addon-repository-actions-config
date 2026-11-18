@@ -58,6 +58,9 @@ module.exports = {
 
     return {
       Literal(node) {
+        // TypeScript literal TYPES (`type Sel = '[data-testid]'`) are erased at
+        // compile time — they cannot select anything at runtime.
+        if (node.parent && node.parent.type === 'TSLiteralType') return;
         if (typeof node.value === 'string') check(node, node.value);
       },
       TemplateLiteral(node) {

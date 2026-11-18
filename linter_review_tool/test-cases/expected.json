@@ -77,6 +77,10 @@
     "prefer-template@recommend",
     "radix@recommend"
   ],
+  "bad/bad-jsx-practices.jsx": [
+    "@typescript-eslint/no-unused-vars@blocker",
+    "no-var@blocker"
+  ],
   "bad/bad-legacy-script.js": [
     "no-console@blocker",
     "no-dupe-args@blocker",
@@ -190,6 +194,35 @@
   ],
   "bad/bad-testid.js": [
     "shoptet/no-testid-selector@blocker:3"
+  ],
+  "bad/bad-ts-core-overwrite.ts": [
+    "shoptet/no-core-overwrite@blocker:10"
+  ],
+  "bad/bad-ts-dead-code.ts": [
+    "@typescript-eslint/no-unused-expressions@blocker",
+    "@typescript-eslint/no-unused-vars@blocker",
+    "@typescript-eslint/no-use-before-define@blocker"
+  ],
+  "bad/bad-ts-declared-global.ts": [
+    "shoptet/no-core-overwrite@blocker",
+    "shoptet/no-redundant-checks@recommend"
+  ],
+  "bad/bad-ts-global-bypass.ts": [
+    "shoptet/no-global-console@blocker",
+    "shoptet/no-settimeout-hack@blocker:3",
+    "shoptet/prefer-fetch@recommend"
+  ],
+  "bad/bad-ts-naming.ts": [
+    "shoptet/camelcase@recommend"
+  ],
+  "bad/bad-ts-script-core.ts": [
+    "shoptet/no-core-overwrite@blocker"
+  ],
+  "bad/bad-ts-syntax-error.ts": [
+    "CodeQuality@blocker"
+  ],
+  "bad/bad-tsx-testid.tsx": [
+    "shoptet/no-testid-selector@blocker"
   ],
   "bad/bad-upper.CSS": [
     "color-no-invalid-hex@blocker"

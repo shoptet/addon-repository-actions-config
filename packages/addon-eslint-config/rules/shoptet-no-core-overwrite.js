@@ -9,9 +9,14 @@
  *   - Object.assign(shoptet, …) / Object.defineProperty(shoptet, …)
  *   - (re)defining a known core function name (e.g. initColorBox)
  * (`shoptet = {}` — replacing the whole object — is gated by no-global-assign.)
+ *
+ * TypeScript: type-only wrappers are erased at compile time, so
+ * `(window as any).shoptet.x = …`, `shoptet!.x = …` and `(<any>shoptet).x = …`
+ * are the same write and are matched through `unwrapExpr()`; an ambient
+ * `declare const shoptet: X` describes the global, it does not shadow it.
  */
 
-const { GLOBAL_OBJECTS, memberName, isGlobalBinding } = require('./global-callee');
+const { GLOBAL_OBJECTS, memberName, isGlobalBinding, unwrapExpr } = require('./global-callee');
 const { parsesAsScript } = require('./script-detect');
 
 const CORE_FUNCTIONS = new Set(['initColorBox']);
@@ -23,26 +28,23 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 // module by convention and is exempt. (round 12)
 function shipsAsClassicScript(context) {
   const filename = context.filename;
-  if (/\.mjs$/i.test(filename)) return false;
+  if (/\.m[jt]s$/i.test(filename)) return false;
   // Script-parseability IS the question: import/export, import.meta and
   // top-level await all fail it, so this cannot diverge from the linter's
-  // usesModuleSyntax again (round 13, shared helper).
-  return parsesAsScript(context.sourceCode.text);
+  // usesModuleSyntax again (round 13, shared helper). The filename selects the
+  // TypeScript/JSX-aware check for .ts/.tsx/.cts/.jsx.
+  return parsesAsScript(context.sourceCode.text, filename);
 }
 
 // Both casings are Shoptet core globals (both are declared readonly in eslint.flat.config.js).
 const SHOPTET_GLOBALS = new Set(['shoptet', 'Shoptet']);
 
-/** `shoptet?.x` arrives wrapped in ChainExpression — unwrap before matching. */
-function unwrapChain(node) {
-  return node && node.type === 'ChainExpression' ? node.expression : node;
-}
-
 /** Innermost MemberExpression of a chain — the one whose `.object` is the base. */
 function innermostMember(node) {
   let current = node;
-  while (current.object && current.object.type === 'MemberExpression') {
-    current = current.object;
+  // `(window as any).shoptet.x`: type wrappers may sit at any link of the chain.
+  while (current.object && unwrapExpr(current.object).type === 'MemberExpression') {
+    current = unwrapExpr(current.object);
   }
   return current;
 }
@@ -54,7 +56,7 @@ function innermostMember(node) {
  */
 function targetsGlobalShoptet(memberExpr, scope) {
   const inner = innermostMember(memberExpr);
-  const base = inner.object;
+  const base = unwrapExpr(inner.object);
   if (!base || base.type !== 'Identifier') return false;
   if (SHOPTET_GLOBALS.has(base.name)) return isGlobalBinding(scope, base.name);
   if (GLOBAL_OBJECTS.has(base.name)) {
@@ -64,17 +66,20 @@ function targetsGlobalShoptet(memberExpr, scope) {
 }
 
 /** Is this expression a direct reference to the global shoptet/Shoptet object? */
-function isGlobalShoptetRef(node, scope) {
+function isGlobalShoptetRef(rawNode, scope) {
+  const node = unwrapExpr(rawNode);
   if (node.type === 'Identifier' && SHOPTET_GLOBALS.has(node.name)) {
     return isGlobalBinding(scope, node.name);
   }
-  if (
-    node.type === 'MemberExpression' &&
-    node.object.type === 'Identifier' &&
-    GLOBAL_OBJECTS.has(node.object.name) &&
-    isGlobalBinding(scope, node.object.name)
-  ) {
-    return SHOPTET_GLOBALS.has(memberName(node));
+  if (node.type === 'MemberExpression') {
+    const object = unwrapExpr(node.object);
+    if (
+      object.type === 'Identifier' &&
+      GLOBAL_OBJECTS.has(object.name) &&
+      isGlobalBinding(scope, object.name)
+    ) {
+      return SHOPTET_GLOBALS.has(memberName(node));
+    }
   }
   return false;
 }
@@ -133,8 +138,10 @@ module.exports = {
 
     return {
       AssignmentExpression(node) {
-        if (node.left.type === 'MemberExpression') {
-          if (targetsGlobalShoptet(node.left, context.sourceCode.getScope(node))) {
+        // `(shoptet.x as any) = …` / `shoptet.x! = …` are valid TS targets.
+        const left = unwrapExpr(node.left);
+        if (left.type === 'MemberExpression') {
+          if (targetsGlobalShoptet(left, context.sourceCode.getScope(node))) {
             context.report({
               node,
               messageId: 'shoptetMember',
@@ -145,11 +152,12 @@ module.exports = {
           // window.initColorBox = … — the global-object spelling of a core
           // function write (the classic legacy way to define globals), same
           // treatment as the bare form below (round 12).
-          const inner = innermostMember(node.left);
+          const inner = innermostMember(left);
+          const innerBase = unwrapExpr(inner.object);
           if (
-            inner.object.type === 'Identifier' &&
-            GLOBAL_OBJECTS.has(inner.object.name) &&
-            isGlobalBinding(context.sourceCode.getScope(node), inner.object.name)
+            innerBase.type === 'Identifier' &&
+            GLOBAL_OBJECTS.has(innerBase.name) &&
+            isGlobalBinding(context.sourceCode.getScope(node), innerBase.name)
           ) {
             reportCoreFunction(node, memberName(inner));
             return;
@@ -158,22 +166,22 @@ module.exports = {
           // (initColorBox.cache = {}), symmetric with the window form above
           // (round 13).
           if (
-            inner.object.type === 'Identifier' &&
-            CORE_FUNCTIONS.has(inner.object.name) &&
-            isGlobalBinding(context.sourceCode.getScope(node), inner.object.name)
+            innerBase.type === 'Identifier' &&
+            CORE_FUNCTIONS.has(innerBase.name) &&
+            isGlobalBinding(context.sourceCode.getScope(node), innerBase.name)
           ) {
-            reportCoreFunction(node, inner.object.name);
+            reportCoreFunction(node, innerBase.name);
           }
           return;
         }
 
         if (
-          node.left.type === 'Identifier' &&
+          left.type === 'Identifier' &&
           // A partner's own local of the same name (let initColorBox; …) cannot
           // overwrite the global — only an undeclared/global binding gates.
-          isGlobalBinding(context.sourceCode.getScope(node), node.left.name)
+          isGlobalBinding(context.sourceCode.getScope(node), left.name)
         ) {
-          reportCoreFunction(node, node.left.name);
+          reportCoreFunction(node, left.name);
         }
       },
 
@@ -203,6 +211,9 @@ module.exports = {
         }
         if (!topLevelLeaksToGlobal(scope.type)) return;
         for (const stmt of node.body) {
+          // `declare const shoptet: X` / `declare class …` emit no code — they
+          // describe the existing global, they cannot overwrite it.
+          if (stmt.declare === true) continue;
           if (stmt.type === 'VariableDeclaration') {
             for (const declarator of stmt.declarations) {
               if (declarator.id.type === 'Identifier')
@@ -216,7 +227,7 @@ module.exports = {
 
       // delete shoptet.x (incl. delete shoptet?.x)
       UnaryExpression(node) {
-        const argument = unwrapChain(node.argument);
+        const argument = unwrapExpr(node.argument);
         if (
           node.operator === 'delete' &&
           argument.type === 'MemberExpression' &&
@@ -228,9 +239,10 @@ module.exports = {
 
       // shoptet.counter++ / --shoptet.x
       UpdateExpression(node) {
+        const argument = unwrapExpr(node.argument);
         if (
-          node.argument.type === 'MemberExpression' &&
-          targetsGlobalShoptet(node.argument, context.sourceCode.getScope(node))
+          argument.type === 'MemberExpression' &&
+          targetsGlobalShoptet(argument, context.sourceCode.getScope(node))
         ) {
           report(node, node.argument);
         }
@@ -238,9 +250,10 @@ module.exports = {
 
       // for (shoptet.current of list) / for (shoptet.key in obj)
       'ForOfStatement, ForInStatement'(node) {
+        const left = unwrapExpr(node.left);
         if (
-          node.left.type === 'MemberExpression' &&
-          targetsGlobalShoptet(node.left, context.sourceCode.getScope(node))
+          left.type === 'MemberExpression' &&
+          targetsGlobalShoptet(left, context.sourceCode.getScope(node))
         ) {
           report(node, node.left);
         }
@@ -248,23 +261,24 @@ module.exports = {
 
       // Object.assign(shoptet, …) / Object.defineProperty(shoptet, …)
       CallExpression(node) {
-        const callee = node.callee;
+        const callee = unwrapExpr(node.callee);
         if (callee.type !== 'MemberExpression') return;
         // `Object` is resolved by SCOPE like every other identifier in this
         // rule (a local `import Object from …` is not the built-in) — and the
         // built-in reached through the global object counts too
         // (window.Object.assign).
-        const base = callee.object;
+        const base = unwrapExpr(callee.object);
+        const baseObject = base.type === 'MemberExpression' ? unwrapExpr(base.object) : null;
         const isBuiltinObject =
           (base.type === 'Identifier' &&
             base.name === 'Object' &&
             isGlobalBinding(context.sourceCode.getScope(node), 'Object')) ||
-          (base.type === 'MemberExpression' &&
-            base.object.type === 'Identifier' &&
-            GLOBAL_OBJECTS.has(base.object.name) &&
-            isGlobalBinding(context.sourceCode.getScope(node), base.object.name) &&
+          (baseObject &&
+            baseObject.type === 'Identifier' &&
+            GLOBAL_OBJECTS.has(baseObject.name) &&
+            isGlobalBinding(context.sourceCode.getScope(node), baseObject.name) &&
             memberName(base) === 'Object');
-        const arg0 = unwrapChain(node.arguments[0]);
+        const arg0 = unwrapExpr(node.arguments[0]);
         if (
           isBuiltinObject &&
           ['assign', 'defineProperty', 'defineProperties'].includes(memberName(callee)) &&
@@ -286,7 +300,7 @@ module.exports = {
         const scope = context.sourceCode.getScope(node);
         const stack = [node.left];
         while (stack.length) {
-          const current = stack.pop();
+          const current = unwrapExpr(stack.pop());
           if (!current || typeof current.type !== 'string') continue;
           if (current.type === 'MemberExpression') {
             if (targetsGlobalShoptet(current, scope)) report(node, current);

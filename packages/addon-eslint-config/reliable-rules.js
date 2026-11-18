@@ -57,6 +57,13 @@ const RELIABLE_RULES = new Set([
   // textbook production leftover — deterministic, zero-FP, parity with the
   // zero-console policy (round 12)
   'no-debugger',
+  // ── TypeScript / JSX block: typescript-eslint extensions of the core rules
+  // above (same options, same trust level) — they replace core rules that
+  // misread type syntax (type-only uses, enum members, declaration merging).
+  // No-redeclare has no TS counterpart on purpose (see eslint.flat.config.js). ──
+  '@typescript-eslint/no-unused-vars',
+  '@typescript-eslint/no-use-before-define',
+  '@typescript-eslint/no-unused-expressions',
   // runner-synthesized (see RUNNER_RULES): fatal parse errors surface with
   // no ruleId → mapped to this catch-all
   'CodeQuality',
@@ -72,6 +79,7 @@ const RELIABLE_RULES = new Set([
   'shoptet/no-core-overwrite', // global shoptet.* = …
   'shoptet/no-czech-comments', // Czech-specific diacritics in a comment
   'shoptet/no-global-console', // window./globalThis./self.console access
+  'shoptet/camelcase', // core camelcase on TS, ambient (`declare`) names exempt
 ]);
 
 /**

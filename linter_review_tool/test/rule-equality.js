@@ -90,7 +90,16 @@ function normalizeEslintSeverity(token) {
   throw new Error(`Unrecognized ESLint severity token: ${JSON.stringify(token)}`);
 }
 
-/** Flatten a flat-config array's `rules` objects into { ruleId: 'blocker'|'recommend' }. */
+/**
+ * Flatten a flat-config array's `rules` objects into { ruleId: 'blocker'|'recommend' }.
+ *
+ * The blocks are scoped by `files` (JS vs TypeScript/JSX), so a rule is
+ * configured when ANY block turns it on: the TypeScript block's
+ * `'no-unused-vars': 'off'` (swapped for `@typescript-eslint/no-unused-vars`)
+ * does not switch it off for `.js`. A rule turned on at two different
+ * severities in two blocks would make its gate behaviour depend on the file
+ * extension — that is drift, and it throws.
+ */
 function flattenEslintConfig(flatConfigArray) {
   const declared = {};
   for (const entry of flatConfigArray) {
@@ -98,11 +107,13 @@ function flattenEslintConfig(flatConfigArray) {
     for (const [ruleId, value] of Object.entries(entry.rules)) {
       const token = Array.isArray(value) ? value[0] : value;
       const severity = normalizeEslintSeverity(token);
-      if (severity === null) {
-        delete declared[ruleId]; // explicit 'off' — not configured
-      } else {
-        declared[ruleId] = severity;
+      if (severity === null) continue; // 'off' in this block's files only
+      if (declared[ruleId] && declared[ruleId] !== severity) {
+        throw new Error(
+          `eslint config: ${ruleId} is configured at both ${declared[ruleId]} and ${severity} in different blocks`,
+        );
       }
+      declared[ruleId] = severity;
     }
   }
   return declared;

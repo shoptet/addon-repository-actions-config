@@ -111,10 +111,39 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   it. Skipped files are listed in the run Summary so a human reviewer can see
   when coverage of a change was partial. When **every** candidate file is
   skipped, the run fails closed with a message saying so (not a green pass).
-- *Only `.js/.mjs/.cjs`, stylesheet and HTML extensions are linted.* Other
-  source-looking files (`.ts`, `.jsx`, `.vue`, …) are never linted — they
-  surface in the `skipped` list so the coverage gap is visible (TypeScript/JSX
-  support is a separate ticket, gated on partner demand).
+- *Only JavaScript/TypeScript (`.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`),
+  stylesheet and HTML extensions are linted.* Other source-looking files
+  (`.vue`, `.svelte`, `.coffee`) are never linted — they surface in the
+  `skipped` list so the coverage gap is visible. TypeScript declaration files
+  (`*.d.ts`) carry no runtime code and are skipped the same visible way.
+- *TypeScript is checked by syntax only.* `.ts/.tsx/.mts/.cts` (and `.jsx`) run
+  the same rules as JavaScript on the typescript-eslint parser, without a
+  `tsconfig` and without type information — no type-aware rule exists in the
+  gate, so a check that needs types to be certain is left to the compiler and
+  the AI review. Where a JavaScript rule would misread TypeScript syntax it is
+  swapped for its `@typescript-eslint/*` counterpart (`no-unused-vars`,
+  `no-use-before-define`, `no-unused-expressions`) or, for `camelcase`, for
+  `shoptet/camelcase` (ambient `declare` names are dictated by the runtime and
+  exempt). Deliberate gaps, all false negatives rather than false positives:
+  - `no-redeclare` does not run on TypeScript at all: both the core rule and
+    its typescript-eslint extension report legitimate code (overloads,
+    declaration merging, the `const Mode = {…} as const; type Mode = …` pair).
+    A genuine redeclaration is a TypeScript compile error, so the partner's
+    build already blocks it.
+  - A value used only in type positions (`declare const brand: unique symbol`
+    used as `typeof brand`, `const HOSTS = {…}` used as `keyof typeof HOSTS`)
+    is not reported as unused — the compiler counts those uses.
+  - In `.tsx/.jsx`, an unused import named `h`, `Fragment`, `jsx` or
+    `createElement` is not reported: it may be the JSX factory configured in
+    `tsconfig`/babel, which the gate does not read (the default `React` import
+    is recognised as used).
+  - `shoptet/es-module-required` does not apply: TypeScript is compiled before
+    it ships, so a TypeScript file that fails to parse is reported as the parse
+    error itself (`CodeQuality`).
+  - The gate lints `src/` only. TypeScript sources kept outside it (e.g. a
+    `source/` directory compiled into `src/`) are not seen — the gate then
+    lints the compiled bundle in `src/`, which reports build output rather
+    than the partner's code.
 - *Templating placeholders in attribute position weaken the HTML checks.* A
   Mustache/Handlebars-style placeholder standing where an attribute would be
   (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`

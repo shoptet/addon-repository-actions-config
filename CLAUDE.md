@@ -65,9 +65,11 @@ changes.
 
 ## Architecture: the linter tool (`linter_review_tool/`)
 
-- `review.js` — entry point. Globs `src/` for `.js/.mjs/.cjs`, `.css/.scss/.less`, `.html/.htm`
-  files (case-insensitively), skipping `node_modules/`, `dist/`, `vendor/`, and `*.min.*`/
-  `*.bundle.*`, then dispatches each file to the matching linter.
+- `review.js` — entry point. Globs `src/` for `.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`,
+  `.css/.scss/.less`, `.html/.htm` files (case-insensitively), skipping `node_modules/`, `dist/`,
+  `vendor/`, `*.min.*`/`*.bundle.*` and `*.d.ts`, then dispatches each file to the matching linter.
+  TypeScript/JSX go through the same ESLint pass on the typescript-eslint parser (syntax only, no
+  `tsconfig`); the shared config's TypeScript block swaps the core rules that misread type syntax.
 - `linters/eslint-linter.js`, `stylelint-linter.js`, `html-linter.js` — one per file type.
   HTML checks are factual (parse5-based), not stylistic.
 - `packages/addon-eslint-config/rules/` — custom ESLint plugin `shoptet/*` (e.g. `no-core-overwrite`,

@@ -226,7 +226,10 @@ for (const side of ['bad', 'good']) {
       fail(`test-cases/${side}/${entry.name}: subdirectories are not scanned — flatten it`);
       continue;
     }
-    if (!/\.(js|mjs|cjs|css|scss|less|html|htm)$/i.test(entry.name)) {
+    if (
+      !/\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|css|scss|less|html|htm)$/i.test(entry.name) ||
+      /\.d\.(ts|mts|cts)$/i.test(entry.name)
+    ) {
       fail(
         `test-cases/${side}/${entry.name}: extension outside the lint patterns — it would pass vacuously`,
       );
@@ -242,7 +245,9 @@ const { RELIABLE_RULES } = require('../profiles');
 // never populate (they surface as CssSyntaxError, which IS pinned).
 const COVERAGE_EXEMPT = new Set(['stylelint/parse-error']);
 const pinned = new Set();
-for (const rules of Object.values(spec)) for (const r of rules) pinned.add(r.split('@')[0]);
+// lastIndexOf: scoped rule ids start with '@' themselves (@typescript-eslint/…).
+for (const rules of Object.values(spec))
+  for (const r of rules) pinned.add(r.slice(0, r.lastIndexOf('@')));
 for (const rule of RELIABLE_RULES) {
   if (COVERAGE_EXEMPT.has(rule)) continue;
   if (pinned.has(rule)) pass(`${rule}: pinned`);
@@ -517,9 +522,17 @@ if (xyzRun.status === 1 && xyzJson && xyzJson.diagnostics.length === 0)
 else fail(`unsupported-type contract broken: status ${xyzRun.status}`);
 fs.rmSync(xyzTmp, { recursive: true, force: true });
 
-// Foreign source extensions surface in skipped — not silently invisible (round 13).
+// Foreign source extensions surface in skipped — not silently invisible (round
+// 13). TypeScript/JSX are linted (CZ3TDR1-938) — in every extension casing,
+// since the config's `files` matching is as case-sensitive as the JS one —
+// while `.d.ts` (types only, no runtime code) is skipped visibly.
 const tsTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-ts-'));
-fs.writeFileSync(path.join(tsTmp, 'typed.ts'), 'export const x = eval("1");\n');
+const TS_LINTED = ['typed.ts', 'typed-upper.TS', 'view.tsx', 'mod.mts', 'common.cts', 'view.jsx'];
+for (const name of TS_LINTED) {
+  fs.writeFileSync(path.join(tsTmp, name), 'export const x = eval("1");\n');
+}
+fs.writeFileSync(path.join(tsTmp, 'types.d.ts'), 'export declare const y: number;\n');
+fs.writeFileSync(path.join(tsTmp, 'widget.vue'), '<template><div /></template>\n');
 fs.writeFileSync(path.join(tsTmp, 'app.js'), 'export const ok = 1;\n');
 const tsRun = runRaw([tsTmp, '--rdjson']);
 let tsJson = null;
@@ -528,11 +541,28 @@ try {
 } catch (e) {
   /* handled below */
 }
-if (tsRun.status === 0 && tsJson && (tsJson.skipped || []).some((f) => f.endsWith('typed.ts'))) {
-  pass('foreign source extension (.ts) surfaces in skipped');
+const tsSkipped = (tsJson && tsJson.skipped) || [];
+const tsDiags = (tsJson && tsJson.diagnostics) || [];
+const tsAllLinted = TS_LINTED.every((name) =>
+  tsDiags.some(
+    (d) => d.location.path.endsWith(name) && d.code.value === 'no-eval' && d.severity === 'ERROR',
+  ),
+);
+const tsNoSilentDrop = !tsDiags.some((d) =>
+  /outside of base path|no matching configuration/i.test(d.message),
+);
+if (
+  tsRun.status === 0 &&
+  tsAllLinted &&
+  tsNoSilentDrop &&
+  tsSkipped.some((f) => f.endsWith('types.d.ts')) &&
+  tsSkipped.some((f) => f.endsWith('widget.vue')) &&
+  !tsSkipped.some((f) => TS_LINTED.some((name) => f.endsWith(name)))
+) {
+  pass('TS/JSX extensions are linted (all casings); .d.ts and .vue surface in skipped');
 } else {
   fail(
-    `.ts contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsJson && tsJson.skipped)}`,
+    `TS/JSX discovery contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsSkipped)}, diags=${JSON.stringify(tsDiags.map((d) => [d.location.path, d.code.value]))}`,
   );
 }
 fs.rmSync(tsTmp, { recursive: true, force: true });
