@@ -260,7 +260,7 @@ only says how to discipline its (and your own) candidates so that depth doesn't 
 4. **Completeness check (before you close).** The step that otherwise takes a human asking "is
    that everything, did you forget anything?" — do it yourself, before you print anything. Two
    axes:
-   - **Breadth (catalog):** every affected file × sections A–J + P; for each cell *finding /
+   - **Breadth (catalog):** every affected file × sections A–K + P; for each cell *finding /
      not applicable / checked, clean*. If you don't know which, you haven't walked that cell →
      back to step 3. Write it down as a compact table (internal — it does not belong in the
      partner summary) — that forces you to actually walk the matrix, not just declare "looks
@@ -325,7 +325,7 @@ therefore written in Czech — the examples below model that):
 ```json
 {
   "summary": "The Czech summary message following the template below.",
-  "catalog_version": "2026-10-27",
+  "catalog_version": "2026-11-16",
   "linter_available": true,
   "recommended_verdict": "request_changes",
   "findings": [
@@ -392,8 +392,8 @@ Field rules:
   a re-run it is derived from the git comparison of the previous and current commit (see
   *Re-run*). It drives the write (new inline / none / a general acknowledgment in the summary)
   and the gate.
-- `gate_check` — **mandatory on every finding for a conditional rule** (`❌/⚠️`: A1, A2, B1,
-  B5, B6, B8, C1, C3, F3, F5, I2, I4, J1, J2, P1). Not a free-form comment — **the rule's Gate
+- `gate_check` — **mandatory on every finding for a conditional rule** (`❌/⚠️`: A1, A2, A13, A14, B1,
+  B5, B6, B8, C1, C3, F2, F3, F5, I2, I4, J1, J2, K1, P1). Not a free-form comment — **the rule's Gate
   question answered binarily, in the form** `ID: <quote of the Gate question>? YES/NO →
   <severity>`, e.g. `A2: does the crash interrupt addon init? YES → blocking`. The finding's
   severity **must** match this answer. The point is to force you to actually perform the gate,
@@ -528,7 +528,7 @@ comment — invisible when rendered, readable via the API (standard bot practice
 danger-js):
 
 ```
-<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-10-27"} -->
+<!-- st-review:{"rule_id":"E6","fp":"a3f9c2","file":"src/footer/modal.js","catalog_version":"2026-11-16"} -->
 ```
 
 - `rule_id` — leave empty on a `judgment` finding.

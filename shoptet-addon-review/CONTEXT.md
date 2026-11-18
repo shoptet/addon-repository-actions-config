@@ -112,7 +112,7 @@ Meta-pattern of those errors: the skill stayed **local** when it should have gon
 repo / across rules**, and it **closed a finding one question too early**.
 
 **Calibration confirmed across runs:**
-- **Completeness check = two axes:** breadth (file × A–J + P matrix) + depth (behavior model;
+- **Completeness check = two axes:** breadth (file × A–K + P matrix) + depth (behavior model;
   "am I reporting from verified understanding, or from 'I think I traced it'?"). **The matrix
   measures breadth, not depth** — a large file ticked off via a few sections = a false stamp →
   `❓ shallowly reviewed`.
@@ -181,7 +181,10 @@ repo / across rules**, and it **closed a finding one question too early**.
 - **"The regular review found more → let's add it to the catalog."** No. Distinguish *the skill
   missed it* (it was in scope, fix it) from *the skill correctly didn't handle it* (TypeScript
   precision, domain race conditions, build tooling, cosmetics — out of scope, belongs to a human
-  or another tool). The narrow focus is intentional.
+  or another tool). The narrow focus is intentional. K1 (functionality, 2026-11-16) is a
+  deliberate codification and not a counterexample: like P1 it came from the judgment channel,
+  where a functional bug could not block, and its gate admits only a concrete flow in which the
+  promised function or a native control demonstrably fails.
 - **"Judgment found something outside the catalog!"** First verify it isn't an existing rule
   that simply didn't fire (XSS-via-concatenation = A1; a broken import from an empty file =
   F5/F2).
@@ -207,7 +210,7 @@ shoptet-addon-review/
 └── skills/st-addon-review/
     ├── SKILL.md                           # the review process (drives the agent)
     └── references/
-        ├── rules-catalog.md               # rubric A–J, P (read by the agent)
+        ├── rules-catalog.md               # rubric A–K, P (read by the agent)
         ├── shoptet-reference.md           # companion for B1/B4/B6 (read by the agent)
         └── github-api-notes.md            # GitHub write mechanics (read by the agent in step 6)
 ```
