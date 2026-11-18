@@ -7,3 +7,9 @@ const later = 2;
 export function noop(value: number): void {
   value + 1;
 }
+
+// Only `_` is exempt: any other unused destructured name is still dead code.
+export function firstOnly(parts: string[]): string {
+  const [first, unusedSecond] = parts;
+  return first;
+}

@@ -200,7 +200,7 @@
   ],
   "bad/bad-ts-dead-code.ts": [
     "@typescript-eslint/no-unused-expressions@blocker",
-    "@typescript-eslint/no-unused-vars@blocker",
+    "@typescript-eslint/no-unused-vars@blocker:2",
     "@typescript-eslint/no-use-before-define@blocker"
   ],
   "bad/bad-ts-declared-global.ts": [

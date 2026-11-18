@@ -88,3 +88,8 @@ export function fail(): never {
   throw new AppError('failed');
 }
 class AppError extends Error {}
+
+export function splitStamp(stamp: string): string[] {
+  const [_, date, time] = /^(\S+) (\S+)$/.exec(stamp) ?? [];
+  return [date, time];
+}

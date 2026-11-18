@@ -150,9 +150,18 @@ const javascriptConfig = {
     // caughtErrors: 'none' — ESLint 9 flipped the default of this option
     // from 'none' to 'all', which would turn every unused `catch (error)
     // {}` into a blocker; explicit here to keep the pre-9 behaviour.
+    // destructuredArrayIgnorePattern: '^_' — `const [_, date, time] = match`
+    // names a position the author deliberately skips; `_` is the universal
+    // "unused on purpose" marker, not dead code.
     'no-unused-vars': [
       'error',
-      { vars: 'all', args: 'none', caughtErrors: 'none', ignoreRestSiblings: true },
+      {
+        vars: 'all',
+        args: 'none',
+        caughtErrors: 'none',
+        ignoreRestSiblings: true,
+        destructuredArrayIgnorePattern: '^_',
+      },
     ],
     'no-unreachable': 'error', // F2
     // F2 ❌ — but the everyday callback idioms `cb && cb()` and
