@@ -19,10 +19,11 @@
  *     a global — leftover from a refactor, never dead runtime code;
  *   - in `.tsx/.jsx`, an unused IMPORT that may be the JSX factory compiled
  *     JSX calls: one named by a `@jsx` / `@jsxFrag` pragma TypeScript or
- *     Babel would read (see LEADING_PRAGMA / LINE_PRAGMA), or one of the common factory names (`h`, `Fragment`, `jsx`,
- *     `createElement`), since a factory set in tsconfig/babel is invisible
- *     here. Only import bindings — `const h = 5` is still reported. The
- *     default `React` factory is already counted as used by the parser.
+ *     Babel would read (see LEADING_PRAGMA / LINE_PRAGMA), or one of the
+ *     common factory names (`h`, `Fragment`, `jsx`, `createElement`), since
+ *     a factory set in tsconfig/babel is invisible here. Only import
+ *     bindings — `const h = 5` is still reported. The default `React`
+ *     factory is already counted as used by the parser.
  */
 
 const { findVariable } = require('@eslint-community/eslint-utils');

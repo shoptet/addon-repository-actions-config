@@ -85,6 +85,12 @@ const LINTER_OPTIONS = {
 const javascriptConfig = {
   plugins: {
     shoptet: shoptetPlugin,
+    // Registered with no rule turned on: an `eslint-disable … @typescript-eslint/…`
+    // comment in a .js file (common in mixed TS/JS repositories) must resolve.
+    // Unregistered, ESLint reports "Definition for rule … was not found" under
+    // that id at error severity — and three of those ids are in RELIABLE_RULES,
+    // so the directive itself would gate.
+    '@typescript-eslint': typescriptPlugin,
   },
   // Character-class patterns (not a bare "**/*") rather than the plain
   // lowercase default: flat config would otherwise silently skip a

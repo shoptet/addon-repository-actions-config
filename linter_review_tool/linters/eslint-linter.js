@@ -115,8 +115,17 @@ function usesModuleSyntax(filePath) {
   }
 }
 
+// ESLint's report for a directive that names a rule the file's config does
+// not define (`// eslint-disable-next-line react-hooks/exhaustive-deps`, or a
+// runner-only id such as `shoptet/es-module-required` / `CodeQuality`). It
+// carries the directive's id as its ruleId and error severity, so an id that
+// happens to be in RELIABLE_RULES would gate on a comment. It is never a
+// defect in the code, only in a comment ESLint could not apply — dropped.
+const UNKNOWN_RULE_DIRECTIVE = /^Definition for rule '[^']+' was not found\.$/;
+
 function pushMessages(findings, result) {
   for (const message of result.messages) {
+    if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
     findings.push({
       file: result.filePath,
       line: message.line || 1,

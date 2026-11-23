@@ -127,7 +127,12 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   exempt, and so is a parameter property, which is a class property). An
   `eslint-disable` comment may name either id: `no-unused-vars` and
   `@typescript-eslint/no-unused-vars` both silence the finding on a `.ts` or
-  `.jsx` file. Deliberate gaps, all false negatives rather than false
+  `.jsx` file, with ESLint's own coverage rules. One exception: after a bare
+  `/* eslint-disable */`, an `eslint-enable` naming the core id does not
+  re-enable the replacement on TypeScript — name the
+  `@typescript-eslint/…` id there. A directive naming a rule the file does not
+  run (another plugin's, or a typescript-eslint id in a `.js` file) is
+  ignored, never a finding. Deliberate gaps, all false negatives rather than false
   positives:
   - `no-redeclare` does not run on TypeScript at all: both the core rule and
     its typescript-eslint extension report legitimate code (overloads,

@@ -113,6 +113,16 @@ for (const file of goodFilesOnDisk) {
   else pass(`${file}: clean`);
 }
 
+// A directive ESLint cannot apply ("Definition for rule … was not found") is a
+// comment problem, never a code defect — it must never reach the gate, under
+// whatever id it names (linters/eslint-linter.js drops it).
+{
+  const unknownRule = badDiagnostics.filter((d) => /^Definition for rule /.test(d.message));
+  if (unknownRule.length === 0)
+    pass('no "Definition for rule … was not found" diagnostic reaches the gate');
+  else fail(`unknown-rule directive reports reached the gate: ${JSON.stringify(unknownRule)}`);
+}
+
 // ── 4: reconcile-utils — the diff parser and fingerprint the CI workflow
 //       require()s from this tool (silent-failure territory, so unit-pinned) ──
 console.log('reconcile-utils:');
@@ -650,6 +660,23 @@ console.log('eslint-disable parity (core id, .js vs .ts):');
     const ts = unusedLines(source, 'probe.ts');
     if (js === ts) pass(`${name}: same lines on .js and .ts ([${js}])`);
     else fail(`${name}: .js reports lines [${js}], .ts reports [${ts}]`);
+  }
+
+  // The one documented divergence (README): after a BARE `eslint-disable`,
+  // `eslint-enable <core id>` re-enables the core rule on .js, but cannot
+  // re-enable the replacement on .ts — the bare disable switched it off
+  // natively and a wrapper can only drop reports, never add them. A false
+  // negative; pinned so it stays deliberate (and so a fix is noticed).
+  const bareThenCore =
+    '/* eslint-disable */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n';
+  const js = unusedLines(bareThenCore, 'probe.js');
+  const ts = unusedLines(bareThenCore, 'probe.ts');
+  if (js === '4' && ts === '') {
+    pass('documented divergence: bare disable + core-id enable re-enables .js only');
+  } else {
+    fail(
+      `bare disable + core-id enable changed: .js [${js}], .ts [${ts}] — update README and this pin`,
+    );
   }
 }
 
