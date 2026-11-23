@@ -124,19 +124,34 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   swapped for its `@typescript-eslint/*` counterpart (`no-unused-vars`,
   `no-use-before-define`, `no-unused-expressions`) or, for `camelcase`, for
   `shoptet/camelcase` (ambient `declare` names are dictated by the runtime and
-  exempt). Deliberate gaps, all false negatives rather than false positives:
+  exempt, and so is a parameter property, which is a class property). An
+  `eslint-disable` comment may name either id: `no-unused-vars` and
+  `@typescript-eslint/no-unused-vars` both silence the finding on a `.ts` or
+  `.jsx` file. Deliberate gaps, all false negatives rather than false
+  positives:
   - `no-redeclare` does not run on TypeScript at all: both the core rule and
     its typescript-eslint extension report legitimate code (overloads,
     declaration merging, the `const Mode = {…} as const; type Mode = …` pair).
     A genuine redeclaration is a TypeScript compile error, so the partner's
     build already blocks it.
-  - A value used only in type positions (`declare const brand: unique symbol`
-    used as `typeof brand`, `const HOSTS = {…}` used as `keyof typeof HOSTS`)
-    is not reported as unused — the compiler counts those uses.
-  - In `.tsx/.jsx`, an unused import named `h`, `Fragment`, `jsx` or
-    `createElement` is not reported: it may be the JSX factory configured in
-    `tsconfig`/babel, which the gate does not read (the default `React` import
-    is recognised as used).
+  - Unused-vars reports only what TypeScript itself calls unused (TS6133
+    under `noUnusedLocals`): a value used only in type positions
+    (`declare const brand: unique symbol` used as `typeof brand`,
+    `const HOSTS = {…}` used as `keyof typeof HOSTS`), an unused ambient
+    declaration (`declare const shoptetConfig: X` emits no code) and a
+    `using` / `await using` binding (it exists for its disposal) are not
+    reported.
+  - In `.tsx/.jsx`, an unused **import** that may be the JSX factory is not
+    reported: one named by a `/** @jsx … */` or `@jsxFrag` pragma in the
+    file, or one named `h`, `Fragment`, `jsx` or `createElement` (a factory
+    set in `tsconfig`/babel is invisible to the gate). Any other unused
+    binding of those names (`const h = 5`) is still reported, and the default
+    `React` import is recognised as used.
+  - Strings in type positions (literal types, interface keys, type
+    arguments) and in ambient declarations are not checked by
+    `shoptet/no-testid-selector`: they are erased at compile time.
+  - JSX in a `.js` file is still a parse error (`CodeQuality`): only `.jsx`
+    and `.tsx` are parsed with JSX enabled.
   - `shoptet/es-module-required` does not apply: TypeScript is compiled before
     it ships, so a TypeScript file that fails to parse is reported as the parse
     error itself (`CodeQuality`).

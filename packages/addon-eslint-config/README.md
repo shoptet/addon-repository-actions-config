@@ -9,18 +9,23 @@ build step.
 
 - `eslint.flat.config.js` — the flat config (ESLint 9/10). It declares the
   `shoptet` plugin itself, so consumers do not need to register it separately.
-  Three blocks: JavaScript (`.js/.mjs/.cjs`, espree); TypeScript and JSX
+  Two blocks: JavaScript (`.js/.mjs/.cjs`, espree), and TypeScript and JSX
   (`.ts/.tsx/.mts/.cts/.jsx`, the typescript-eslint parser — syntax only, no
   `tsconfig`, no type-aware rules) with the core rules that misread type
-  syntax swapped for their `@typescript-eslint/*` counterparts; and a JSX-only
-  block exempting common JSX-factory imports (`h`, `Fragment`, …) from
-  unused-vars. See the repository README's known limitations for what the
-  TypeScript block deliberately does not check.
+  syntax swapped for their `@typescript-eslint/*` counterparts. The
+  typescript-eslint plugin is registered with those extension rules narrowed
+  (`rules/typescript-extensions.js`): they honour an `eslint-disable` naming
+  the core id too, and unused-vars drops what TypeScript itself does not call
+  unused. See the repository README's known limitations for what the
+  TypeScript block deliberately does not check. The TypeScript toolchain
+  (`typescript-eslint`, `typescript`) is a hard dependency, loaded with the
+  config even by a consumer that lints only JavaScript.
 - `rules/` — the 8 `shoptet/*` rules (`camelcase` — TypeScript files only,
   `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
   `no-redundant-checks`, `no-settimeout-hack`, `no-testid-selector`,
-  `prefer-fetch`), `rules/index.js` (the plugin object), and two shared helpers
-  (`global-callee.js`, `script-detect.js`). The rules look through
+  `prefer-fetch`), `rules/index.js` (the plugin object), and four shared
+  helpers (`global-callee.js`, `script-detect.js`, `core-id-directives.js`,
+  `typescript-extensions.js`). The rules look through
   TypeScript's type-only wrappers (`(window as any).shoptet = …`) and treat an
   ambient `declare const shoptet: X` as the global it describes.
 - `reliable-rules.js` — the ESLint slice of `RELIABLE_RULES`, exported as a

@@ -224,6 +224,9 @@
   "bad/bad-tsx-testid.tsx": [
     "shoptet/no-testid-selector@blocker"
   ],
+  "bad/bad-tsx-unused.tsx": [
+    "@typescript-eslint/no-unused-vars@blocker:4"
+  ],
   "bad/bad-upper.CSS": [
     "color-no-invalid-hex@blocker"
   ],

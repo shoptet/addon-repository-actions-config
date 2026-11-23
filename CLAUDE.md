@@ -76,7 +76,12 @@ changes.
   `no-testid-selector`, `prefer-fetch`). Every rule file opens with a block JSDoc whose first line
   is the catalog ID and title (`* B6. Do not overwrite Shoptet core`), matching the FE rules
   catalog `shoptet-addon-review` reviews against. `rules/global-callee.js` and
-  `rules/script-detect.js` are shared helpers, not rules, and carry no catalog ID.
+  `rules/script-detect.js` are shared helpers, not rules, and carry no catalog ID (so are
+  `rules/core-id-directives.js` and `rules/typescript-extensions.js`, which narrow the
+  typescript-eslint extension rules the TypeScript block uses). The ESLint engine
+  (`linter_review_tool`'s `eslint`) and the core rules the package loads through
+  `eslint/use-at-your-own-risk` (root `eslint`) come from two lockfiles: upgrade ESLint in both
+  `package.json`s together — `test/rule-equality.js` fails if the versions differ.
 - `packages/addon-stylelint-config/stylelint-rules/` — custom stylelint plugin (`max-z-index`,
   `no-pt-unit`, etc.).
 - `profiles.js` — assembles `RELIABLE_RULES` at load time from each rule package's own

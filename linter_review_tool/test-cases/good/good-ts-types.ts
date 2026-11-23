@@ -93,3 +93,27 @@ export function splitStamp(stamp: string): string[] {
   const [_, date, time] = /^(\S+) (\S+)$/.exec(stamp) ?? [];
   return [date, time];
 }
+
+// Unused ambient declarations emit no code (tsc --noUnusedLocals is silent).
+declare const shoptetConfig: { lang: string };
+declare function trackEvent(name: string): void;
+
+// A named export of a later declaration is a live binding — no TDZ.
+export { doubled };
+const doubled = (value: number): number => value * 2;
+
+// A string key of an interface is a type, not a selector.
+export interface Selectors {
+  '[data-testid="cart"]': string;
+}
+
+// A parameter property is a class property (properties: 'never').
+export class ApiClient {
+  constructor(private readonly base_url: string) {
+    this.ping(base_url);
+  }
+
+  private ping(url: string): string {
+    return url + this.base_url;
+  }
+}

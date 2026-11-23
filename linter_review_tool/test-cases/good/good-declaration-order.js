@@ -11,3 +11,7 @@ export function fail() {
   throw new AppError('failed');
 }
 class AppError extends Error {}
+
+// A named export of a later declaration is a live binding — no TDZ.
+export { doubled };
+const doubled = (value) => value * 2;

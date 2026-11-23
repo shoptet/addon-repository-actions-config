@@ -9,14 +9,28 @@
  * whoever defined that global, not chosen by the addon author, so a camelCase
  * finding there would be a false positive the author cannot fix.
  *
+ * A TypeScript parameter property (`constructor(private base_url: string)`)
+ * is a class property as much as a parameter, and the profile does not check
+ * property names (`properties: 'never'`) — so it, and its uses, are exempt
+ * too. An `eslint-disable` naming the core id `camelcase` still applies
+ * (core-id-directives.js), as it would on JavaScript.
+ *
  * Plain JavaScript keeps core `camelcase` (no `declare` exists there).
  */
 
 const { builtinRules } = require('eslint/use-at-your-own-risk');
 const { findVariable } = require('@eslint-community/eslint-utils');
 const { isAmbientDef } = require('./global-callee');
+const { honoringCoreDirectives } = require('./core-id-directives');
 
-const baseRule = builtinRules.get('camelcase');
+const coreRule = builtinRules.get('camelcase');
+
+/** A parameter declared as a class property (`constructor(private x)`). */
+function isParameterPropertyDef(def) {
+  return (
+    def.type === 'Parameter' && def.name.parent && def.name.parent.type === 'TSParameterProperty'
+  );
+}
 
 function insideAmbientDeclaration(node) {
   for (let current = node; current; current = current.parent) {
@@ -28,7 +42,7 @@ function insideAmbientDeclaration(node) {
 
 module.exports = {
   meta: {
-    ...baseRule.meta,
+    ...coreRule.meta,
     docs: {
       description: 'Enforce camelCase naming (ambient TypeScript declarations excepted)',
       category: 'Naming',
@@ -37,22 +51,17 @@ module.exports = {
   },
 
   create(context) {
-    function isAmbientName(node) {
+    function isExemptName(descriptor) {
+      const node = descriptor.node;
       if (!node || node.type !== 'Identifier') return false;
       if (insideAmbientDeclaration(node)) return true;
+      if (node.parent && node.parent.type === 'TSParameterProperty') return true;
       const variable = findVariable(context.sourceCode.getScope(node), node);
-      return Boolean(variable && variable.defs.length && variable.defs.every(isAmbientDef));
+      if (!variable || variable.defs.length === 0) return false;
+      return variable.defs.every(isAmbientDef) || variable.defs.every(isParameterPropertyDef);
     }
 
-    // The base rule only ever reports through context.report — filter there.
-    const filteredContext = Object.create(context, {
-      report: {
-        value(descriptor) {
-          if (isAmbientName(descriptor.node)) return;
-          context.report(descriptor);
-        },
-      },
-    });
-    return baseRule.create(filteredContext);
+    // The core rule only ever reports through context.report — filtered there.
+    return honoringCoreDirectives(coreRule, 'camelcase', isExemptName).create(context);
   },
 };

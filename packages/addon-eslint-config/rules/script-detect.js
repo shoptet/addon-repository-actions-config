@@ -62,6 +62,10 @@ function hasModuleOnlyExpression(program) {
     if (node.type === 'MetaProperty' && node.meta.name === 'import') return true;
     if (!inFunction && node.type === 'AwaitExpression') return true;
     if (!inFunction && node.type === 'ForOfStatement' && node.await) return true;
+    // `await using res = …` is a declaration, not an AwaitExpression.
+    if (!inFunction && node.type === 'VariableDeclaration' && node.kind === 'await using') {
+      return true;
+    }
     const childInFunction = inFunction || FUNCTION_TYPES.has(node.type);
     for (const key of Object.keys(node)) {
       if (key === 'parent' || key === 'loc' || key === 'range') continue;
@@ -81,7 +85,10 @@ function hasModuleOnlyExpression(program) {
 }
 
 function typeScriptParsesAsScript(sourceText, filename) {
-  // Lazy: plain-JS consumers never pay for loading the TypeScript compiler.
+  // Required on first use, not at module load. That saves nothing through the
+  // package entry point — index.js loads the flat config, which requires
+  // typescript-eslint up front — so the TypeScript toolchain is a hard
+  // dependency of this package either way.
   // `parse` (not the parser's parseForESLint): the AST alone, no scope analysis.
   const { parse } = require('@typescript-eslint/typescript-estree');
   let program;

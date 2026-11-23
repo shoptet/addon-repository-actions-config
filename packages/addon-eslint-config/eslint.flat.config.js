@@ -36,23 +36,28 @@
  * rides the same parser on purpose: espree's scope analysis does not count a
  * JSX use (`<Inner />`, the classic-runtime `React` import) as a reference,
  * so core no-unused-vars would report used code there.
+ *
+ * The TypeScript toolchain (`typescript-eslint`, `typescript`) is a hard
+ * dependency of this package and is loaded with this module — also by a
+ * consumer that only ever lints JavaScript.
  */
 
 const globals = require('globals');
 const tseslint = require('typescript-eslint');
 
 const shoptetPlugin = require('./rules');
-const { withoutTypeOnlyUses } = require('./rules/typescript-unused-vars');
+const { typescriptExtensionRules } = require('./rules/typescript-extensions');
 
-// The typescript-eslint plugin with one rule narrowed: no-unused-vars without
-// its "only used as a type" reports (see rules/typescript-unused-vars.js).
-// Registered under the upstream namespace on purpose, so rule ids — and
-// partners' eslint-disable comments — stay `@typescript-eslint/…`.
+// The typescript-eslint plugin with the three extension rules this config uses
+// narrowed to the gate's bar (rules/typescript-extensions.js): they honour an
+// eslint-disable naming the core id too, and no-unused-vars drops what
+// TypeScript itself does not call unused. Registered under the upstream
+// namespace on purpose, so rule ids stay `@typescript-eslint/…`.
 const typescriptPlugin = {
   ...tseslint.plugin,
   rules: {
     ...tseslint.plugin.rules,
-    'no-unused-vars': withoutTypeOnlyUses(tseslint.plugin.rules['no-unused-vars']),
+    ...typescriptExtensionRules(tseslint.plugin.rules),
   },
 };
 
@@ -173,8 +178,13 @@ const javascriptConfig = {
     // gate; a genuine same-scope TDZ still does. classes: false is the same cut
     // for classes (`function fail() { throw new AppError() }` above
     // `class AppError`). Accepted false negative: a nested reference that runs
-    // during module load, before the class line.
-    'no-use-before-define': ['error', { functions: false, classes: false, variables: false }],
+    // during module load, before the class line. allowNamedExports: true —
+    // `export { helper }; const helper = …` is a live binding, read only after
+    // the module has run, so it cannot hit the TDZ either.
+    'no-use-before-define': [
+      'error',
+      { functions: false, classes: false, variables: false, allowNamedExports: true },
+    ],
     'no-var': 'error', // D1
     'no-implicit-globals': 'error', // D1
     'no-redeclare': 'error', // D1
@@ -232,9 +242,16 @@ const JS_RULES = javascriptConfig.rules;
 const TYPESCRIPT_RULES = {
   // Blind to uses in type positions (`const x: Foo`, `implements Foo`) and to
   // enum members / `declare global` augmentations. The replacement is narrowed
-  // further: a value used only in types (`keyof typeof TABLE`) is not reported.
+  // further (rules/typescript-extensions.js): a value used only in types
+  // (`keyof typeof TABLE`), an unused ambient `declare`, and in .tsx/.jsx an
+  // import that may be the JSX factory are not reported.
+  // ignoreUsingDeclarations: a `using` / `await using` binding exists for its
+  // disposal at scope exit — never read, still not dead code.
   'no-unused-vars': 'off',
-  '@typescript-eslint/no-unused-vars': JS_RULES['no-unused-vars'],
+  '@typescript-eslint/no-unused-vars': [
+    JS_RULES['no-unused-vars'][0],
+    { ...JS_RULES['no-unused-vars'][1], ignoreUsingDeclarations: true },
+  ],
   // Off on TypeScript, with no replacement. Core no-redeclare reports function
   // overloads and declaration merging; the typescript-eslint extension still
   // reports the everyday value+type pair `export const Mode = {…} as const;
@@ -261,7 +278,9 @@ const TYPESCRIPT_RULES = {
   'no-unused-expressions': 'off',
   '@typescript-eslint/no-unused-expressions': JS_RULES['no-unused-expressions'],
   // Ambient names (`declare const some_global`) are dictated by the runtime,
-  // not chosen by the author — see rules/shoptet-camelcase.js.
+  // not chosen by the author, and a parameter property is a class property —
+  // see rules/shoptet-camelcase.js. An eslint-disable naming `camelcase`
+  // still applies.
   camelcase: 'off',
   'shoptet/camelcase': JS_RULES.camelcase,
 };
@@ -293,19 +312,4 @@ const typescriptConfig = {
   rules: { ...JS_RULES, ...TYPESCRIPT_RULES },
 };
 
-// JSX files: an import used only by compiled JSX (`h` / `Fragment` for
-// Preact, `jsx` for Emotion) looks unused — the JSX factory is configured in
-// tsconfig/babel, which this profile never reads. typescript-eslint already
-// counts the default `React` factory; these are the other common factory
-// names. Exempting them can only hide a finding, never add one.
-const jsxConfig = {
-  files: ['**/*.[tT][sS][xX]', '**/*.[jJ][sS][xX]'],
-  rules: {
-    '@typescript-eslint/no-unused-vars': [
-      JS_RULES['no-unused-vars'][0],
-      { ...JS_RULES['no-unused-vars'][1], varsIgnorePattern: '^(h|Fragment|jsx|createElement)$' },
-    ],
-  },
-};
-
-module.exports = [javascriptConfig, typescriptConfig, jsxConfig];
+module.exports = [javascriptConfig, typescriptConfig];
