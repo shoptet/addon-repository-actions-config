@@ -117,3 +117,12 @@ export class ApiClient {
     return url + this.base_url;
   }
 }
+
+// A parameter property with a default value is still a class property.
+export class ConfiguredClient {
+  constructor(private readonly api_path: string = '/api') {}
+
+  get path(): string {
+    return this.api_path;
+  }
+}

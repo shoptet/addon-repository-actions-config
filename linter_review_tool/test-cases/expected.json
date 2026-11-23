@@ -225,7 +225,7 @@
     "shoptet/no-testid-selector@blocker"
   ],
   "bad/bad-tsx-unused.tsx": [
-    "@typescript-eslint/no-unused-vars@blocker:4"
+    "@typescript-eslint/no-unused-vars@blocker:7"
   ],
   "bad/bad-upper.CSS": [
     "color-no-invalid-hex@blocker"

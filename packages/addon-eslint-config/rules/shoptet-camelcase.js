@@ -25,11 +25,21 @@ const { honoringCoreDirectives } = require('./core-id-directives');
 
 const coreRule = builtinRules.get('camelcase');
 
-/** A parameter declared as a class property (`constructor(private x)`). */
+/**
+ * Is this identifier the name of a parameter property (`constructor(private x)`,
+ * also with a default value — `private x = 1` wraps it in an AssignmentPattern)?
+ */
+function isParameterPropertyName(identifier) {
+  let parent = identifier.parent;
+  if (parent && parent.type === 'AssignmentPattern' && parent.left === identifier) {
+    parent = parent.parent;
+  }
+  return Boolean(parent && parent.type === 'TSParameterProperty');
+}
+
+/** A parameter declared as a class property. */
 function isParameterPropertyDef(def) {
-  return (
-    def.type === 'Parameter' && def.name.parent && def.name.parent.type === 'TSParameterProperty'
-  );
+  return def.type === 'Parameter' && isParameterPropertyName(def.name);
 }
 
 function insideAmbientDeclaration(node) {
@@ -55,7 +65,7 @@ module.exports = {
       const node = descriptor.node;
       if (!node || node.type !== 'Identifier') return false;
       if (insideAmbientDeclaration(node)) return true;
-      if (node.parent && node.parent.type === 'TSParameterProperty') return true;
+      if (isParameterPropertyName(node)) return true;
       const variable = findVariable(context.sourceCode.getScope(node), node);
       if (!variable || variable.defs.length === 0) return false;
       return variable.defs.every(isAmbientDef) || variable.defs.every(isParameterPropertyDef);

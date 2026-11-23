@@ -18,8 +18,8 @@
  *     `declare function track(): void`): it emits no code, it only describes
  *     a global — leftover from a refactor, never dead runtime code;
  *   - in `.tsx/.jsx`, an unused IMPORT that may be the JSX factory compiled
- *     JSX calls: one named by a `@jsx` / `@jsxFrag` pragma comment in the
- *     file, or one of the common factory names (`h`, `Fragment`, `jsx`,
+ *     JSX calls: one named by a `@jsx` / `@jsxFrag` pragma TypeScript or
+ *     Babel would read (see LEADING_PRAGMA / LINE_PRAGMA), or one of the common factory names (`h`, `Fragment`, `jsx`,
  *     `createElement`), since a factory set in tsconfig/babel is invisible
  *     here. Only import bindings — `const h = 5` is still reported. The
  *     default `React` factory is already counted as used by the parser.
@@ -30,15 +30,25 @@ const { honoringCoreDirectives } = require('./core-id-directives');
 const { isAmbientDef } = require('./global-callee');
 
 const COMMON_JSX_FACTORIES = ['h', 'Fragment', 'jsx', 'createElement'];
-const PRAGMA = /@jsx(?:Frag)?\s+([A-Za-z_$][\w$]*)/g;
+// The pragma forms the two compilers actually read (measured):
+//  - TypeScript: `@jsx X` anywhere in a line, in the file's LEADING comments;
+//  - Babel (plugin-transform-react-jsx): ANY comment, but the line must hold
+//    the pragma alone (` * @jsx X`).
+// Their union, so no pragma either compiler honours is missed. `X` may be a
+// member path (`React.createElement`): the binding is its first segment.
+const LEADING_PRAGMA = /@jsx(?:Frag)?\s+([A-Za-z_$][\w$]*)/g;
+const LINE_PRAGMA = /^\s*(?:\*\s*)?@jsx(?:Frag)?\s+([A-Za-z_$][\w$]*)\S*\s*$/gm;
 const JSX_FILE = /\.(tsx|jsx)$/i;
 
 /** Factory names this file's compiled JSX may call. Memoized per file. */
 function jsxFactoryNames(sourceCode, cache) {
   if (cache.names) return cache.names;
   const names = new Set(COMMON_JSX_FACTORIES);
+  const firstToken = sourceCode.ast.tokens[0];
+  const leadingEnd = firstToken ? firstToken.range[0] : Infinity;
   for (const comment of sourceCode.getAllComments()) {
-    for (const match of comment.value.matchAll(PRAGMA)) names.add(match[1]);
+    const pattern = comment.range[1] <= leadingEnd ? LEADING_PRAGMA : LINE_PRAGMA;
+    for (const match of comment.value.matchAll(pattern)) names.add(match[1]);
   }
   cache.names = names;
   return names;

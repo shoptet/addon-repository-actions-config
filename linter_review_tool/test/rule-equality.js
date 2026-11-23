@@ -116,10 +116,11 @@ const TYPESCRIPT_SWAPS = {
  * declared when it is on for at least one extension — the TypeScript block
  * swaps `no-unused-vars` for `@typescript-eslint/no-unused-vars`, so neither
  * is on everywhere. Turning a rule off for an extension it used to run on
- * (`{ files: ['**\/*.js'], rules: { 'no-console': 'off' } }`) is caught by
- * expected.json's fixtures for that extension. A rule on at two different
- * severities on two extensions would make the gate depend on the file
- * extension — that is drift, and it fails here.
+ * (`{ files: ['**\/*.js'], rules: { 'no-console': 'off' } }`) fails in
+ * assertSameRulesPerExtension below, whether or not a fixture of that
+ * extension exists. A rule on at two different severities on two extensions
+ * would make the gate depend on the file extension — that is drift, and it
+ * fails here too.
  */
 async function measureEslintDeclaredSeverities(flatConfigArray) {
   const { ESLint } = require('eslint');

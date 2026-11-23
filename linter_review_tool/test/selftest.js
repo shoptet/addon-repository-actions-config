@@ -606,5 +606,52 @@ fs.rmSync(longTmp, { recursive: true, force: true });
   }
 }
 
+// ── eslint-disable parity: a directive naming the CORE id must cover the
+// TypeScript replacement exactly as ESLint covers the core rule on .js
+// (packages/addon-eslint-config/rules/core-id-directives.js). Measured
+// against ESLint itself, so an ESLint upgrade that changes directive
+// semantics fails here instead of silently diverging.
+console.log('eslint-disable parity (core id, .js vs .ts):');
+{
+  const { Linter } = require('eslint');
+  const { configs } = require('@shoptet/addon-eslint-config');
+  const linter = new Linter({ configType: 'flat' });
+  const unusedLines = (source, filename) =>
+    linter
+      .verify(source, configs.recommended, { filename })
+      .filter(
+        (m) => m.ruleId === 'no-unused-vars' || m.ruleId === '@typescript-eslint/no-unused-vars',
+      )
+      .map((m) => m.line)
+      .join(',');
+  const DIRECTIVE_CASES = {
+    'next-line': '// eslint-disable-next-line no-unused-vars\nconst a = 1;\nexport {};\n',
+    'same line': 'const a = 1; // eslint-disable-line no-unused-vars\nexport {};\n',
+    justification: '// eslint-disable-next-line no-unused-vars -- kept\nconst a = 1;\nexport {};\n',
+    'block range':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n',
+    'bare enable':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable */\nconst b = 2;\nexport {};\n',
+    'enable of another id':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable no-console */\nconst b = 2;\nexport {};\n',
+    'two ids': '/* eslint-disable no-console, no-unused-vars */\nconst a = 1;\nexport {};\n',
+    'nested disable':
+      '/* eslint-disable no-unused-vars */\n/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n',
+    'line-comment disable': '// eslint-disable no-unused-vars\nconst a = 1;\nexport {};\n',
+    'line-comment enable':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n// eslint-enable no-unused-vars\nconst b = 2;\nexport {};\n',
+    'multi-line disable-line':
+      'const a = 1; /* eslint-disable-line\n no-unused-vars */\nexport {};\n',
+    'multi-line disable-next-line':
+      '/* eslint-disable-next-line\n no-unused-vars */\nconst a = 1;\nexport {};\n',
+  };
+  for (const [name, source] of Object.entries(DIRECTIVE_CASES)) {
+    const js = unusedLines(source, 'probe.js');
+    const ts = unusedLines(source, 'probe.ts');
+    if (js === ts) pass(`${name}: same lines on .js and .ts ([${js}])`);
+    else fail(`${name}: .js reports lines [${js}], .ts reports [${ts}]`);
+  }
+}
+
 console.log(failures ? `\n${failures} failure(s).` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
