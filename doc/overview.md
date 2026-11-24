@@ -28,7 +28,8 @@ packages/addon-lint-conformance/   @shoptet/addon-lint-conformance
 Checked directly in each package's `package.json` `dependencies`/`peerDependencies`: **none of
 the four packages depends on any of the other three.** They are independent siblings. Their only
 external (non-devDependency) dependencies are third-party: `@eslint-community/eslint-utils`,
-`espree`, `globals` (peer: `eslint`) for `addon-eslint-config`; `parse5` for `addon-html-lint`;
+`espree`, `globals`, `typescript`, `typescript-eslint`, `@typescript-eslint/typescript-estree`
+(peer: `eslint`) for `addon-eslint-config`; `parse5` for `addon-html-lint`;
 peer `stylelint` for `addon-stylelint-config`; none for `addon-lint-conformance`.
 
 All four are consumed by `linter_review_tool` via `link:../packages/...` entries in

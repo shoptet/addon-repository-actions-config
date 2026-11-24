@@ -14,3 +14,6 @@ export function touch(value: number): void {
 
 // eslint-disable-next-line camelcase
 export const legacy_name = 1;
+
+// eslint-disable-next-line no-var
+export var legacyCounter = 0;

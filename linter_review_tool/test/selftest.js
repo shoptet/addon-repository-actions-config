@@ -654,6 +654,20 @@ console.log('eslint-disable parity (core id, .js vs .ts):');
       'const a = 1; /* eslint-disable-line\n no-unused-vars */\nexport {};\n',
     'multi-line disable-next-line':
       '/* eslint-disable-next-line\n no-unused-vars */\nconst a = 1;\nexport {};\n',
+    // Justification and list parsing, as ESLint's ConfigCommentParser does it.
+    'triple-dash justification':
+      '// eslint-disable-next-line no-unused-vars --- kept\nconst a = 1;\nexport {};\n',
+    'trailing dashes (no justification)':
+      '// eslint-disable-next-line no-unused-vars --\nconst a = 1;\nexport {};\n',
+    'bare enable with justification':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable -- done */\nconst b = 2;\nexport {};\n',
+    'quoted id': '// eslint-disable-next-line "no-unused-vars"\nconst a = 1;\nexport {};\n',
+    'ids separated by a space':
+      '// eslint-disable-next-line no-console no-unused-vars\nconst a = 1;\nexport {};\n',
+    'no space after comma':
+      '// eslint-disable-next-line no-console,no-unused-vars\nconst a = 1;\nexport {};\n',
+    'dashes without spaces':
+      '// eslint-disable-next-line no-unused-vars--x\nconst a = 1;\nexport {};\n',
   };
   for (const [name, source] of Object.entries(DIRECTIVE_CASES)) {
     const js = unusedLines(source, 'probe.js');

@@ -20,8 +20,8 @@ build step.
   TypeScript block deliberately does not check. The TypeScript toolchain
   (`typescript-eslint`, `typescript`) is a hard dependency, loaded with the
   config even by a consumer that lints only JavaScript.
-- `rules/` — the 8 `shoptet/*` rules (`camelcase` — TypeScript files only,
-  `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
+- `rules/` — the 9 `shoptet/*` rules (`camelcase` and `no-var` — TypeScript
+  files only, `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
   `no-redundant-checks`, `no-settimeout-hack`, `no-testid-selector`,
   `prefer-fetch`), `rules/index.js` (the plugin object), and four shared
   helpers (`global-callee.js`, `script-detect.js`, `core-id-directives.js`,

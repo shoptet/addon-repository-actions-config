@@ -13,3 +13,6 @@ export function firstOnly(parts: string[]): string {
   const [first, unusedSecond] = parts;
   return first;
 }
+
+// A real `var` on TypeScript is still reported (shoptet/no-var).
+export var legacyTotal = 0;

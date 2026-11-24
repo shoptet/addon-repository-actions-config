@@ -80,6 +80,7 @@ const RELIABLE_RULES = new Set([
   'shoptet/no-czech-comments', // Czech-specific diacritics in a comment
   'shoptet/no-global-console', // window./globalThis./self.console access
   'shoptet/camelcase', // core camelcase on TS, ambient (`declare`) names exempt
+  'shoptet/no-var', // core no-var on TS, ambient (`declare var`) declarations exempt
 ]);
 
 /**

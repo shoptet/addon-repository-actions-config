@@ -122,9 +122,11 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   gate, so a check that needs types to be certain is left to the compiler and
   the AI review. Where a JavaScript rule would misread TypeScript syntax it is
   swapped for its `@typescript-eslint/*` counterpart (`no-unused-vars`,
-  `no-use-before-define`, `no-unused-expressions`) or, for `camelcase`, for
-  `shoptet/camelcase` (ambient `declare` names are dictated by the runtime and
-  exempt, and so is a parameter property, which is a class property). An
+  `no-use-before-define`, `no-unused-expressions`) or for a `shoptet/*`
+  variant: `shoptet/camelcase` (ambient `declare` names are dictated by the
+  runtime and exempt, and so is a parameter property, which is a class
+  property) and, on `.ts/.tsx/.mts/.cts`, `shoptet/no-var` (`declare var x: T`
+  compiles to nothing and is exempt). An
   `eslint-disable` comment may name either id: `no-unused-vars` and
   `@typescript-eslint/no-unused-vars` both silence the finding on a `.ts` or
   `.jsx` file, with ESLint's own coverage rules. One exception: after a bare
@@ -134,18 +136,21 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   run (another plugin's, or a typescript-eslint id in a `.js` file) is
   ignored, never a finding. Deliberate gaps, all false negatives rather than false
   positives:
-  - `no-redeclare` does not run on TypeScript at all: both the core rule and
-    its typescript-eslint extension report legitimate code (overloads,
-    declaration merging, the `const Mode = {…} as const; type Mode = …` pair).
-    A genuine redeclaration is a TypeScript compile error, so the partner's
-    build already blocks it.
+  - `no-redeclare` does not run on `.ts/.tsx/.mts/.cts` at all: both the core
+    rule and its typescript-eslint extension report legitimate code
+    (overloads, declaration merging, the `const Mode = {…} as const; type
+    Mode = …` pair). A genuine redeclaration is a TypeScript compile error,
+    so the partner's build already blocks it. `.jsx` is plain JavaScript (no
+    tsc runs) and keeps the core `no-redeclare` and `no-var`.
   - Unused-vars reports only what TypeScript itself calls unused (TS6133
     under `noUnusedLocals`): a value used only in type positions
     (`declare const brand: unique symbol` used as `typeof brand`,
     `const HOSTS = {…}` used as `keyof typeof HOSTS`), an unused ambient
-    declaration (`declare const shoptetConfig: X` emits no code) and a
-    `using` / `await using` binding (it exists for its disposal) are not
-    reported.
+    declaration (`declare const shoptetConfig: X` emits no code), a
+    `using` / `await using` binding (it exists for its disposal) and an
+    unused type parameter (`type Tagged<T, Tag>` — tsc reports it only under
+    `--noUnusedParameters`, like the unused arguments this profile already
+    exempts) are not reported.
   - In `.tsx/.jsx`, an unused **import** that may be the JSX factory is not
     reported: one named by a `/** @jsx … */` or `@jsxFrag` pragma in the
     file, or one named `h`, `Fragment`, `jsx` or `createElement` (a factory

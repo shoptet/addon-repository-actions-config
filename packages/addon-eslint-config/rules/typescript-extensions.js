@@ -17,6 +17,8 @@
  *   - an unused AMBIENT declaration (`declare const shoptetConfig: X`,
  *     `declare function track(): void`): it emits no code, it only describes
  *     a global — leftover from a refactor, never dead runtime code;
+ *   - an unused TYPE PARAMETER (`type Branded<T, Tag>`): tsc reports it only
+ *     under --noUnusedParameters, like an unused argument (`args: 'none'`);
  *   - in `.tsx/.jsx`, an unused IMPORT that may be the JSX factory compiled
  *     JSX calls: one named by a `@jsx` / `@jsxFrag` pragma TypeScript or
  *     Babel would read (see LEADING_PRAGMA / LINE_PRAGMA), or one of the
@@ -64,6 +66,12 @@ function unusedVarsSkip() {
     const variable = findVariable(context.sourceCode.getScope(node), node);
     if (!variable || variable.defs.length === 0) return false;
     if (variable.defs.every(isAmbientDef)) return true;
+    // An unused type parameter (`type Branded<T, Tag>`, `class Repo<Entity>`)
+    // is reported by tsc only under --noUnusedParameters — the same bucket as
+    // unused function arguments, which this profile exempts (`args: 'none'`).
+    if (variable.defs.every((def) => def.node && def.node.type === 'TSTypeParameter')) {
+      return true;
+    }
     return (
       JSX_FILE.test(context.filename) &&
       variable.defs.every((def) => def.type === 'ImportBinding') &&

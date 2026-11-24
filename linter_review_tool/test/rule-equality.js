@@ -105,8 +105,12 @@ const TYPESCRIPT_SWAPS = {
   'no-use-before-define': '@typescript-eslint/no-use-before-define',
   'no-unused-expressions': '@typescript-eslint/no-unused-expressions',
   camelcase: 'shoptet/camelcase',
+  'no-var': 'shoptet/no-var',
   'no-redeclare': null,
 };
+// `.jsx` is plain JavaScript on the TypeScript parser: no tsc runs and no
+// `declare` exists, so these swaps do not apply to it — it keeps the core rule.
+const JSX_KEEPS_CORE = new Set(['no-redeclare', 'no-var']);
 
 /**
  * Measure the ESLint package's DECLARED severities: the rules ESLint actually
@@ -164,21 +168,29 @@ function ruleSetDiff(a, b) {
 }
 
 /**
- * Every JS extension must run the same rules as `.js`, and every TS/JSX
- * extension the `.js` rules with exactly TYPESCRIPT_SWAPS applied — so an
+ * Every JS extension must run the same rules as `.js`, every TS extension the
+ * `.js` rules with exactly TYPESCRIPT_SWAPS applied, and `.jsx` the same but
+ * keeping JSX_KEEPS_CORE — so an
  * `'off'` (or a severity change) scoped to some extensions fails here, not
  * only where a fixture of that extension happens to exist.
  */
 function assertSameRulesPerExtension(perExtension) {
   const before = failures;
   const jsRules = perExtension.js;
-  const expectedTs = {};
-  for (const [id, severity] of Object.entries(jsRules)) {
-    if (!(id in TYPESCRIPT_SWAPS)) expectedTs[id] = severity;
-    else if (TYPESCRIPT_SWAPS[id]) expectedTs[TYPESCRIPT_SWAPS[id]] = severity;
-  }
+  const swapped = (keepCore) => {
+    const rules = {};
+    for (const [id, severity] of Object.entries(jsRules)) {
+      if (!(id in TYPESCRIPT_SWAPS) || keepCore.has(id)) rules[id] = severity;
+      else if (TYPESCRIPT_SWAPS[id]) rules[TYPESCRIPT_SWAPS[id]] = severity;
+    }
+    return rules;
+  };
+  const expectedTs = swapped(new Set());
+  const expectedJsx = swapped(JSX_KEEPS_CORE);
   for (const ext of ESLINT_PROBE_EXTENSIONS) {
-    const expected = JS_PROBE_EXTENSIONS.includes(ext) ? jsRules : expectedTs;
+    let expected = expectedTs;
+    if (JS_PROBE_EXTENSIONS.includes(ext)) expected = jsRules;
+    else if (ext === 'jsx') expected = expectedJsx;
     for (const diff of ruleSetDiff(expected, perExtension[ext])) {
       fail(`[eslint] .${ext} differs from the documented rule set — ${diff}`);
     }

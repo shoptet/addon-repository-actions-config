@@ -28,16 +28,27 @@
  *     line the comment ends on.
  */
 
-const DIRECTIVE = /^\s*eslint-(disable-next-line|disable-line|disable|enable)(?:\s+([\s\S]*))?$/;
+// Parsing mirrors ESLint's own (@eslint/plugin-kit ConfigCommentParser,
+// read from its source): the justification is split off the WHOLE comment
+// first (two or more dashes with whitespace on both sides), the directive name
+// is matched on what remains, and the rule list is split on commas, each id
+// trimmed and unquoted. So `/* eslint-enable -- done */` is a bare enable, and
+// `--- kept` is a justification.
+const JUSTIFICATION = /\s-{2,}\s/u;
+const DIRECTIVE = /^eslint-(disable-next-line|disable-line|disable|enable)(?:\s|$)/u;
 
-/** Rule ids named by a directive, without its `-- justification`. */
-function namedIds(text) {
-  if (!text) return [];
-  const list = text.split(/\s--\s|\s--$/)[0];
-  return list
+/** `{ kind, ids }` for a directive comment, or null for any other comment. */
+function parseDirective(commentValue) {
+  const separator = JUSTIFICATION.exec(commentValue);
+  const directivePart = (separator ? commentValue.slice(0, separator.index) : commentValue).trim();
+  const match = DIRECTIVE.exec(directivePart);
+  if (!match) return null;
+  const ids = directivePart
+    .slice(match[0].length)
     .split(',')
-    .map((id) => id.trim())
+    .map((id) => id.trim().replace(/^(['"]?)(.*)\1$/su, '$2'))
     .filter(Boolean);
+  return { kind: match[1], ids };
 }
 
 function before(a, b) {
@@ -50,10 +61,9 @@ function coreDirectiveMatcher(sourceCode, ruleId) {
   const ranges = [];
   let openStart = null;
   for (const comment of sourceCode.getAllComments()) {
-    const match = DIRECTIVE.exec(comment.value);
-    if (!match) continue;
-    const kind = match[1];
-    const ids = namedIds(match[2]);
+    const directive = parseDirective(comment.value);
+    if (!directive) continue;
+    const { kind, ids } = directive;
     const isBlock = comment.type === 'Block';
     // Forms ESLint ignores are ignored here too (see the header).
     if ((kind === 'disable' || kind === 'enable') && !isBlock) continue;

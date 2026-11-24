@@ -264,7 +264,8 @@ const TYPESCRIPT_RULES = {
   // export type Mode = …` (seen on a real partner addon) — a false positive in
   // both. A genuine redeclaration (`let x` twice, two implementations of one
   // function) is a TypeScript compile error (TS2451/TS2393), so the build
-  // itself already blocks it. README known limitations.
+  // itself already blocks it. README known limitations. (`.jsx` keeps the core
+  // rule — no tsc runs there; see jsxConfig below.)
   'no-redeclare': 'off',
   // Reports types used before their declaration. Kept to the runtime TDZ cut
   // of the JS rule: types and type references can never throw (typedefs:
@@ -289,6 +290,11 @@ const TYPESCRIPT_RULES = {
   // still applies.
   camelcase: 'off',
   'shoptet/camelcase': JS_RULES.camelcase,
+  // Core no-var reports `declare var shoptet: X` (top level, `declare module`),
+  // a line that compiles to nothing — rules/shoptet-no-var.js skips ambient
+  // declarations. An eslint-disable naming `no-var` still applies.
+  'no-var': 'off',
+  'shoptet/no-var': JS_RULES['no-var'],
 };
 
 const TYPESCRIPT_FILES = [
@@ -318,4 +324,18 @@ const typescriptConfig = {
   rules: { ...JS_RULES, ...TYPESCRIPT_RULES },
 };
 
-module.exports = [javascriptConfig, typescriptConfig];
+// `.jsx` rides the TypeScript block for its parser (JSX references), but it is
+// plain JavaScript: no tsc runs, so "a redeclaration is a compile error" does
+// not hold, and there is no `declare`. It keeps the core no-redeclare and
+// no-var — a duplicate top-level `function dup() {}` is reported, as the same
+// code is a parse error in a `.js` module.
+const JSX_KEEPS_CORE = ['no-redeclare', 'no-var'];
+const jsxConfig = {
+  files: ['**/*.[jJ][sS][xX]'],
+  rules: {
+    ...Object.fromEntries(JSX_KEEPS_CORE.map((id) => [id, JS_RULES[id]])),
+    'shoptet/no-var': 'off',
+  },
+};
+
+module.exports = [javascriptConfig, typescriptConfig, jsxConfig];

@@ -126,3 +126,19 @@ export class ConfiguredClient {
     return this.api_path;
   }
 }
+
+// Unused type parameters: tsc reports them only under --noUnusedParameters,
+// like unused arguments (args: 'none').
+export type Tagged<T, Tag extends string> = T & { readonly brandTag?: never };
+export class Repository<Entity> {
+  list(): unknown[] {
+    return [];
+  }
+}
+export function makeNothing<T>(): void {}
+
+// `declare var` compiles to nothing — no runtime `var` to replace.
+declare var addonRuntime: { version: string };
+declare module 'legacy-widget' {
+  var widgetVersion: string;
+}
