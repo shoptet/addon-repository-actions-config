@@ -187,6 +187,24 @@
         ],
         "exitCode": 0
       }
+    },
+    {
+      "id": "imported-test-file-is-linted",
+      "description": "A test file that production code imports ships with it: it must be linted after all and must not appear as skipped. Discovery skips test files by convention (skip-test-files), but a mock or *.spec.js that the bundler includes through an import is part of the addon. A test file nothing imports stays skipped, and so does one that is imported only as a TypeScript type (the compiler erases the import).",
+      "files": {
+        "src/main.ts": "import { patch } from './__mocks__/patch';\nimport type { T } from './__tests__/types.test';\nexport const run = (): T | void => patch();\n",
+        "src/__mocks__/patch.ts": "export function patch(): void { eval(\"1\"); }\n",
+        "src/__tests__/types.test.ts": "export type T = number;\nexport const t = eval(\"2\");\n",
+        "src/__tests__/untouched.test.js": "export const u = eval(\"3\");\n"
+      },
+      "expect": {
+        "findings": [
+          { "ruleId": "no-eval", "severity": "blocker", "path": "src/__mocks__/patch.ts" }
+        ],
+        "skippedPaths": ["src/__tests__/types.test.ts", "src/__tests__/untouched.test.js"],
+        "findingsExcludePaths": ["src/__tests__/types.test.ts", "src/__tests__/untouched.test.js"],
+        "exitCode": 0
+      }
     }
   ]
 }

@@ -158,12 +158,17 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   directory is linted like any other source, since a partner may name a
   feature folder that way. Storybook `*.stories.*` files are linted too
   (they often import production components). Skipped test files are listed
-  in the Summary like the minified/vendored ones. Two consequences to know:
-  a skipped file is not linted **even when production code imports it**
-  (a helper kept in `__mocks__/`, or a `*.spec.js` the bundler includes),
-  the same as for `vendor/` (tracked as CZ3TDR1-980); and in a shop,
-  `product.spec.js` may mean a product specification rather than a test —
-  name such a file `product-spec.js` to keep it linted.
+  in the Summary like the minified/vendored ones. A test file that a linted
+  file **imports** ships with it and is linted after all (and leaves
+  `skipped`): a relative static `import` / `export … from`, `require('…')`
+  or `import('…')` with a string literal, resolved like a bundler (exact
+  path, the JS/TS extensions, a TypeScript `.js` → `.ts` twin, `index.*`),
+  also through a chain of imported test files. A type-only import
+  (`import type …`) ships nothing and does not count. Not resolved, so not
+  linted: bare or aliased specifiers (`lodash`, `@/mocks/x`) and a specifier
+  built at runtime. In a shop, `product.spec.js` may mean a product
+  specification rather than a test — name such a file `product-spec.js` to
+  keep it linted.
 - *Only JavaScript/TypeScript (`.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`),
   stylesheet and HTML extensions are linted.* Other source-looking files
   (`.vue`, `.svelte`, `.coffee`) are never linted — they surface in the

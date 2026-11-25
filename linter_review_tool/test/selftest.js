@@ -651,6 +651,68 @@ if (
 }
 fs.rmSync(testFilesTmp, { recursive: true, force: true });
 
+// A test file that production code imports ships with it, so it is linted
+// after all and leaves `skipped` (CZ3TDR1-980) — through a static import with
+// no extension, a TypeScript-style `.js` specifier for a `.ts` file, require(),
+// a dynamic import() and a chain through another imported test file. A type-
+// only import ships nothing, and a test file nothing imports stays skipped.
+const importTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-imports-'));
+const IMPORT_FILES = {
+  'main.ts':
+    "import { patch } from './__mocks__/patch';\nimport type { T } from './__mocks__/types';\nimport './lib/side.js';\nexport const run = (): T | void => patch();\n",
+  '__mocks__/patch.ts':
+    "import { h } from '../__tests__/helper.test.js';\nexport function patch(): void { eval('1'); return h; }\n",
+  '__tests__/helper.test.ts': "export const h = eval('2');\n",
+  '__mocks__/types.ts': "export type T = number;\nexport const unused = eval('3');\n",
+  'lib/side.js':
+    "const data = require('./data.spec.js');\nexport const lazy = () => import('../__fixtures__/lazy.js');\nexport default data;\n",
+  'lib/data.spec.js': "export const d = eval('4');\n",
+  '__fixtures__/lazy.js': "export const l = eval('5');\n",
+  '__tests__/untouched.test.ts': "export const u = eval('6');\n",
+};
+for (const [name, content] of Object.entries(IMPORT_FILES)) {
+  fs.mkdirSync(path.dirname(path.join(importTmp, name)), { recursive: true });
+  fs.writeFileSync(path.join(importTmp, name), content);
+}
+const importRun = runRaw([importTmp, '--rdjson']);
+let importJson = null;
+try {
+  importJson = JSON.parse(importRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+const importSkipped = ((importJson && importJson.skipped) || []).map((f) =>
+  f.split(path.sep).join('/'),
+);
+const importDiags = (importJson && importJson.diagnostics) || [];
+const evalIn = (name) =>
+  importDiags.some(
+    (d) => d.location.path.split(path.sep).join('/').endsWith(name) && d.code.value === 'no-eval',
+  );
+const PROMOTED = [
+  '__mocks__/patch.ts',
+  '__tests__/helper.test.ts',
+  'lib/data.spec.js',
+  '__fixtures__/lazy.js',
+];
+const STILL_SKIPPED = ['__mocks__/types.ts', '__tests__/untouched.test.ts'];
+const promotedOk = PROMOTED.every(
+  (name) => evalIn(name) && !importSkipped.some((f) => f.endsWith(name)),
+);
+const skippedOk = STILL_SKIPPED.every(
+  (name) => !evalIn(name) && importSkipped.some((f) => f.endsWith(name)),
+);
+if (importRun.status === 0 && promotedOk && skippedOk) {
+  pass(
+    'test files imported by production code are linted; type-only imported and unimported ones stay skipped',
+  );
+} else {
+  fail(
+    `imported-test-file contract broken: status ${importRun.status}, skipped=${JSON.stringify(importSkipped)}, eval in=${JSON.stringify(importDiags.filter((d) => d.code.value === 'no-eval').map((d) => d.location.path))}`,
+  );
+}
+fs.rmSync(importTmp, { recursive: true, force: true });
+
 // Messages are bounded — a 70k-char identifier must not produce a comment-
 // killing 70k message (round 13).
 const longTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-long-'));

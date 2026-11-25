@@ -63,6 +63,10 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.parsesAsScript(source, filename?) — script-vs-module detection
 //   helper. Pass the filename for TypeScript/JSX: without it the source is
 //   parsed as plain JavaScript, as before.
+// eslintConfig.moduleSpecifiers(source, filename) — the static module
+//   specifiers a file imports (import / export-from / require / import(),
+//   string literals only, type-only imports left out), from the parser. The
+//   runner uses it to lint a skipped test file that production code imports.
 // eslintConfig.RELIABLE_RULES — the ESLint slice of the allowlist.
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
