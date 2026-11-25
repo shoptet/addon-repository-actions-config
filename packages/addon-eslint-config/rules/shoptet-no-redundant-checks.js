@@ -5,7 +5,7 @@
  * them with `typeof x === 'undefined'` style checks is dead defensive code.
  */
 
-const { isGlobalBinding } = require('./global-callee');
+const { isGlobalBinding, unwrapTS } = require('./global-callee');
 
 const ALWAYS_DEFINED = new Set(['shoptet', 'dataLayer', 'screen']);
 
@@ -35,19 +35,20 @@ module.exports = {
           parent &&
           parent.type === 'BinaryExpression' &&
           ['==', '===', '!=', '!=='].includes(parent.operator);
+        const argument = unwrapTS(node.argument);
         if (
           isComparison &&
           node.operator === 'typeof' &&
-          node.argument.type === 'Identifier' &&
-          ALWAYS_DEFINED.has(node.argument.name) &&
+          argument.type === 'Identifier' &&
+          ALWAYS_DEFINED.has(argument.name) &&
           // A local variable/parameter named e.g. `screen` is not the global —
           // guarding it is legitimate, not redundant.
-          isGlobalBinding(context.sourceCode.getScope(node), node.argument.name)
+          isGlobalBinding(context.sourceCode.getScope(node), argument.name)
         ) {
           context.report({
             node,
             messageId: 'redundant',
-            data: { name: node.argument.name },
+            data: { name: argument.name },
           });
         }
       },

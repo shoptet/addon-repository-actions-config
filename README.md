@@ -111,10 +111,85 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   it. Skipped files are listed in the run Summary so a human reviewer can see
   when coverage of a change was partial. When **every** candidate file is
   skipped, the run fails closed with a message saying so (not a green pass).
-- *Only `.js/.mjs/.cjs`, stylesheet and HTML extensions are linted.* Other
-  source-looking files (`.ts`, `.jsx`, `.vue`, …) are never linted — they
-  surface in the `skipped` list so the coverage gap is visible (TypeScript/JSX
-  support is a separate ticket, gated on partner demand).
+- *Only JavaScript/TypeScript (`.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`),
+  stylesheet and HTML extensions are linted.* Other source-looking files
+  (`.vue`, `.svelte`, `.coffee`) are never linted — they surface in the
+  `skipped` list so the coverage gap is visible. TypeScript declaration files
+  (`*.d.ts`) carry no runtime code and are skipped the same visible way.
+- *TypeScript is checked by syntax only.* `.ts/.tsx/.mts/.cts` (and `.jsx`) run
+  the same rules as JavaScript on the typescript-eslint parser, without a
+  `tsconfig` and without type information — no type-aware rule exists in the
+  gate, so a check that needs types to be certain is left to the compiler and
+  the AI review. Where a JavaScript rule would misread TypeScript syntax it is
+  swapped for its `@typescript-eslint/*` counterpart (`no-unused-vars`,
+  `no-use-before-define`, `no-unused-expressions`) or for a `shoptet/*`
+  variant: `shoptet/camelcase` (ambient `declare` names are dictated by the
+  runtime and exempt, and so is a parameter property, which is a class
+  property) and, on `.ts/.tsx/.mts/.cts`, `shoptet/no-var` (`declare var x: T`
+  compiles to nothing and is exempt). An
+  `eslint-disable` comment may name either id: `no-unused-vars` and
+  `@typescript-eslint/no-unused-vars` both silence the finding on a `.ts` or
+  `.jsx` file, with ESLint's own coverage rules. One exception: after a bare
+  `/* eslint-disable */`, an `eslint-enable` naming the core id does not
+  re-enable the replacement on TypeScript — name the
+  `@typescript-eslint/…` id there. A directive naming a rule the file does not
+  run (another plugin's, or a typescript-eslint id in a `.js` file) is
+  ignored, never a finding. An inline config comment that turns the core id
+  off (`/* eslint no-unused-vars: "off" */`) turns the replacement off for the
+  file too; one that changes the core id's severity to `"warn"` or overrides
+  its options does not reach the replacement, which keeps the profile's
+  severity and options. A core rule switched back on by an inline config on a
+  TypeScript/JSX file is not reported (it would misread the syntax; the
+  replacement covers that code). Deliberate gaps, all false negatives rather
+  than false positives:
+  - `no-redeclare` does not run on `.ts/.tsx/.mts/.cts` at all: both the core
+    rule and its typescript-eslint extension report legitimate code
+    (overloads, declaration merging, the `const Mode = {…} as const; type
+    Mode = …` pair). A genuine redeclaration is a TypeScript compile error,
+    so the partner's build already blocks it. `getter-return` does not run
+    on `.ts/.tsx/.mts/.cts` either: it cannot see that a `switch` over a
+    union is exhaustive or that `assertNever()` returns `never`, so it
+    reports correct getters (tsc checks a declared return type itself,
+    TS2366). `.jsx` is plain JavaScript (no tsc runs, no union types) and
+    keeps the core `no-redeclare`, `no-var` and `getter-return`.
+  - Unused-vars does not report what TypeScript itself does not call unused
+    (TS6133 under `noUnusedLocals`): a value used only in type positions
+    (`declare const brand: unique symbol` used as `typeof brand`,
+    `const HOSTS = {…}` used as `keyof typeof HOSTS`), an unused ambient
+    declaration (`declare const shoptetConfig: X` emits no code), a
+    `using` / `await using` binding (it exists for its disposal) and an
+    unused type parameter (`type Tagged<T, Tag>` — tsc reports it only under
+    `--noUnusedParameters`, like the unused arguments this profile already
+    exempts), and a `_`-prefixed binding where tsc exempts it (the head of a
+    for-of / for-in, a renamed destructured property `{ id: _id }`) are not
+    reported; nor is an unused decorated class (the decorator registers it
+    at runtime, although tsc does report it). Everything else tsc reports
+    stays reported, including a plain `const _x` and a shorthand `{ _id }`.
+    `no-use-before-define` does not report a use of an ambient declaration
+    above it, nor a reference in the computed key of an interface or
+    type-literal member (`[Ev.Open]: …` above `enum Ev`): no code, no TDZ. A
+    class member's computed key is evaluated and is still reported.
+  - In `.tsx/.jsx`, an unused **import** that may be the JSX factory is not
+    reported: one named by a `/** @jsx … */` or `@jsxFrag` pragma in the
+    file, or one named `h`, `Fragment`, `jsx` or `createElement` (a factory
+    set in `tsconfig`/babel is invisible to the gate). Any other unused
+    binding of those names (`const h = 5`) is still reported, and the default
+    `React` import is recognised as used.
+  - Strings in type positions (literal types, template literal types,
+    interface keys, type arguments) and in ambient declarations are not
+    checked by `shoptet/no-testid-selector`: they are erased at compile
+    time. (Core `no-script-url` still checks them — tracked in CZ3TDR1-959.)
+  - `shoptet/es-module-required` does not apply: TypeScript is compiled before
+    it ships, so a TypeScript file that fails to parse is reported as the parse
+    error itself (`CodeQuality`).
+  - The gate lints `src/` only. TypeScript sources kept outside it (e.g. a
+    `source/` directory compiled into `src/`) are not seen — the gate then
+    lints the compiled bundle in `src/`, which reports build output rather
+    than the partner's code.
+
+  One known false positive remains, and it predates TypeScript support: JSX
+  in a `.js` file is a parse error (`CodeQuality` blocker), because only
+  `.jsx` and `.tsx` are parsed with JSX enabled (tracked as CZ3TDR1-968).
 - *Templating placeholders in attribute position weaken the HTML checks.* A
   Mustache/Handlebars-style placeholder standing where an attribute would be
   (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`

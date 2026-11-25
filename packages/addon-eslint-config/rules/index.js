@@ -15,5 +15,7 @@ module.exports = {
     'prefer-fetch': require('./shoptet-prefer-fetch'), // E2
     'no-czech-comments': require('./shoptet-no-czech-comments'), // I1
     'no-global-console': require('./shoptet-no-global-console'), // F3 (window.console bypass)
+    camelcase: require('./shoptet-camelcase'), // I3 (TypeScript files: ambient names exempt)
+    'no-var': require('./shoptet-no-var'), // D1 (TypeScript files: ambient declarations exempt)
   },
 };

@@ -65,16 +65,23 @@ changes.
 
 ## Architecture: the linter tool (`linter_review_tool/`)
 
-- `review.js` — entry point. Globs `src/` for `.js/.mjs/.cjs`, `.css/.scss/.less`, `.html/.htm`
-  files (case-insensitively), skipping `node_modules/`, `dist/`, `vendor/`, and `*.min.*`/
-  `*.bundle.*`, then dispatches each file to the matching linter.
+- `review.js` — entry point. Globs `src/` for `.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`,
+  `.css/.scss/.less`, `.html/.htm` files (case-insensitively), skipping `node_modules/`, `dist/`,
+  `vendor/`, `*.min.*`/`*.bundle.*` and `*.d.ts`, then dispatches each file to the matching linter.
+  TypeScript/JSX go through the same ESLint pass on the typescript-eslint parser (syntax only, no
+  `tsconfig`); the shared config's TypeScript block swaps the core rules that misread type syntax.
 - `linters/eslint-linter.js`, `stylelint-linter.js`, `html-linter.js` — one per file type.
   HTML checks are factual (parse5-based), not stylistic.
 - `packages/addon-eslint-config/rules/` — custom ESLint plugin `shoptet/*` (e.g. `no-core-overwrite`,
   `no-testid-selector`, `prefer-fetch`). Every rule file opens with a block JSDoc whose first line
   is the catalog ID and title (`* B6. Do not overwrite Shoptet core`), matching the FE rules
   catalog `shoptet-addon-review` reviews against. `rules/global-callee.js` and
-  `rules/script-detect.js` are shared helpers, not rules, and carry no catalog ID.
+  `rules/script-detect.js` are shared helpers, not rules, and carry no catalog ID (so are
+  `rules/core-id-directives.js` and `rules/typescript-extensions.js`, which narrow the
+  typescript-eslint extension rules the TypeScript block uses). The ESLint engine
+  (`linter_review_tool`'s `eslint`) and the core rules the package loads through
+  `eslint/use-at-your-own-risk` (root `eslint`) come from two lockfiles: upgrade ESLint in both
+  `package.json`s together — `test/rule-equality.js` fails if the versions differ.
 - `packages/addon-stylelint-config/stylelint-rules/` — custom stylelint plugin (`max-z-index`,
   `no-pt-unit`, etc.).
 - `profiles.js` — assembles `RELIABLE_RULES` at load time from each rule package's own

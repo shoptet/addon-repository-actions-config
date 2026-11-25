@@ -104,11 +104,15 @@ jobs:
         # from the registry as real (non-link:) dependency versions.
         #
         # --production: the gate only ever loads runtime deps, so the root
-        # install skips every devDependency (prettier, the second eslint copy)
-        # — 39 MB / 189 packages down to 18 MB / 157. This works only because
-        # `stylelint` is declared in the root package.json's `dependencies`:
-        # packages/addon-stylelint-config/stylelint-rules/*.js all
-        # `require('stylelint')` at gate runtime and resolve it from this root.
+        # install skips every devDependency (prettier). About 64 MB since the
+        # TypeScript toolchain (typescript, typescript-eslint) joined the
+        # rule package's dependencies; 19 MB before. This works only because
+        # `stylelint` and `eslint` are declared in the root package.json's
+        # `dependencies`: packages/addon-stylelint-config/stylelint-rules/*.js
+        # all `require('stylelint')`, and packages/addon-eslint-config (its
+        # rules/shoptet-camelcase.js and the typescript-eslint plugin) needs
+        # `eslint/use-at-your-own-risk`, at gate runtime — both resolve from
+        # this root, where a package's devDependencies are never installed.
         run: yarn --frozen-lockfile --production
 
       - name: Install review tool dependencies
@@ -451,7 +455,7 @@ jobs:
               const list = skippedFiles.slice(0, 20).map((f) => `\`${f}\``).join(', ');
               const more = skippedFiles.length > 20 ? ` … and ${skippedFiles.length - 20} more` : '';
               core.summary.addRaw(
-                `\n⏭️ **${skippedFiles.length} file(s) skipped** (minified/vendored/hidden/symlinked — not linted): ${list}${more}`,
+                `\n⏭️ **${skippedFiles.length} file(s) skipped** (minified/vendored/declaration/foreign-source/hidden/symlinked — not linted): ${list}${more}`,
                 true
               );
             }

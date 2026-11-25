@@ -29,6 +29,7 @@ npm test                        # snapshot-check fixtures against expected.json
 
 The review tool dispatches by file type:
 
-- **`.js`** → ESLint (`eslint.flat.config.js` + custom `shoptet/*` plugin in `packages/addon-eslint-config/rules/`)
+- **`.js` / `.mjs` / `.cjs`** → ESLint (`eslint.flat.config.js` + custom `shoptet/*` plugin in `packages/addon-eslint-config/rules/`)
+- **`.ts` / `.tsx` / `.mts` / `.cts` / `.jsx`** → the same ESLint pass on the typescript-eslint parser (the config's TypeScript block); `*.d.ts` is skipped
 - **`.css` / `.scss` / `.less`** → stylelint (`packages/addon-stylelint-config/stylelint.config.js` + custom plugin in `packages/addon-stylelint-config/stylelint-rules/`)
 - **`.html` / `.htm`** → factual HTML checks (`linters/html-linter.js`, parse5)

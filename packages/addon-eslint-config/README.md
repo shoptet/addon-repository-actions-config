@@ -9,10 +9,25 @@ build step.
 
 - `eslint.flat.config.js` — the flat config (ESLint 9/10). It declares the
   `shoptet` plugin itself, so consumers do not need to register it separately.
-- `rules/` — the 7 `shoptet/*` rules (`no-core-overwrite`, `no-czech-comments`,
-  `no-global-console`, `no-redundant-checks`, `no-settimeout-hack`,
-  `no-testid-selector`, `prefer-fetch`), `rules/index.js` (the plugin object),
-  and two shared helpers (`global-callee.js`, `script-detect.js`).
+  Two blocks: JavaScript (`.js/.mjs/.cjs`, espree), and TypeScript and JSX
+  (`.ts/.tsx/.mts/.cts/.jsx`, the typescript-eslint parser — syntax only, no
+  `tsconfig`, no type-aware rules) with the core rules that misread type
+  syntax swapped for their `@typescript-eslint/*` counterparts. The
+  typescript-eslint plugin is registered with those extension rules narrowed
+  (`rules/typescript-extensions.js`): they honour an `eslint-disable` naming
+  the core id too, and unused-vars drops what TypeScript itself does not call
+  unused. See the repository README's known limitations for what the
+  TypeScript block deliberately does not check. The TypeScript toolchain
+  (`typescript-eslint`, `typescript`) is a hard dependency, loaded with the
+  config even by a consumer that lints only JavaScript.
+- `rules/` — the 9 `shoptet/*` rules (`camelcase` — TypeScript and JSX files
+  only; `no-var` — `.ts/.tsx/.mts/.cts` only; `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
+  `no-redundant-checks`, `no-settimeout-hack`, `no-testid-selector`,
+  `prefer-fetch`), `rules/index.js` (the plugin object), and four shared
+  helpers (`global-callee.js`, `script-detect.js`, `core-id-directives.js`,
+  `typescript-extensions.js`). The rules look through
+  TypeScript's type-only wrappers (`(window as any).shoptet = …`) and treat an
+  ambient `declare const shoptet: X` as the global it describes.
 - `reliable-rules.js` — the ESLint slice of `RELIABLE_RULES`, exported as a
   named `Set`. This is the allowlist of rules whose positive findings are
   trustworthy enough to gate a build. It also exports `RUNNER_RULES`, see
@@ -44,10 +59,27 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.configs.recommended — the flat config array, ready to pass as
 //   `overrideConfig` (with `overrideConfigFile: true`) to `new ESLint(...)`.
 // eslintConfig.plugin — the `shoptet` plugin object standalone.
-// eslintConfig.parsesAsScript — script-vs-module detection helper.
+// eslintConfig.parsesAsScript(source, filename?) — script-vs-module detection
+//   helper. Pass the filename for TypeScript/JSX: without it the source is
+//   parsed as plain JavaScript, as before.
 // eslintConfig.RELIABLE_RULES — the ESLint slice of the allowlist.
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
+
+The config is meant to be used **on its own**. It registers the `shoptet`
+plugin and its own narrowed copy of the `@typescript-eslint` plugin, so do not
+pass either plugin to `ESLint` again, and do not combine it with
+typescript-eslint's configs in one array
+(`[...tseslint.configs.recommended, ...configs.recommended]`): ESLint throws
+`Cannot redefine plugin "@typescript-eslint"`.
+
+A runner that consumes the config also has to mirror two runner-side
+behaviours of `linter_review_tool/linters/eslint-linter.js`. It drops
+"Definition for rule … was not found" reports (a directive naming an
+unknown rule is never a code defect). On TypeScript/JSX files it also drops
+reports from the core rules the config replaces there
+(`CORE_RULES_REPLACED_ON`), which an inline config comment can switch back
+on.
 
 ## SemVer policy
 

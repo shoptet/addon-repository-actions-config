@@ -7,8 +7,13 @@ const { lintStyles } = require('./linters/stylelint-linter');
 const { lintHtml } = require('./linters/html-linter');
 const { isReliable } = require('./profiles');
 
+// TypeScript and JSX are linted by the same ESLint pass (the shared config's
+// typescript-eslint block); `.d.ts` declaration files carry no runtime code and
+// are skipped — visibly, via IGNORE below.
+const JS_EXTENSIONS = ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts'];
+
 const PATTERNS = {
-  js: '**/*.{js,mjs,cjs}',
+  js: `**/*.{${JS_EXTENSIONS.join(',')}}`,
   styles: '**/*.{css,scss,less}',
   html: '**/*.{html,htm}',
 };
@@ -18,9 +23,12 @@ const PATTERNS = {
 // spot by design; skipped files are reported in the output (and surfaced in the
 // CI run Summary) so partial coverage is visible, and it is documented in the
 // README known limitations.
+const IGNORED_MIN_EXTENSIONS = [...JS_EXTENSIONS, 'css', 'scss', 'less', 'html', 'htm'].join(',');
 const IGNORE = [
-  '**/*.min.{js,mjs,cjs,css,scss,less,html,htm}',
-  '**/*.bundle.{js,mjs,cjs,css,scss,less,html,htm}',
+  `**/*.min.{${IGNORED_MIN_EXTENSIONS}}`,
+  `**/*.bundle.{${IGNORED_MIN_EXTENSIONS}}`,
+  // TypeScript declaration files: types only, nothing that runs.
+  '**/*.d.{ts,mts,cts}',
   '**/node_modules/**',
   '**/dist/**',
   '**/vendor/**',
@@ -44,7 +52,8 @@ function isIgnoredPath(filePath) {
   // ignored in single-file mode exactly like dist/app.js is in dir mode.
   return (
     /(^|\/)(node_modules|dist|vendor)\//i.test(filePath) ||
-    /\.(min|bundle)\.(js|mjs|cjs|css|scss|less|html|htm)$/i.test(filePath)
+    /\.(min|bundle)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|css|scss|less|html|htm)$/i.test(filePath) ||
+    /\.d\.(ts|mts|cts)$/i.test(filePath)
   );
 }
 
@@ -56,7 +65,7 @@ function isIgnoredPath(filePath) {
 // Source-looking extensions we do NOT lint — surfaced in `skipped` so the
 // coverage gap is visible instead of silent (round 13; single-file mode
 // rejects the same files loudly, dir mode must not disagree).
-const FOREIGN_SOURCE_PATTERN = '**/*.{ts,tsx,mts,cts,jsx,vue,svelte,coffee}';
+const FOREIGN_SOURCE_PATTERN = '**/*.{vue,svelte,coffee}';
 
 async function collectSkipped(targetPath) {
   // The "all candidates" side includes foreign source extensions; the "kept"
@@ -90,7 +99,7 @@ async function collectSkipped(targetPath) {
 
 function classifyFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.js' || ext === '.mjs' || ext === '.cjs') return 'js';
+  if (JS_EXTENSIONS.includes(ext.slice(1))) return 'js';
   if (ext === '.css' || ext === '.scss' || ext === '.less') return 'styles';
   if (ext === '.html' || ext === '.htm') return 'html';
   return null;
@@ -192,8 +201,8 @@ async function main() {
     // Fail closed either way — but say WHY: "all candidates skipped" is a very
     // different situation from "nothing matched at all".
     const message = files.skipped.length
-      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/hidden/symlinked) — nothing lintable.`
-      : `No reviewable files (.js/.mjs/.cjs/.css/.scss/.less/.html) found in ${targetPath}`;
+      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/declaration/foreign-source/hidden/symlinked) — nothing lintable.`
+      : `No reviewable files (.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts/.css/.scss/.less/.html) found in ${targetPath}`;
     fail(
       rdjson,
       message,
@@ -242,7 +251,7 @@ async function main() {
 
   if (skipped.length) {
     info(
-      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/hidden/symlinked): ${skipped.join(', ')}`,
+      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/declaration/foreign-source/hidden/symlinked): ${skipped.join(', ')}`,
     );
   }
   const { blockerCount } = report(findings);

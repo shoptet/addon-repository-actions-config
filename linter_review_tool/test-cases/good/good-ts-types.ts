@@ -1,0 +1,206 @@
+// TypeScript syntax that the JS core rules misread — none of it is a finding.
+import type { Settings } from './settings';
+import { type Product, formatPrice } from './product';
+
+export interface CartLine {
+  product: Product;
+  settings: Settings;
+}
+
+export type LineId = string;
+
+// Overloads are not redeclarations.
+export function toCents(value: string): number;
+export function toCents(value: number): number;
+export function toCents(value: string | number): number {
+  return Math.round(Number(value) * 100);
+}
+
+// Enum members and namespace/function merging.
+export enum Mode {
+  Compact = 'compact',
+  Full = 'full',
+}
+export function widget(): string {
+  return Mode.Full;
+}
+export namespace widget {
+  export const version = 1;
+}
+
+// A type used before its declaration cannot throw.
+export function describe(line: Later): string {
+  return line.label;
+}
+interface Later {
+  label: string;
+}
+
+// Ambient declarations: the runtime already has these (names it dictates).
+declare const shoptet: { config: { currency_code: string } };
+declare global {
+  var addon_state: number;
+  interface Window {
+    myAddon: unknown;
+  }
+}
+
+export class Line {
+  constructor(
+    private readonly amount: number,
+    public label: string,
+  ) {}
+
+  get total(): number {
+    return this.amount;
+  }
+}
+
+export abstract class Renderer {
+  abstract render(): void;
+}
+
+export const identity = <T>(value: T): T => value;
+
+export function isText(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+export type Selector = '[data-testid="cart"]';
+
+export const currency = shoptet.config.currency_code;
+export const price = formatPrice(1);
+export const state = window.addon_state;
+
+// A value and a type of the same name live in different namespaces — the
+// everyday "enum object" idiom, not a redeclaration.
+export const ColorMode = { Eshop: 'eshop', Custom: 'custom' } as const;
+export type ColorMode = (typeof ColorMode)[keyof typeof ColorMode];
+
+// Values used only in type positions — the compiler counts these as used.
+declare const brand: unique symbol;
+export type Branded = string & { [brand]: true };
+const HOSTS = { 'api.example.com': 'reason' };
+export type Host = keyof typeof HOSTS;
+
+// A class used from a nested scope before its declaration line.
+export function fail(): never {
+  throw new AppError('failed');
+}
+class AppError extends Error {}
+
+export function splitStamp(stamp: string): string[] {
+  const [_, date, time] = /^(\S+) (\S+)$/.exec(stamp) ?? [];
+  return [date, time];
+}
+
+// Unused ambient declarations emit no code (tsc --noUnusedLocals is silent).
+declare const shoptetConfig: { lang: string };
+declare function trackEvent(name: string): void;
+
+// A named export of a later declaration is a live binding — no TDZ.
+export { doubled };
+const doubled = (value: number): number => value * 2;
+
+// A string key of an interface is a type, not a selector.
+export interface Selectors {
+  '[data-testid="cart"]': string;
+}
+
+// A parameter property is a class property (properties: 'never').
+export class ApiClient {
+  constructor(private readonly base_url: string) {
+    this.ping(base_url);
+  }
+
+  private ping(url: string): string {
+    return url + this.base_url;
+  }
+}
+
+// A parameter property with a default value is still a class property.
+export class ConfiguredClient {
+  constructor(private readonly api_path: string = '/api') {}
+
+  get path(): string {
+    return this.api_path;
+  }
+}
+
+// Unused type parameters: tsc reports them only under --noUnusedParameters,
+// like unused arguments (args: 'none').
+export type Tagged<T, Tag extends string> = T & { readonly brandTag?: never };
+export class Repository<Entity> {
+  list(): unknown[] {
+    return [];
+  }
+}
+export function makeNothing<T>(): void {}
+
+// `declare var` compiles to nothing — no runtime `var` to replace.
+declare var addonRuntime: { version: string };
+declare module 'legacy-widget' {
+  var widgetVersion: string;
+}
+
+// Ambient declarations used above their declaration: no code, so no TDZ.
+export const shopCurrency = SHOP_CFG.currency;
+export const legacyLib = new LegacyLib();
+export const nsVersion = AddonNs.version;
+declare const SHOP_CFG: { currency: string };
+declare class LegacyLib {}
+declare namespace AddonNs {
+  const version: string;
+}
+
+// A decorated class is registered by its decorator at runtime.
+declare function customElement(tag: string): ClassDecorator;
+@customElement('shoptet-widget')
+class ShoptetWidget {}
+
+// Computed keys of interface / type-literal members are type positions.
+export interface AddonEvents {
+  [Ev.Open]: { id: string };
+  [Ev.Close]: void;
+}
+export enum Ev {
+  Open = 'addon:open',
+  Close = 'addon:close',
+}
+export type Payload = { [EVENTS.open]: string };
+export const EVENTS = { open: 'o' } as const;
+
+// A template literal TYPE is erased like any other type.
+export type ForbiddenSel = `[data-testid="cart"]`;
+export const pickSel = (sel: `[data-testid]`) => sel;
+
+// An exhaustive switch over a union, and assertNever(): tsc proves both.
+type Variant = 'a' | 'b';
+declare function assertNever(value: never): never;
+export class Labelled {
+  constructor(private readonly variant: Variant) {}
+
+  get label(): string {
+    switch (this.variant) {
+      case 'a':
+        return 'A';
+      case 'b':
+        return 'B';
+    }
+  }
+
+  get code(): string {
+    if (this.variant === 'a') return 'x';
+    if (this.variant === 'b') return 'y';
+    return assertNever(this.variant);
+  }
+}
+
+// `_` names tsc exempts: for-of / for-in heads and renamed destructuring.
+export function countAll(n: number, record: Record<string, number>): number {
+  let count = 0;
+  for (const _ of Array.from({ length: n })) count += 1;
+  for (const _key in record) count += 1;
+  const { id: _id, name } = { id: 1, name: 2 };
+  return count + name;
+}

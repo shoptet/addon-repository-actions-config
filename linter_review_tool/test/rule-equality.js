@@ -90,22 +90,154 @@ function normalizeEslintSeverity(token) {
   throw new Error(`Unrecognized ESLint severity token: ${JSON.stringify(token)}`);
 }
 
-/** Flatten a flat-config array's `rules` objects into { ruleId: 'blocker'|'recommend' }. */
-function flattenEslintConfig(flatConfigArray) {
+// One probe file per extension review.js hands to ESLint. Never created on
+// disk — calculateConfigForFile resolves the config from the path alone.
+const JS_PROBE_EXTENSIONS = ['js', 'mjs', 'cjs'];
+const TS_PROBE_EXTENSIONS = ['jsx', 'ts', 'tsx', 'mts', 'cts'];
+const ESLINT_PROBE_EXTENSIONS = [...JS_PROBE_EXTENSIONS, ...TS_PROBE_EXTENSIONS];
+
+// The documented difference between the JavaScript and the TypeScript/JSX
+// rule set (README, "TypeScript is checked by syntax only"): each core rule
+// on the left runs under the id on the right on TS/JSX, at the same severity;
+// `null` = deliberately not run on TS/JSX. Any other difference is drift.
+const TYPESCRIPT_SWAPS = {
+  'no-unused-vars': '@typescript-eslint/no-unused-vars',
+  'no-use-before-define': '@typescript-eslint/no-use-before-define',
+  'no-unused-expressions': '@typescript-eslint/no-unused-expressions',
+  camelcase: 'shoptet/camelcase',
+  'no-var': 'shoptet/no-var',
+  'no-redeclare': null,
+  'getter-return': null,
+};
+// `.jsx` is plain JavaScript on the TypeScript parser: no tsc runs and no
+// `declare` exists, so these swaps do not apply to it — it keeps the core rule.
+const JSX_KEEPS_CORE = new Set(['no-redeclare', 'no-var', 'getter-return']);
+
+/**
+ * Measure the ESLint package's DECLARED severities: the rules ESLint actually
+ * applies to each linted extension, computed by ESLint itself from the
+ * package's flat config (`calculateConfigForFile`), so a block's `files`
+ * scoping and an `'off'` are resolved exactly as at lint time. A rule is
+ * declared when it is on for at least one extension — the TypeScript block
+ * swaps `no-unused-vars` for `@typescript-eslint/no-unused-vars`, so neither
+ * is on everywhere. Turning a rule off for an extension it used to run on
+ * (`{ files: ['**\/*.js'], rules: { 'no-console': 'off' } }`) fails in
+ * assertSameRulesPerExtension below, whether or not a fixture of that
+ * extension exists. A rule on at two different severities on two extensions
+ * would make the gate depend on the file extension — that is drift, and it
+ * fails here too.
+ */
+async function measureEslintDeclaredSeverities(flatConfigArray) {
+  const { ESLint } = require('eslint');
+  const eslint = new ESLint({
+    cwd: ROOT,
+    overrideConfigFile: true,
+    overrideConfig: flatConfigArray,
+  });
   const declared = {};
-  for (const entry of flatConfigArray) {
-    if (!entry || typeof entry !== 'object' || !entry.rules) continue;
-    for (const [ruleId, value] of Object.entries(entry.rules)) {
-      const token = Array.isArray(value) ? value[0] : value;
-      const severity = normalizeEslintSeverity(token);
-      if (severity === null) {
-        delete declared[ruleId]; // explicit 'off' — not configured
-      } else {
-        declared[ruleId] = severity;
+  const firstSeenOn = {}; // ruleId → the extension that set declared[ruleId]
+  const perExtension = {}; // ext → { ruleId: severity } (rules that are on)
+  for (const ext of ESLINT_PROBE_EXTENSIONS) {
+    const config = await eslint.calculateConfigForFile(path.join(ROOT, `probe.${ext}`));
+    if (!config) throw new Error(`eslint config: no configuration matches .${ext}`);
+    perExtension[ext] = {};
+    for (const [ruleId, value] of Object.entries(config.rules)) {
+      const severity = normalizeEslintSeverity(Array.isArray(value) ? value[0] : value);
+      if (severity === null) continue;
+      perExtension[ext][ruleId] = severity;
+      if (declared[ruleId] && declared[ruleId] !== severity) {
+        fail(
+          `[eslint] ${ruleId}: ${declared[ruleId]} on .${firstSeenOn[ruleId]} but ${severity} on .${ext} — gate behaviour depends on the extension`,
+        );
+        continue;
       }
+      if (!declared[ruleId]) firstSeenOn[ruleId] = ext;
+      declared[ruleId] = severity;
     }
   }
+  assertSameRulesPerExtension(perExtension);
   return declared;
+}
+
+/** `a` and `b` ({ ruleId: severity }) as a list of human-readable differences. */
+function ruleSetDiff(a, b) {
+  const diffs = [];
+  for (const id of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (a[id] !== b[id]) diffs.push(`${id}: ${a[id] || 'off'} vs ${b[id] || 'off'}`);
+  }
+  return diffs;
+}
+
+/**
+ * Every JS extension must run the same rules as `.js`, every TS extension the
+ * `.js` rules with exactly TYPESCRIPT_SWAPS applied, and `.jsx` the same but
+ * keeping JSX_KEEPS_CORE — so an
+ * `'off'` (or a severity change) scoped to some extensions fails here, not
+ * only where a fixture of that extension happens to exist.
+ */
+function assertSameRulesPerExtension(perExtension) {
+  const before = failures;
+  const jsRules = perExtension.js;
+  const swapped = (keepCore) => {
+    const rules = {};
+    for (const [id, severity] of Object.entries(jsRules)) {
+      if (!(id in TYPESCRIPT_SWAPS) || keepCore.has(id)) rules[id] = severity;
+      else if (TYPESCRIPT_SWAPS[id]) rules[TYPESCRIPT_SWAPS[id]] = severity;
+    }
+    return rules;
+  };
+  const expectedTs = swapped(new Set());
+  const expectedJsx = swapped(JSX_KEEPS_CORE);
+  for (const ext of ESLINT_PROBE_EXTENSIONS) {
+    let expected = expectedTs;
+    if (JS_PROBE_EXTENSIONS.includes(ext)) expected = jsRules;
+    else if (ext === 'jsx') expected = expectedJsx;
+    for (const diff of ruleSetDiff(expected, perExtension[ext])) {
+      fail(`[eslint] .${ext} differs from the documented rule set — ${diff}`);
+    }
+  }
+  if (failures === before) {
+    pass(
+      'every JS extension runs the .js rules; every TS/JSX extension those rules with the documented swaps',
+    );
+  }
+
+  // The runner drops a replaced core rule's reports on TS/JSX (an inline
+  // config comment can switch it back on). Its sets must be exactly the core
+  // rules the config turns off there — no more (that would hide a real rule),
+  // no less (a re-enabled core rule would misread TypeScript).
+  const { CORE_RULES_REPLACED_ON } = require('../linters/eslint-linter');
+  const beforeReplaced = failures;
+  for (const ext of TS_PROBE_EXTENSIONS) {
+    const offHere = Object.keys(jsRules)
+      .filter((id) => !(id in perExtension[ext]))
+      .sort();
+    const runnerSet = [...CORE_RULES_REPLACED_ON[ext === 'jsx' ? 'jsx' : 'ts']].sort();
+    if (offHere.join(',') !== runnerSet.join(',')) {
+      fail(
+        `[eslint] .${ext}: config turns off [${offHere.join(', ')}] but the runner drops [${runnerSet.join(', ')}]`,
+      );
+    }
+  }
+  if (failures === beforeReplaced) {
+    pass('the runner drops exactly the core rules the config replaces on each TS/JSX extension');
+  }
+}
+
+/**
+ * The ESLint engine (this tool's `eslint`) and the core rules the package
+ * reaches through `eslint/use-at-your-own-risk` (shoptet/camelcase, the
+ * typescript-eslint extension rules — resolved from the package's location,
+ * i.e. the workspace root) come from two installs locked in two lockfiles.
+ * They must be the same version, or upgrading one would run another
+ * version's core rules inside this engine.
+ */
+function assertSingleEslintVersion() {
+  const engine = require('eslint/package.json').version;
+  const packageDir = path.dirname(require.resolve('@shoptet/addon-eslint-config/package.json'));
+  const rules = require(require.resolve('eslint/package.json', { paths: [packageDir] })).version;
+  if (engine === rules) pass(`one ESLint version for engine and rule package (${engine})`);
+  else fail(`ESLint ${engine} runs the lint, but the rule package resolves ESLint ${rules}`);
 }
 
 /** Flatten a stylelint config's `rules` object into { ruleId: 'blocker'|'recommend' }. */
@@ -195,10 +327,11 @@ function loadEffectiveSeverities() {
   return effective;
 }
 
-function main() {
+async function main() {
   console.log('rule-set equality (A3):');
 
-  const declaredEslint = flattenEslintConfig(eslintPkg.configs.recommended);
+  assertSingleEslintVersion();
+  const declaredEslint = await measureEslintDeclaredSeverities(eslintPkg.configs.recommended);
   const declaredStylelint = flattenStylelintConfig(stylelintPkg.configs.recommended);
   const declaredHtml = measureHtmlDeclaredSeverities();
   const effective = loadEffectiveSeverities();
@@ -360,4 +493,7 @@ function main() {
   }
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

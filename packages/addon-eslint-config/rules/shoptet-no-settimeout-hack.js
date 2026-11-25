@@ -7,7 +7,7 @@
  * requestAnimationFrame. Both alternatives are named in the message.
  */
 
-const { globalCalleeName } = require('./global-callee');
+const { globalCalleeName, unwrapTS } = require('./global-callee');
 const { findVariable } = require('@eslint-community/eslint-utils');
 
 /**
@@ -15,7 +15,9 @@ const { findVariable } = require('@eslint-community/eslint-utils');
  * (browsers floor sub-1ms and clamp negatives to 0), '0'/'' strings, null,
  * false, undefined, void 0, empty array (ToNumber([]) === 0).
  */
-function isZeroDelay(node) {
+function isZeroDelay(rawNode) {
+  // `0 as number`, `0 satisfies number`, `<number>0` — the value is still 0.
+  const node = unwrapTS(rawNode);
   if (!node) return false;
   if (node.type === 'Literal') {
     if (node.value === null || node.value === false) return true;
@@ -61,7 +63,8 @@ module.exports = {
   },
 
   create(context) {
-    function resolvesToZeroConst(node, scope) {
+    function resolvesToZeroConst(rawNode, scope) {
+      const node = unwrapTS(rawNode);
       if (!node || node.type !== 'Identifier') return false;
       const variable = findVariable(scope, node);
       if (!variable || variable.defs.length !== 1) return false;

@@ -10,6 +10,12 @@
  *     findings from the script run (so the author sees everything at once,
  *     not just one cryptic parse error);
  *   - fails both parses → genuinely broken JS: report the parse error itself.
+ *
+ * TypeScript / JSX files (`.ts`, `.tsx`, `.mts`, `.cts`, `.jsx`) are linted in
+ * the same pass (the shared config's typescript-eslint block). They skip the
+ * script re-parse: they are compiled before they ship, so "module vs legacy
+ * script" is not a question their parse failure can answer — a fatal error
+ * there is reported as the parse error itself.
  */
 
 const fs = require('fs');
@@ -18,6 +24,40 @@ const { ESLint } = require('eslint');
 const { configs, parsesAsScript } = require('@shoptet/addon-eslint-config');
 
 const ROOT = path.join(__dirname, '..');
+
+const TS_OR_JSX = /\.(ts|tsx|mts|cts|jsx)$/i;
+
+// no-unused-vars under both ids: core on JS, the typescript-eslint extension
+// on TS/JSX (same options, same trust filter).
+const UNUSED_VARS_RULES = new Set(['no-unused-vars', '@typescript-eslint/no-unused-vars']);
+
+// Core rules the shared config turns OFF on TypeScript/JSX because they
+// misread that syntax (each replaced by a TS-aware variant, or dropped — see
+// TYPESCRIPT_RULES in eslint.flat.config.js). An inline config comment
+// (`/* eslint no-unused-vars: "error" */`) can switch one back on for a file,
+// and it would then report TypeScript constructs it cannot read. The
+// replacement already covers that code, so the core rule's reports are
+// dropped on these files. `.jsx` keeps core no-redeclare and no-var.
+// test/selftest.js asserts these sets equal what the config turns off.
+const CORE_RULES_REPLACED_ON = {
+  ts: new Set([
+    'no-unused-vars',
+    'no-use-before-define',
+    'no-unused-expressions',
+    'camelcase',
+    'no-var',
+    'no-redeclare',
+    'getter-return',
+  ]),
+  jsx: new Set(['no-unused-vars', 'no-use-before-define', 'no-unused-expressions', 'camelcase']),
+};
+
+/** The replaced-core set for a file, or null for plain JavaScript. */
+function replacedCoreRules(filePath) {
+  if (/\.jsx$/i.test(filePath)) return CORE_RULES_REPLACED_ON.jsx;
+  if (TS_OR_JSX.test(filePath)) return CORE_RULES_REPLACED_ON.ts;
+  return null;
+}
 
 // The flat config array (`configs.recommended`) already declares the
 // `shoptet` plugin itself (A2 decision 2) — do NOT also pass a `plugins`
@@ -92,16 +132,30 @@ function usesModuleSyntax(filePath) {
   // await are all SyntaxErrors in script mode, so "cannot run as a classic
   // script" IS the module commitment (round 13 — shared with the
   // no-core-overwrite rule via script-detect.js).
-  if (filePath.toLowerCase().endsWith('.mjs')) return true;
+  // .mts likewise. TypeScript/JSX get the AST-marker check (the filename
+  // selects it inside parsesAsScript) — espree would fail on any type
+  // annotation and call every .ts file a module.
+  if (/\.m[jt]s$/i.test(filePath)) return true;
   try {
-    return !parsesAsScript(fs.readFileSync(filePath, 'utf8'));
+    return !parsesAsScript(fs.readFileSync(filePath, 'utf8'), filePath);
   } catch {
     return false; // unreadable → the lint run itself will surface that
   }
 }
 
+// ESLint's report for a directive that names a rule the file's config does
+// not define (`// eslint-disable-next-line react-hooks/exhaustive-deps`, or a
+// runner-only id such as `shoptet/es-module-required` / `CodeQuality`). It
+// carries the directive's id as its ruleId and error severity, so an id that
+// happens to be in RELIABLE_RULES would gate on a comment. It is never a
+// defect in the code, only in a comment ESLint could not apply — dropped.
+const UNKNOWN_RULE_DIRECTIVE = /^Definition for rule '[^']+' was not found\.$/;
+
 function pushMessages(findings, result) {
+  const replacedCore = replacedCoreRules(result.filePath);
   for (const message of result.messages) {
+    if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
+    if (replacedCore && replacedCore.has(message.ruleId)) continue;
     findings.push({
       file: result.filePath,
       line: message.line || 1,
@@ -122,13 +176,14 @@ async function lintJavaScript(files) {
 
   for (const result of results) {
     if (result.messages.some((m) => m.fatal)) {
-      moduleParseFailures.push(result);
+      if (TS_OR_JSX.test(result.filePath)) pushMessages(findings, result);
+      else moduleParseFailures.push(result);
     } else {
       if (
-        result.messages.some((m) => m.ruleId === 'no-unused-vars') &&
+        result.messages.some((m) => UNUSED_VARS_RULES.has(m.ruleId)) &&
         !usesModuleSyntax(result.filePath)
       ) {
-        result.messages = result.messages.filter((m) => m.ruleId !== 'no-unused-vars');
+        result.messages = result.messages.filter((m) => !UNUSED_VARS_RULES.has(m.ruleId));
       }
       pushMessages(findings, result);
     }
@@ -175,7 +230,7 @@ async function lintJavaScript(files) {
       // whose callers (HTML onclick handlers) ESLint cannot see, so its
       // positives are not trustworthy there. The module pass keeps the rule
       // only for files that actually use module syntax (see usesModuleSyntax).
-      scriptResult.messages = scriptResult.messages.filter((m) => m.ruleId !== 'no-unused-vars');
+      scriptResult.messages = scriptResult.messages.filter((m) => !UNUSED_VARS_RULES.has(m.ruleId));
       pushMessages(findings, scriptResult);
     }
   }
@@ -183,4 +238,4 @@ async function lintJavaScript(files) {
   return findings;
 }
 
-module.exports = { lintJavaScript };
+module.exports = { lintJavaScript, CORE_RULES_REPLACED_ON };

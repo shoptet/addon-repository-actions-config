@@ -113,6 +113,16 @@ for (const file of goodFilesOnDisk) {
   else pass(`${file}: clean`);
 }
 
+// A directive ESLint cannot apply ("Definition for rule … was not found") is a
+// comment problem, never a code defect — it must never reach the gate, under
+// whatever id it names (linters/eslint-linter.js drops it).
+{
+  const unknownRule = badDiagnostics.filter((d) => /^Definition for rule /.test(d.message));
+  if (unknownRule.length === 0)
+    pass('no "Definition for rule … was not found" diagnostic reaches the gate');
+  else fail(`unknown-rule directive reports reached the gate: ${JSON.stringify(unknownRule)}`);
+}
+
 // ── 4: reconcile-utils — the diff parser and fingerprint the CI workflow
 //       require()s from this tool (silent-failure territory, so unit-pinned) ──
 console.log('reconcile-utils:');
@@ -226,7 +236,10 @@ for (const side of ['bad', 'good']) {
       fail(`test-cases/${side}/${entry.name}: subdirectories are not scanned — flatten it`);
       continue;
     }
-    if (!/\.(js|mjs|cjs|css|scss|less|html|htm)$/i.test(entry.name)) {
+    if (
+      !/\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|css|scss|less|html|htm)$/i.test(entry.name) ||
+      /\.d\.(ts|mts|cts)$/i.test(entry.name)
+    ) {
       fail(
         `test-cases/${side}/${entry.name}: extension outside the lint patterns — it would pass vacuously`,
       );
@@ -242,7 +255,9 @@ const { RELIABLE_RULES } = require('../profiles');
 // never populate (they surface as CssSyntaxError, which IS pinned).
 const COVERAGE_EXEMPT = new Set(['stylelint/parse-error']);
 const pinned = new Set();
-for (const rules of Object.values(spec)) for (const r of rules) pinned.add(r.split('@')[0]);
+// lastIndexOf: scoped rule ids start with '@' themselves (@typescript-eslint/…).
+for (const rules of Object.values(spec))
+  for (const r of rules) pinned.add(r.slice(0, r.lastIndexOf('@')));
 for (const rule of RELIABLE_RULES) {
   if (COVERAGE_EXEMPT.has(rule)) continue;
   if (pinned.has(rule)) pass(`${rule}: pinned`);
@@ -517,9 +532,17 @@ if (xyzRun.status === 1 && xyzJson && xyzJson.diagnostics.length === 0)
 else fail(`unsupported-type contract broken: status ${xyzRun.status}`);
 fs.rmSync(xyzTmp, { recursive: true, force: true });
 
-// Foreign source extensions surface in skipped — not silently invisible (round 13).
+// Foreign source extensions surface in skipped — not silently invisible (round
+// 13). TypeScript/JSX are linted (CZ3TDR1-938) — in every extension casing,
+// since the config's `files` matching is as case-sensitive as the JS one —
+// while `.d.ts` (types only, no runtime code) is skipped visibly.
 const tsTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-ts-'));
-fs.writeFileSync(path.join(tsTmp, 'typed.ts'), 'export const x = eval("1");\n');
+const TS_LINTED = ['typed.ts', 'typed-upper.TS', 'view.tsx', 'mod.mts', 'common.cts', 'view.jsx'];
+for (const name of TS_LINTED) {
+  fs.writeFileSync(path.join(tsTmp, name), 'export const x = eval("1");\n');
+}
+fs.writeFileSync(path.join(tsTmp, 'types.d.ts'), 'export declare const y: number;\n');
+fs.writeFileSync(path.join(tsTmp, 'widget.vue'), '<template><div /></template>\n');
 fs.writeFileSync(path.join(tsTmp, 'app.js'), 'export const ok = 1;\n');
 const tsRun = runRaw([tsTmp, '--rdjson']);
 let tsJson = null;
@@ -528,11 +551,28 @@ try {
 } catch (e) {
   /* handled below */
 }
-if (tsRun.status === 0 && tsJson && (tsJson.skipped || []).some((f) => f.endsWith('typed.ts'))) {
-  pass('foreign source extension (.ts) surfaces in skipped');
+const tsSkipped = (tsJson && tsJson.skipped) || [];
+const tsDiags = (tsJson && tsJson.diagnostics) || [];
+const tsAllLinted = TS_LINTED.every((name) =>
+  tsDiags.some(
+    (d) => d.location.path.endsWith(name) && d.code.value === 'no-eval' && d.severity === 'ERROR',
+  ),
+);
+const tsNoSilentDrop = !tsDiags.some((d) =>
+  /outside of base path|no matching configuration/i.test(d.message),
+);
+if (
+  tsRun.status === 0 &&
+  tsAllLinted &&
+  tsNoSilentDrop &&
+  tsSkipped.some((f) => f.endsWith('types.d.ts')) &&
+  tsSkipped.some((f) => f.endsWith('widget.vue')) &&
+  !tsSkipped.some((f) => TS_LINTED.some((name) => f.endsWith(name)))
+) {
+  pass('TS/JSX extensions are linted (all casings); .d.ts and .vue surface in skipped');
 } else {
   fail(
-    `.ts contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsJson && tsJson.skipped)}`,
+    `TS/JSX discovery contract broken: status ${tsRun.status}, skipped=${JSON.stringify(tsSkipped)}, diags=${JSON.stringify(tsDiags.map((d) => [d.location.path, d.code.value]))}`,
   );
 }
 fs.rmSync(tsTmp, { recursive: true, force: true });
@@ -573,6 +613,120 @@ fs.rmSync(longTmp, { recursive: true, force: true });
     pass(`testid anchors on the matching template line (${wantLine})`);
   } else {
     fail(`testid anchor broken: expected line ${wantLine} among [${testidLines.join(', ')}]`);
+  }
+}
+
+// ── eslint-disable parity: a directive naming the CORE id must cover the
+// TypeScript replacement exactly as ESLint covers the core rule on .js
+// (packages/addon-eslint-config/rules/core-id-directives.js). Measured
+// against ESLint itself, so an ESLint upgrade that changes directive
+// semantics fails here instead of silently diverging.
+console.log('eslint-disable parity (core id, .js vs .ts):');
+{
+  const { Linter } = require('eslint');
+  const { configs } = require('@shoptet/addon-eslint-config');
+  const linter = new Linter({ configType: 'flat' });
+  const { CORE_RULES_REPLACED_ON } = require('../linters/eslint-linter');
+  // On .ts, a core rule the config replaced only runs when an inline config
+  // switched it back on — the runner drops its reports, so this does too.
+  const unusedLines = (source, filename) =>
+    linter
+      .verify(source, configs.recommended, { filename })
+      .filter(
+        (m) => m.ruleId === 'no-unused-vars' || m.ruleId === '@typescript-eslint/no-unused-vars',
+      )
+      .filter((m) => !(filename.endsWith('.ts') && CORE_RULES_REPLACED_ON.ts.has(m.ruleId)))
+      .map((m) => m.line)
+      .join(',');
+  const DIRECTIVE_CASES = {
+    'next-line': '// eslint-disable-next-line no-unused-vars\nconst a = 1;\nexport {};\n',
+    'same line': 'const a = 1; // eslint-disable-line no-unused-vars\nexport {};\n',
+    justification: '// eslint-disable-next-line no-unused-vars -- kept\nconst a = 1;\nexport {};\n',
+    'block range':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n',
+    'bare enable':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable */\nconst b = 2;\nexport {};\n',
+    'enable of another id':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable no-console */\nconst b = 2;\nexport {};\n',
+    'two ids': '/* eslint-disable no-console, no-unused-vars */\nconst a = 1;\nexport {};\n',
+    'nested disable':
+      '/* eslint-disable no-unused-vars */\n/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n',
+    'line-comment disable': '// eslint-disable no-unused-vars\nconst a = 1;\nexport {};\n',
+    'line-comment enable':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n// eslint-enable no-unused-vars\nconst b = 2;\nexport {};\n',
+    'multi-line disable-line':
+      'const a = 1; /* eslint-disable-line\n no-unused-vars */\nexport {};\n',
+    'multi-line disable-next-line':
+      '/* eslint-disable-next-line\n no-unused-vars */\nconst a = 1;\nexport {};\n',
+    // Justification and list parsing, as ESLint's ConfigCommentParser does it.
+    'triple-dash justification':
+      '// eslint-disable-next-line no-unused-vars --- kept\nconst a = 1;\nexport {};\n',
+    'trailing dashes (no justification)':
+      '// eslint-disable-next-line no-unused-vars --\nconst a = 1;\nexport {};\n',
+    'bare enable with justification':
+      '/* eslint-disable no-unused-vars */\nconst a = 1;\n/* eslint-enable -- done */\nconst b = 2;\nexport {};\n',
+    'quoted id': '// eslint-disable-next-line "no-unused-vars"\nconst a = 1;\nexport {};\n',
+    'ids separated by a space':
+      '// eslint-disable-next-line no-console no-unused-vars\nconst a = 1;\nexport {};\n',
+    'no space after comma':
+      '// eslint-disable-next-line no-console,no-unused-vars\nconst a = 1;\nexport {};\n',
+    'dashes without spaces':
+      '// eslint-disable-next-line no-unused-vars--x\nconst a = 1;\nexport {};\n',
+    // Inline config comments: the FIRST configuration of the core id in a
+    // block comment applies to the whole file.
+    'inline off': '/* eslint no-unused-vars: "off" */\nconst a = 1;\nexport {};\n',
+    'inline 0': '/* eslint no-unused-vars: 0 */\nconst a = 1;\nexport {};\n',
+    'inline ["off"]': '/* eslint no-unused-vars: ["off"] */\nconst a = 1;\nexport {};\n',
+    'inline unquoted off': '/* eslint no-unused-vars: off */\nconst a = 1;\nexport {};\n',
+    'inline quoted key': '/* eslint "no-unused-vars": "off" */\nconst a = 1;\nexport {};\n',
+    'inline off after the code': 'const a = 1;\n/* eslint no-unused-vars: "off" */\nexport {};\n',
+    'inline off among other rules':
+      '/* eslint no-console: "off", no-unused-vars: "off" */\nconst a = 1;\nexport {};\n',
+    'inline off with justification':
+      '/* eslint no-unused-vars: "off" -- legacy */\nconst a = 1;\nexport {};\n',
+    'inline off in a line comment (ignored)':
+      '// eslint no-unused-vars: "off"\nconst a = 1;\nexport {};\n',
+    'inline off of another rule': '/* eslint no-console: "off" */\nconst a = 1;\nexport {};\n',
+    'inline off of a longer id': '/* eslint no-unused-vars-x: "off" */\nconst a = 1;\nexport {};\n',
+    'inline error, then off (first wins)':
+      '/* eslint no-unused-vars: "error" */\n/* eslint no-unused-vars: "off" */\nconst a = 1;\nexport {};\n',
+  };
+  for (const [name, source] of Object.entries(DIRECTIVE_CASES)) {
+    const js = unusedLines(source, 'probe.js');
+    const ts = unusedLines(source, 'probe.ts');
+    if (js === ts) pass(`${name}: same lines on .js and .ts ([${js}])`);
+    else fail(`${name}: .js reports lines [${js}], .ts reports [${ts}]`);
+  }
+
+  // The one documented divergence (README): after a BARE `eslint-disable`,
+  // `eslint-enable <core id>` re-enables the core rule on .js, but cannot
+  // re-enable the replacement on .ts — the bare disable switched it off
+  // natively and a wrapper can only drop reports, never add them. A false
+  // negative; pinned so it stays deliberate (and so a fix is noticed).
+  const bareThenCore =
+    '/* eslint-disable */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n';
+  const js = unusedLines(bareThenCore, 'probe.js');
+  const ts = unusedLines(bareThenCore, 'probe.ts');
+  // Second documented divergence: an inline config that overrides the core
+  // id's OPTIONS cannot be applied to the replacement (it keeps the profile's
+  // options), so it may still report what the override would have allowed.
+  const optionsOverride =
+    '/* eslint no-unused-vars: ["error", { varsIgnorePattern: "^_" }] */\nconst _a = 1;\nexport {};\n';
+  const optJs = unusedLines(optionsOverride, 'probe.js');
+  const optTs = unusedLines(optionsOverride, 'probe.ts');
+  if (optJs === '' && optTs === '2') {
+    pass('documented divergence: an inline options override of the core id applies to .js only');
+  } else {
+    fail(
+      `inline options override changed: .js [${optJs}], .ts [${optTs}] — update README and this pin`,
+    );
+  }
+  if (js === '4' && ts === '') {
+    pass('documented divergence: bare disable + core-id enable re-enables .js only');
+  } else {
+    fail(
+      `bare disable + core-id enable changed: .js [${js}], .ts [${ts}] — update README and this pin`,
+    );
   }
 }
 

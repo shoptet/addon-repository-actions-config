@@ -12,6 +12,30 @@
 // different (partner-owned) attribute and must not match.
 const TESTID_PATTERN = /\[\s*data-testid(?![\w-])/i;
 
+// TypeScript nodes whose whole subtree is type-only — erased at compile time,
+// so a string inside one (a literal type, a key of an interface or type
+// literal, a type argument) cannot select anything at runtime. Enum members
+// are NOT here: an enum is a runtime object.
+const TYPE_ONLY = new Set([
+  'TSTypeAnnotation',
+  'TSTypeAliasDeclaration',
+  'TSInterfaceDeclaration',
+  'TSTypeLiteral',
+  'TSLiteralType',
+  'TSTypeParameterInstantiation',
+  'TSTypeParameterDeclaration',
+  'TSIndexedAccessType',
+]);
+
+/** Inside a type, or an ambient `declare` (no code emitted at all)? */
+function isTypeOnly(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (TYPE_ONLY.has(current.type) || current.declare === true) return true;
+    if (current.type === 'Program') return false;
+  }
+  return false;
+}
+
 module.exports = {
   meta: {
     type: 'problem',
@@ -58,9 +82,15 @@ module.exports = {
 
     return {
       Literal(node) {
+        // TypeScript type positions (`type Sel = '[data-testid]'`, an
+        // interface key) and ambient declarations are erased at compile time.
+        if (isTypeOnly(node)) return;
         if (typeof node.value === 'string') check(node, node.value);
       },
       TemplateLiteral(node) {
+        // A template literal TYPE (`type Sel = \`[data-testid]\``) arrives as
+        // TSLiteralType { literal: TemplateLiteral } — erased like any type.
+        if (isTypeOnly(node)) return;
         for (const quasi of node.quasis) {
           checkQuasi(quasi);
         }

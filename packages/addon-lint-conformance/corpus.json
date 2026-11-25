@@ -134,6 +134,24 @@
         ],
         "exitCode": 0
       }
+    },
+    {
+      "id": "typescript-linted-dts-skipped",
+      "description": "TypeScript and JSX sources are lint targets like JavaScript ones: a blocker in a .ts or .tsx file must be reported, never skipped as foreign source. A .d.ts declaration file carries no runtime code and must be skipped — visibly, in the skipped reporting, not silently. Without this shape a runner that still globs only .js/.mjs/.cjs passes every other shape while giving a partner a local green over code the CI gate blocks on (or the other way round).",
+      "files": {
+        "src/app.js": "export const ok = 1;\n",
+        "src/typed.ts": "export const x: number = eval(\"1\");\n",
+        "src/view.tsx": "export const y = eval(\"2\");\nexport const View = () => <div className=\"view\" />;\n",
+        "src/types.d.ts": "export declare const z: number;\n"
+      },
+      "expect": {
+        "skippedPaths": ["src/types.d.ts"],
+        "findings": [
+          { "ruleId": "no-eval", "severity": "blocker", "path": "src/typed.ts" },
+          { "ruleId": "no-eval", "severity": "blocker", "path": "src/view.tsx" }
+        ],
+        "exitCode": 0
+      }
     }
   ]
 }
