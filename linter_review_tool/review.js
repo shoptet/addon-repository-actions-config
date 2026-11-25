@@ -29,6 +29,18 @@ const IGNORE = [
   `**/*.bundle.{${IGNORED_MIN_EXTENSIONS}}`,
   // TypeScript declaration files: types only, nothing that runs.
   '**/*.d.{ts,mts,cts}',
+  // Test files: they never ship, and test code does on purpose what addon code
+  // must not (mocking `window.shoptet`, asserting on 'javascript:' URLs,
+  // selecting test fixtures by data-testid). Only the unambiguous conventions
+  // of jest/vitest — a plain `test/` or `tests/` directory is NOT skipped, a
+  // partner may name a feature folder that way (CZ3TDR1-978).
+  `**/*.test.{${JS_EXTENSIONS.join(',')}}`,
+  `**/*.spec.{${JS_EXTENSIONS.join(',')}}`,
+  // Cypress specs and jest fixtures: the same unambiguous test conventions.
+  `**/*.cy.{${JS_EXTENSIONS.join(',')}}`,
+  '**/__tests__/**',
+  '**/__mocks__/**',
+  '**/__fixtures__/**',
   '**/node_modules/**',
   '**/dist/**',
   '**/vendor/**',
@@ -51,9 +63,10 @@ function isIgnoredPath(filePath) {
   // /i on BOTH halves — the globs collect nocase, so DIST/app.js must be
   // ignored in single-file mode exactly like dist/app.js is in dir mode.
   return (
-    /(^|\/)(node_modules|dist|vendor)\//i.test(filePath) ||
+    /(^|\/)(node_modules|dist|vendor|__tests__|__mocks__|__fixtures__)\//i.test(filePath) ||
     /\.(min|bundle)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|css|scss|less|html|htm)$/i.test(filePath) ||
-    /\.d\.(ts|mts|cts)$/i.test(filePath)
+    /\.d\.(ts|mts|cts)$/i.test(filePath) ||
+    /\.(test|spec|cy)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts)$/i.test(filePath)
   );
 }
 
@@ -201,7 +214,7 @@ async function main() {
     // Fail closed either way — but say WHY: "all candidates skipped" is a very
     // different situation from "nothing matched at all".
     const message = files.skipped.length
-      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/declaration/foreign-source/hidden/symlinked) — nothing lintable.`
+      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/declaration/test/foreign-source/hidden/symlinked) — nothing lintable.`
       : `No reviewable files (.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts/.css/.scss/.less/.html) found in ${targetPath}`;
     fail(
       rdjson,
@@ -251,7 +264,7 @@ async function main() {
 
   if (skipped.length) {
     info(
-      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/declaration/foreign-source/hidden/symlinked): ${skipped.join(', ')}`,
+      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/declaration/test/foreign-source/hidden/symlinked): ${skipped.join(', ')}`,
     );
   }
   const { blockerCount } = report(findings);
