@@ -105,6 +105,18 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   marked `role="presentation"`/`aria-hidden="true"` (use `alt=""` there — a
   cheap, always-valid fix). Both detections are deterministic; the false-positive
   surface is tiny and accepted deliberately.
+- *`javascript:` URLs gate only where they can run.* `shoptet/no-script-url`
+  (it replaces core `no-script-url`, whose `eslint-disable` comments still
+  apply) reports a static `javascript:` string only when it is assigned to
+  `href` / `src` / `action` / `formAction` / `location`, passed as the value
+  to `setAttribute` for one of those attributes, passed to
+  `location.assign` / `location.replace` / `open()`, or used as a JSX
+  `href` / `src` / `action` attribute. Code that compares with, filters or
+  documents `javascript:` (a sanitizer, a blocklist, a type) is not reported.
+  Deliberate false negatives: a `javascript:` URL that reaches the sink
+  through a variable, a concatenation or a conditional
+  (`el.href = ok ? url : 'javascript:void(0)'`), or inside an HTML string
+  (`'<a href="javascript:…">'`) is not reported — the AI review covers those.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see
@@ -178,7 +190,7 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   - Strings in type positions (literal types, template literal types,
     interface keys, type arguments) and in ambient declarations are not
     checked by `shoptet/no-testid-selector`: they are erased at compile
-    time. (Core `no-script-url` still checks them — tracked in CZ3TDR1-959.)
+    time. `shoptet/no-script-url` does not check them either (see below).
   - `shoptet/es-module-required` does not apply: TypeScript is compiled before
     it ships, so a TypeScript file that fails to parse is reported as the parse
     error itself (`CodeQuality`).

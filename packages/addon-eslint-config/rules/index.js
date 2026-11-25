@@ -17,5 +17,6 @@ module.exports = {
     'no-global-console': require('./shoptet-no-global-console'), // F3 (window.console bypass)
     camelcase: require('./shoptet-camelcase'), // I3 (TypeScript files: ambient names exempt)
     'no-var': require('./shoptet-no-var'), // D1 (TypeScript files: ambient declarations exempt)
+    'no-script-url': require('./shoptet-no-script-url'), // A1 (only where the URL can run)
   },
 };

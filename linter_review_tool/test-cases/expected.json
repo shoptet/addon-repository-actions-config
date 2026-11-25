@@ -122,10 +122,16 @@
     "no-self-assign@blocker",
     "no-setter-return@blocker"
   ],
+  "bad/bad-script-url.js": [
+    "shoptet/no-script-url@blocker:11"
+  ],
+  "bad/bad-script-url.tsx": [
+    "shoptet/no-script-url@blocker:5"
+  ],
   "bad/bad-security.js": [
     "no-eval@blocker",
     "no-implied-eval@blocker",
-    "no-script-url@blocker"
+    "shoptet/no-script-url@blocker"
   ],
   "bad/bad-settimeout-coercions.js": [
     "shoptet/no-settimeout-hack@blocker:8"
