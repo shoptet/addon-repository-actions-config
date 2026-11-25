@@ -157,3 +157,50 @@ declare namespace AddonNs {
 declare function customElement(tag: string): ClassDecorator;
 @customElement('shoptet-widget')
 class ShoptetWidget {}
+
+// Computed keys of interface / type-literal members are type positions.
+export interface AddonEvents {
+  [Ev.Open]: { id: string };
+  [Ev.Close]: void;
+}
+export enum Ev {
+  Open = 'addon:open',
+  Close = 'addon:close',
+}
+export type Payload = { [EVENTS.open]: string };
+export const EVENTS = { open: 'o' } as const;
+
+// A template literal TYPE is erased like any other type.
+export type ForbiddenSel = `[data-testid="cart"]`;
+export const pickSel = (sel: `[data-testid]`) => sel;
+
+// An exhaustive switch over a union, and assertNever(): tsc proves both.
+type Variant = 'a' | 'b';
+declare function assertNever(value: never): never;
+export class Labelled {
+  constructor(private readonly variant: Variant) {}
+
+  get label(): string {
+    switch (this.variant) {
+      case 'a':
+        return 'A';
+      case 'b':
+        return 'B';
+    }
+  }
+
+  get code(): string {
+    if (this.variant === 'a') return 'x';
+    if (this.variant === 'b') return 'y';
+    return assertNever(this.variant);
+  }
+}
+
+// `_` names tsc exempts: for-of / for-in heads and renamed destructuring.
+export function countAll(n: number, record: Record<string, number>): number {
+  let count = 0;
+  for (const _ of Array.from({ length: n })) count += 1;
+  for (const _key in record) count += 1;
+  const { id: _id, name } = { id: 1, name: 2 };
+  return count + name;
+}

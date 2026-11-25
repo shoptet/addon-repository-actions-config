@@ -79,6 +79,7 @@
   ],
   "bad/bad-jsx-practices.jsx": [
     "@typescript-eslint/no-unused-vars@blocker",
+    "getter-return@blocker",
     "no-redeclare@blocker",
     "no-var@blocker"
   ],
@@ -201,8 +202,8 @@
   ],
   "bad/bad-ts-dead-code.ts": [
     "@typescript-eslint/no-unused-expressions@blocker",
-    "@typescript-eslint/no-unused-vars@blocker:2",
-    "@typescript-eslint/no-use-before-define@blocker",
+    "@typescript-eslint/no-unused-vars@blocker:4",
+    "@typescript-eslint/no-use-before-define@blocker:2",
     "shoptet/no-var@blocker"
   ],
   "bad/bad-ts-declared-global.ts": [

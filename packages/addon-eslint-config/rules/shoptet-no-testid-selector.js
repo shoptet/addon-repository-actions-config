@@ -88,6 +88,9 @@ module.exports = {
         if (typeof node.value === 'string') check(node, node.value);
       },
       TemplateLiteral(node) {
+        // A template literal TYPE (`type Sel = \`[data-testid]\``) arrives as
+        // TSLiteralType { literal: TemplateLiteral } — erased like any type.
+        if (isTypeOnly(node)) return;
         for (const quasi of node.quasis) {
           checkQuasi(quasi);
         }

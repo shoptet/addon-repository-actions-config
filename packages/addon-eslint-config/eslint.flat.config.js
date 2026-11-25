@@ -26,7 +26,10 @@
  * `new ESLint({ plugins: { shoptet: require('../rules') } })` wiring to fall
  * back on. Declaring it here is now the single source of truth for the
  * plugin — consumers must NOT also pass a `shoptet` plugin option to `ESLint`,
- * or ESLint throws "Cannot redefine plugin".
+ * or ESLint throws "Cannot redefine plugin". The same holds for
+ * `@typescript-eslint`: the TypeScript block registers its own narrowed copy
+ * of that plugin, so this config cannot be combined with typescript-eslint's
+ * own configs (`...tseslint.configs.recommended`) in one array.
  *
  * TypeScript / JSX (`.ts`, `.tsx`, `.mts`, `.cts`, `.jsx`) get a second block:
  * the same rules on the typescript-eslint parser (syntax only — no `tsconfig`,
@@ -295,6 +298,13 @@ const TYPESCRIPT_RULES = {
   // declarations. An eslint-disable naming `no-var` still applies.
   'no-var': 'off',
   'shoptet/no-var': JS_RULES['no-var'],
+  // Off on TypeScript, no replacement: core getter-return cannot see that a
+  // `switch` over a union is exhaustive (or that `assertNever()` returns
+  // `never`), so it reports correct getters. tsc checks it with a declared
+  // return type (TS2366). Of the core rules typescript-eslint's own
+  // eslint-recommended turns off on TS, this is the only one this profile
+  // enables that misreported TS idioms when measured. `.jsx` keeps it.
+  'getter-return': 'off',
 };
 
 const TYPESCRIPT_FILES = [
@@ -326,10 +336,11 @@ const typescriptConfig = {
 
 // `.jsx` rides the TypeScript block for its parser (JSX references), but it is
 // plain JavaScript: no tsc runs, so "a redeclaration is a compile error" does
-// not hold, and there is no `declare`. It keeps the core no-redeclare and
-// no-var — a duplicate top-level `function dup() {}` is reported, as the same
-// code is a parse error in a `.js` module.
-const JSX_KEEPS_CORE = ['no-redeclare', 'no-var'];
+// not hold, there is no `declare`, and there are no union types to make a
+// switch exhaustive. It keeps the core no-redeclare, no-var and getter-return —
+// a duplicate top-level `function dup() {}` is reported, as the same code is a
+// parse error in a `.js` module.
+const JSX_KEEPS_CORE = ['no-redeclare', 'no-var', 'getter-return'];
 const jsxConfig = {
   files: ['**/*.[jJ][sS][xX]'],
   rules: {

@@ -47,6 +47,7 @@ const CORE_RULES_REPLACED_ON = {
     'camelcase',
     'no-var',
     'no-redeclare',
+    'getter-return',
   ]),
   jsx: new Set(['no-unused-vars', 'no-use-before-define', 'no-unused-expressions', 'camelcase']),
 };

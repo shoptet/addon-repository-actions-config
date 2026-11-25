@@ -15,7 +15,9 @@
  * too. An `eslint-disable` naming the core id `camelcase` still applies
  * (core-id-directives.js), as it would on JavaScript.
  *
- * Plain JavaScript keeps core `camelcase` (no `declare` exists there).
+ * Runs on `.ts/.tsx/.mts/.cts` and `.jsx` (the whole TypeScript/JSX block);
+ * `.js/.mjs/.cjs` keep core `camelcase`. On `.jsx` it behaves exactly like
+ * the core rule — no `declare` or parameter property exists there.
  */
 
 const { builtinRules } = require('eslint/use-at-your-own-risk');

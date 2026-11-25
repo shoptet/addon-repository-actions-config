@@ -107,10 +107,11 @@ const TYPESCRIPT_SWAPS = {
   camelcase: 'shoptet/camelcase',
   'no-var': 'shoptet/no-var',
   'no-redeclare': null,
+  'getter-return': null,
 };
 // `.jsx` is plain JavaScript on the TypeScript parser: no tsc runs and no
 // `declare` exists, so these swaps do not apply to it — it keeps the core rule.
-const JSX_KEEPS_CORE = new Set(['no-redeclare', 'no-var']);
+const JSX_KEEPS_CORE = new Set(['no-redeclare', 'no-var', 'getter-return']);
 
 /**
  * Measure the ESLint package's DECLARED severities: the rules ESLint actually

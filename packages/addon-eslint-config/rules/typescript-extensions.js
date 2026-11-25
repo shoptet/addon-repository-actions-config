@@ -21,6 +21,8 @@
  *     under --noUnusedParameters, like an unused argument (`args: 'none'`);
  *   - an unused DECORATED class: the decorator registers it at runtime
  *     (`@customElement('x')`), so it is not dead code;
+ *   - a `_`-prefixed binding tsc exempts: in a for-of / for-in head, or one
+ *     introduced by renaming a destructured property (`{ id: _id }`);
  *   - in `.tsx/.jsx`, an unused IMPORT that may be the JSX factory compiled
  *     JSX calls: one named by a `@jsx` / `@jsxFrag` pragma TypeScript or
  *     Babel would read (see LEADING_PRAGMA / LINE_PRAGMA), or one of the
@@ -30,7 +32,9 @@
  *     factory is already counted as used by the parser.
  *
  * `no-use-before-define` drops a reference to an AMBIENT declaration
- * (`declare const SHOP_CFG`, `declare class Lib`): no emitted code, no TDZ.
+ * (`declare const SHOP_CFG`, `declare class Lib`) and one in the computed key
+ * of an interface / type-literal member (`[Ev.Open]: …`): no emitted code,
+ * no TDZ.
  */
 
 const { findVariable } = require('@eslint-community/eslint-utils');
@@ -80,8 +84,62 @@ function isDecoratedClassDef(def) {
 function useBeforeDefineSkip(descriptor, context) {
   const node = descriptor.node;
   if (!node || node.type !== 'Identifier') return false;
+  if (insideTypeMemberKey(node)) return true;
   const variable = findVariable(context.sourceCode.getScope(node), node);
   return Boolean(variable && variable.defs.length && variable.defs.every(isAmbientDef));
+}
+
+/**
+ * A computed key of an interface or type-literal member (`[Ev.Open]: …`,
+ * `{ [TAG]: true }`) is a type position: it emits nothing, so a reference to
+ * a value declared further down cannot hit the TDZ (tsc is clean). A class
+ * member's computed key (`abstract [KEY]: string`) is NOT covered — class
+ * bodies are evaluated, and that one is a real error (TS2448).
+ */
+function insideTypeMemberKey(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (current.type === 'TSInterfaceBody' || current.type === 'TSTypeLiteral') return true;
+    if (current.type === 'ClassBody' || current.type === 'Program') return false;
+  }
+  return false;
+}
+
+/**
+ * tsc's own `_` exemptions under --noUnusedLocals: a `_`-prefixed binding in
+ * the head of a for-of / for-in (`for (const _ of items)` — "repeat N times")
+ * and one introduced by RENAMING a destructured property (`{ id: _id }`).
+ * A shorthand `{ _id }` is reported by tsc, and so here.
+ */
+function isTscUnderscoreExempt(def) {
+  if (!def.name || !def.name.name || !def.name.name.startsWith('_')) return false;
+  const declaration = def.parent;
+  if (
+    def.type === 'Variable' &&
+    declaration &&
+    declaration.parent &&
+    (declaration.parent.type === 'ForOfStatement' ||
+      declaration.parent.type === 'ForInStatement') &&
+    declaration.parent.left === declaration
+  ) {
+    return true;
+  }
+  let target = def.name;
+  if (
+    target.parent &&
+    target.parent.type === 'AssignmentPattern' &&
+    target.parent.left === target
+  ) {
+    target = target.parent; // `{ id: _id = fallback }`
+  }
+  const property = target.parent;
+  return Boolean(
+    property &&
+    property.type === 'Property' &&
+    property.value === target &&
+    !property.shorthand &&
+    property.parent &&
+    property.parent.type === 'ObjectPattern',
+  );
 }
 
 function unusedVarsSkip() {
@@ -102,6 +160,7 @@ function unusedVarsSkip() {
     // A decorated class is registered by its decorator at runtime
     // (`@customElement('x') class Widget …`) — used even if nothing names it.
     if (variable.defs.every(isDecoratedClassDef)) return true;
+    if (variable.defs.every(isTscUnderscoreExempt)) return true;
     return (
       JSX_FILE.test(context.filename) &&
       variable.defs.every((def) => def.type === 'ImportBinding') &&

@@ -20,8 +20,8 @@ build step.
   TypeScript block deliberately does not check. The TypeScript toolchain
   (`typescript-eslint`, `typescript`) is a hard dependency, loaded with the
   config even by a consumer that lints only JavaScript.
-- `rules/` — the 9 `shoptet/*` rules (`camelcase` and `no-var` — TypeScript
-  files only, `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
+- `rules/` — the 9 `shoptet/*` rules (`camelcase` — TypeScript and JSX files
+  only; `no-var` — `.ts/.tsx/.mts/.cts` only; `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
   `no-redundant-checks`, `no-settimeout-hack`, `no-testid-selector`,
   `prefer-fetch`), `rules/index.js` (the plugin object), and four shared
   helpers (`global-callee.js`, `script-detect.js`, `core-id-directives.js`,
@@ -65,6 +65,21 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.RELIABLE_RULES — the ESLint slice of the allowlist.
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
+
+The config is meant to be used **on its own**. It registers the `shoptet`
+plugin and its own narrowed copy of the `@typescript-eslint` plugin, so do not
+pass either plugin to `ESLint` again, and do not combine it with
+typescript-eslint's configs in one array
+(`[...tseslint.configs.recommended, ...configs.recommended]`): ESLint throws
+`Cannot redefine plugin "@typescript-eslint"`.
+
+A runner that consumes the config also has to mirror two runner-side
+behaviours of `linter_review_tool/linters/eslint-linter.js`. It drops
+"Definition for rule … was not found" reports (a directive naming an
+unknown rule is never a code defect). On TypeScript/JSX files it also drops
+reports from the core rules the config replaces there
+(`CORE_RULES_REPLACED_ON`), which an inline config comment can switch back
+on.
 
 ## SemVer policy
 

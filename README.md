@@ -146,28 +146,39 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
     rule and its typescript-eslint extension report legitimate code
     (overloads, declaration merging, the `const Mode = {…} as const; type
     Mode = …` pair). A genuine redeclaration is a TypeScript compile error,
-    so the partner's build already blocks it. `.jsx` is plain JavaScript (no
-    tsc runs) and keeps the core `no-redeclare` and `no-var`.
-  - Unused-vars reports only what TypeScript itself calls unused (TS6133
-    under `noUnusedLocals`): a value used only in type positions
+    so the partner's build already blocks it. `getter-return` does not run
+    on `.ts/.tsx/.mts/.cts` either: it cannot see that a `switch` over a
+    union is exhaustive or that `assertNever()` returns `never`, so it
+    reports correct getters (tsc checks a declared return type itself,
+    TS2366). `.jsx` is plain JavaScript (no tsc runs, no union types) and
+    keeps the core `no-redeclare`, `no-var` and `getter-return`.
+  - Unused-vars does not report what TypeScript itself does not call unused
+    (TS6133 under `noUnusedLocals`): a value used only in type positions
     (`declare const brand: unique symbol` used as `typeof brand`,
     `const HOSTS = {…}` used as `keyof typeof HOSTS`), an unused ambient
     declaration (`declare const shoptetConfig: X` emits no code), a
     `using` / `await using` binding (it exists for its disposal) and an
     unused type parameter (`type Tagged<T, Tag>` — tsc reports it only under
     `--noUnusedParameters`, like the unused arguments this profile already
-    exempts) are not reported; nor is an unused decorated class (the
-    decorator registers it at runtime). `no-use-before-define` does not report
-    a use of an ambient declaration above it (no code, no TDZ).
+    exempts), and a `_`-prefixed binding where tsc exempts it (the head of a
+    for-of / for-in, a renamed destructured property `{ id: _id }`) are not
+    reported; nor is an unused decorated class (the decorator registers it
+    at runtime, although tsc does report it). Everything else tsc reports
+    stays reported, including a plain `const _x` and a shorthand `{ _id }`.
+    `no-use-before-define` does not report a use of an ambient declaration
+    above it, nor a reference in the computed key of an interface or
+    type-literal member (`[Ev.Open]: …` above `enum Ev`): no code, no TDZ. A
+    class member's computed key is evaluated and is still reported.
   - In `.tsx/.jsx`, an unused **import** that may be the JSX factory is not
     reported: one named by a `/** @jsx … */` or `@jsxFrag` pragma in the
     file, or one named `h`, `Fragment`, `jsx` or `createElement` (a factory
     set in `tsconfig`/babel is invisible to the gate). Any other unused
     binding of those names (`const h = 5`) is still reported, and the default
     `React` import is recognised as used.
-  - Strings in type positions (literal types, interface keys, type
-    arguments) and in ambient declarations are not checked by
-    `shoptet/no-testid-selector`: they are erased at compile time.
+  - Strings in type positions (literal types, template literal types,
+    interface keys, type arguments) and in ambient declarations are not
+    checked by `shoptet/no-testid-selector`: they are erased at compile
+    time. (Core `no-script-url` still checks them — tracked in CZ3TDR1-959.)
   - `shoptet/es-module-required` does not apply: TypeScript is compiled before
     it ships, so a TypeScript file that fails to parse is reported as the parse
     error itself (`CodeQuality`).
