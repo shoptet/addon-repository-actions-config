@@ -155,12 +155,14 @@
     },
     {
       "id": "skip-test-files",
-      "description": "Test files never ship, and test code does on purpose what addon code must not (mocking window.shoptet, asserting on 'javascript:' URLs). The unambiguous jest/vitest conventions — *.test.* and *.spec.* files, __tests__/ and __mocks__/ directories — must be skipped and visibly reported as skipped. Files whose names only contain 'test' or 'spec', and a plain tests/ directory (a partner may name a feature folder that way), are ordinary source and must still be linted.",
+      "description": "Test files never ship, and test code does on purpose what addon code must not (mocking window.shoptet, asserting on 'javascript:' URLs). The unambiguous jest/vitest conventions — *.test.*, *.spec.* and *.cy.* files, __tests__/, __mocks__/ and __fixtures__/ directories — must be skipped and visibly reported as skipped. Files whose names only contain 'test' or 'spec', and a plain tests/ directory (a partner may name a feature folder that way), are ordinary source and must still be linted.",
       "files": {
         "src/app.js": "export const ok = 1;\n",
         "src/__tests__/app.test.ts": "export const a = eval(\"1\");\n",
         "src/__mocks__/shoptet.js": "export const b = eval(\"1\");\n",
         "src/widget.spec.js": "export const c = eval(\"1\");\n",
+        "src/login.cy.ts": "export const f = eval(\"1\");\n",
+        "src/__fixtures__/data.js": "export const g = eval(\"1\");\n",
         "src/latest.js": "export const d = eval(\"1\");\n",
         "src/tests/feature.ts": "export const e = eval(\"1\");\n"
       },
@@ -168,12 +170,16 @@
         "skippedPaths": [
           "src/__tests__/app.test.ts",
           "src/__mocks__/shoptet.js",
-          "src/widget.spec.js"
+          "src/widget.spec.js",
+          "src/login.cy.ts",
+          "src/__fixtures__/data.js"
         ],
         "findingsExcludePaths": [
           "src/__tests__/app.test.ts",
           "src/__mocks__/shoptet.js",
-          "src/widget.spec.js"
+          "src/widget.spec.js",
+          "src/login.cy.ts",
+          "src/__fixtures__/data.js"
         ],
         "findings": [
           { "ruleId": "no-eval", "severity": "blocker", "path": "src/latest.js" },

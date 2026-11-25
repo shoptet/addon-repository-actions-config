@@ -36,8 +36,11 @@ const IGNORE = [
   // partner may name a feature folder that way (CZ3TDR1-978).
   `**/*.test.{${JS_EXTENSIONS.join(',')}}`,
   `**/*.spec.{${JS_EXTENSIONS.join(',')}}`,
+  // Cypress specs and jest fixtures: the same unambiguous test conventions.
+  `**/*.cy.{${JS_EXTENSIONS.join(',')}}`,
   '**/__tests__/**',
   '**/__mocks__/**',
+  '**/__fixtures__/**',
   '**/node_modules/**',
   '**/dist/**',
   '**/vendor/**',
@@ -60,10 +63,10 @@ function isIgnoredPath(filePath) {
   // /i on BOTH halves — the globs collect nocase, so DIST/app.js must be
   // ignored in single-file mode exactly like dist/app.js is in dir mode.
   return (
-    /(^|\/)(node_modules|dist|vendor|__tests__|__mocks__)\//i.test(filePath) ||
+    /(^|\/)(node_modules|dist|vendor|__tests__|__mocks__|__fixtures__)\//i.test(filePath) ||
     /\.(min|bundle)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|css|scss|less|html|htm)$/i.test(filePath) ||
     /\.d\.(ts|mts|cts)$/i.test(filePath) ||
-    /\.(test|spec)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts)$/i.test(filePath)
+    /\.(test|spec|cy)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts)$/i.test(filePath)
   );
 }
 

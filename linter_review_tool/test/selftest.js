@@ -589,8 +589,17 @@ const TEST_SKIPPED = [
   'widget.spec.js',
   'View.TEST.TSX',
   'nested/__TESTS__/deep.js',
+  'login.cy.ts',
+  '__fixtures__/data.js',
 ];
-const TEST_LINTED = ['contest.ts', 'latest.js', 'spectacle.jsx', 'tests/feature.js'];
+// Storybook stories stay linted (they often import production components).
+const TEST_LINTED = [
+  'contest.ts',
+  'latest.js',
+  'spectacle.jsx',
+  'tests/feature.js',
+  'card.stories.tsx',
+];
 for (const name of [...TEST_SKIPPED, ...TEST_LINTED]) {
   fs.mkdirSync(path.dirname(path.join(testFilesTmp, name)), { recursive: true });
   fs.writeFileSync(path.join(testFilesTmp, name), 'export const x = eval("1");\n');
@@ -616,7 +625,7 @@ const allOthersLinted = TEST_LINTED.every(
 );
 if (testRun.status === 0 && allTestSkipped && allOthersLinted) {
   pass(
-    'test files (__tests__/, __mocks__/, *.test.*, *.spec.*) are skipped visibly; look-alikes are linted',
+    'test files (__tests__/, __mocks__/, __fixtures__/, *.test.*, *.spec.*, *.cy.*) are skipped visibly; look-alikes are linted',
   );
 } else {
   fail(
