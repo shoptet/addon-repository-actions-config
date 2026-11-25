@@ -124,9 +124,9 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   in the Summary like the minified/vendored ones. Two consequences to know:
   a skipped file is not linted **even when production code imports it**
   (a helper kept in `__mocks__/`, or a `*.spec.js` the bundler includes),
-  the same as for `vendor/` (tracked as CZ3TDR1-980); and in a shop, `product.spec.js` may mean a
-  product specification rather than a test — name such a file
-  `product-spec.js` to keep it linted.
+  the same as for `vendor/` (tracked as CZ3TDR1-980); and in a shop,
+  `product.spec.js` may mean a product specification rather than a test —
+  name such a file `product-spec.js` to keep it linted.
 - *Only JavaScript/TypeScript (`.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`),
   stylesheet and HTML extensions are linted.* Other source-looking files
   (`.vue`, `.svelte`, `.coffee`) are never linted — they surface in the
