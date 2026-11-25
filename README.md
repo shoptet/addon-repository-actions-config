@@ -105,6 +105,31 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   marked `role="presentation"`/`aria-hidden="true"` (use `alt=""` there — a
   cheap, always-valid fix). Both detections are deterministic; the false-positive
   surface is tiny and accepted deliberately.
+- *`javascript:` URLs gate only where they can run.* `shoptet/no-script-url`
+  (it replaces core `no-script-url`, whose `eslint-disable` comments still
+  apply) reports a static `javascript:` string only when it is assigned to a
+  DOM URL property spelled exactly `href` / `src` / `action` / `formAction`
+  or to the browser's `location` (`window.location`, `document.location`,
+  `top` / `parent` / `opener`, an indexed `frames[0]`,
+  `iframe.contentWindow.location`, and `window` / `document` passed into the
+  classic jQuery-plugin IIFE `(function ($, window, document) {…})(jQuery,
+  window, document)`) — with `=`, `||=`, `&&=` or `??=`,
+  passed as the value to `setAttribute` or jQuery `.attr()` / `.prop()` for
+  one of those (also `.attr({ href: … })`), passed as the only argument to
+  the browser's `location.assign` / `location.replace` or to `open()` on a
+  browser window (`window` / `top` / `parent` / `opener` / a frame), or used
+  as a `href` / `src` / `action` attribute of an intrinsic JSX element
+  (`<a>`, `<iframe>`). Code that compares with, filters or documents
+  `javascript:` (a sanitizer, a blocklist, a type, `record.location.replace(…,
+  '')`) is not reported, and neither are writes to a plain data object
+  (`const fixture = {}`), a shadowed `window`, or a mis-cased expando
+  (`link.HREF`). Deliberate false negatives — the AI review covers them: a
+  `javascript:` URL that reaches the sink through a variable, a
+  concatenation or a conditional (`el.href = ok ? url : 'javascript:void(0)'`),
+  inside an HTML string (`'<a href="javascript:…">'`), in an object literal or
+  `Object.assign(el, { href: … })`, as a component's prop (`<Link to>`,
+  `<Preview href>`), in `<object data>`, or with leading whitespace
+  (`' javascript:…'`, which the core rule did not catch either).
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see
@@ -194,7 +219,7 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   - Strings in type positions (literal types, template literal types,
     interface keys, type arguments) and in ambient declarations are not
     checked by `shoptet/no-testid-selector`: they are erased at compile
-    time. (Core `no-script-url` still checks them — tracked in CZ3TDR1-959.)
+    time. `shoptet/no-script-url` does not check them either (see below).
   - `shoptet/es-module-required` does not apply: TypeScript is compiled before
     it ships, so a TypeScript file that fails to parse is reported as the parse
     error itself (`CodeQuality`).

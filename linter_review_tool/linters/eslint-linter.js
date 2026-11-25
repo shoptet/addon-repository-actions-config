@@ -52,6 +52,12 @@ const CORE_RULES_REPLACED_ON = {
   jsx: new Set(['no-unused-vars', 'no-use-before-define', 'no-unused-expressions', 'camelcase']),
 };
 
+// Core rules the config replaces on EVERY extension (JS included) with a
+// `shoptet/*` variant: core no-script-url reports every 'javascript:' string,
+// shoptet/no-script-url only where the URL can run. Dropped for the same
+// reason — only an inline config can switch them back on.
+const CORE_RULES_REPLACED_EVERYWHERE = new Set(['no-script-url']);
+
 /** The replaced-core set for a file, or null for plain JavaScript. */
 function replacedCoreRules(filePath) {
   if (/\.jsx$/i.test(filePath)) return CORE_RULES_REPLACED_ON.jsx;
@@ -156,6 +162,7 @@ function pushMessages(findings, result) {
   for (const message of result.messages) {
     if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
     if (replacedCore && replacedCore.has(message.ruleId)) continue;
+    if (CORE_RULES_REPLACED_EVERYWHERE.has(message.ruleId)) continue;
     findings.push({
       file: result.filePath,
       line: message.line || 1,
@@ -238,4 +245,4 @@ async function lintJavaScript(files) {
   return findings;
 }
 
-module.exports = { lintJavaScript, CORE_RULES_REPLACED_ON };
+module.exports = { lintJavaScript, CORE_RULES_REPLACED_ON, CORE_RULES_REPLACED_EVERYWHERE };

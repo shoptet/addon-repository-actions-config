@@ -222,6 +222,25 @@ function assertSameRulesPerExtension(perExtension) {
   if (failures === beforeReplaced) {
     pass('the runner drops exactly the core rules the config replaces on each TS/JSX extension');
   }
+
+  // Core rules replaced on EVERY extension: off everywhere, and their
+  // shoptet/* variant on everywhere — otherwise the runner would drop a rule
+  // that is still the one reporting.
+  const { CORE_RULES_REPLACED_EVERYWHERE } = require('../linters/eslint-linter');
+  const beforeEverywhere = failures;
+  for (const id of CORE_RULES_REPLACED_EVERYWHERE) {
+    for (const ext of ESLINT_PROBE_EXTENSIONS) {
+      if (id in perExtension[ext]) fail(`[eslint] .${ext}: ${id} is on, but the runner drops it`);
+      if (!(`shoptet/${id}` in perExtension[ext])) {
+        fail(`[eslint] .${ext}: shoptet/${id} (the replacement of ${id}) is not on`);
+      }
+    }
+  }
+  if (failures === beforeEverywhere) {
+    pass(
+      `core rules replaced everywhere (${[...CORE_RULES_REPLACED_EVERYWHERE].join(', ')}) are off on every extension and their shoptet/* variant is on`,
+    );
+  }
 }
 
 /**

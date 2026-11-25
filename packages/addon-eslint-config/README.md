@@ -20,8 +20,9 @@ build step.
   TypeScript block deliberately does not check. The TypeScript toolchain
   (`typescript-eslint`, `typescript`) is a hard dependency, loaded with the
   config even by a consumer that lints only JavaScript.
-- `rules/` — the 9 `shoptet/*` rules (`camelcase` — TypeScript and JSX files
-  only; `no-var` — `.ts/.tsx/.mts/.cts` only; `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
+- `rules/` — the 10 `shoptet/*` rules (`camelcase` — TypeScript and JSX files
+  only; `no-var` — `.ts/.tsx/.mts/.cts` only; `no-script-url` — every
+  extension, replacing core `no-script-url`; `no-core-overwrite`, `no-czech-comments`, `no-global-console`,
   `no-redundant-checks`, `no-settimeout-hack`, `no-testid-selector`,
   `prefer-fetch`), `rules/index.js` (the plugin object), and four shared
   helpers (`global-callee.js`, `script-detect.js`, `core-id-directives.js`,
@@ -66,6 +67,12 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
 
+Core `no-script-url` is replaced by `shoptet/no-script-url` on every
+extension. An `eslint-disable … no-script-url` comment or an inline config
+naming the core id still applies; a consumer's own **config** override of
+`no-script-url` (`rules: { 'no-script-url': 'off' }`) does not — override
+`shoptet/no-script-url` instead.
+
 The config is meant to be used **on its own**. It registers the `shoptet`
 plugin and its own narrowed copy of the `@typescript-eslint` plugin, so do not
 pass either plugin to `ESLint` again, and do not combine it with
@@ -73,13 +80,17 @@ typescript-eslint's configs in one array
 (`[...tseslint.configs.recommended, ...configs.recommended]`): ESLint throws
 `Cannot redefine plugin "@typescript-eslint"`.
 
-A runner that consumes the config also has to mirror two runner-side
-behaviours of `linter_review_tool/linters/eslint-linter.js`. It drops
-"Definition for rule … was not found" reports (a directive naming an
-unknown rule is never a code defect). On TypeScript/JSX files it also drops
-reports from the core rules the config replaces there
-(`CORE_RULES_REPLACED_ON`), which an inline config comment can switch back
-on.
+A runner that consumes the config also has to mirror these runner-side
+behaviours of `linter_review_tool/linters/eslint-linter.js`:
+
+- drop "Definition for rule … was not found" reports (a directive naming an
+  unknown rule is never a code defect);
+- on TypeScript/JSX files, drop reports from the core rules the config
+  replaces there (`CORE_RULES_REPLACED_ON`), which an inline config comment
+  can switch back on;
+- on every file, drop reports from the core rules the config replaces on
+  every extension (`CORE_RULES_REPLACED_EVERYWHERE`: `no-script-url`), for
+  the same reason.
 
 ## SemVer policy
 

@@ -22,7 +22,6 @@ const RELIABLE_RULES = new Set([
   'camelcase',
   'no-eval',
   'no-implied-eval',
-  'no-script-url',
   'no-unused-vars',
   'no-unreachable',
   'no-unused-expressions',
@@ -81,6 +80,7 @@ const RELIABLE_RULES = new Set([
   'shoptet/no-global-console', // window./globalThis./self.console access
   'shoptet/camelcase', // core camelcase on TS, ambient (`declare`) names exempt
   'shoptet/no-var', // core no-var on TS, ambient (`declare var`) declarations exempt
+  'shoptet/no-script-url', // javascript: URL only where it can run (core no-script-url replaced)
 ]);
 
 /**

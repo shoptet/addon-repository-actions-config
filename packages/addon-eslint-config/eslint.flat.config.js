@@ -148,7 +148,13 @@ const javascriptConfig = {
     // ─────────────────────────────────────────────────────────────
     'no-eval': 'error', // A1
     'no-implied-eval': 'error', // A1
-    'no-script-url': 'error', // A1
+    // A1 ❌ — core no-script-url reports every 'javascript:' string, so code
+    // that DEFENDS against script URLs (a sanitizer comparing with
+    // "javascript:") failed the gate. shoptet/no-script-url reports only where
+    // the URL can run (href/src/location/setAttribute/open, JSX href) and
+    // honours an eslint-disable naming `no-script-url` (CZ3TDR1-959).
+    'no-script-url': 'off',
+    'shoptet/no-script-url': 'error',
     'no-param-reassign': ['error', { props: false }], // A3
     // E4 ❌ — but `x == null` is the deliberate, safe nullish guard (matches
     // exactly null/undefined, no coercion surprises) and must not gate.
