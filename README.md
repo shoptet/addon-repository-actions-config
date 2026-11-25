@@ -111,6 +111,15 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   it. Skipped files are listed in the run Summary so a human reviewer can see
   when coverage of a change was partial. When **every** candidate file is
   skipped, the run fails closed with a message saying so (not a green pass).
+- *Test files are a deliberate blind spot too.* Files named `*.test.*` /
+  `*.spec.*` (any JS/TS extension) and everything under `__tests__/` or
+  `__mocks__/` are never linted: tests do not ship, and test code does on
+  purpose what addon code must not (mocking `window.shoptet`, asserting on
+  `javascript:` URLs, selecting fixtures by `data-testid`). Only these
+  unambiguous jest/vitest conventions count — a plain `test/` or `tests/`
+  directory is linted like any other source, since a partner may name a
+  feature folder that way. Skipped test files are listed in the Summary like
+  the minified/vendored ones.
 - *Only JavaScript/TypeScript (`.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`),
   stylesheet and HTML extensions are linted.* Other source-looking files
   (`.vue`, `.svelte`, `.coffee`) are never linted — they surface in the

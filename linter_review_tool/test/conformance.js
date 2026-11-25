@@ -53,6 +53,7 @@ const REQUIRED_SHAPE_IDS = [
   'all-candidates-skipped-fail-closed',
   'known-blocker-parity',
   'typescript-linted-dts-skipped',
+  'skip-test-files',
 ];
 
 /** Every `expect` key this runner knows how to act on (the README's schema). */

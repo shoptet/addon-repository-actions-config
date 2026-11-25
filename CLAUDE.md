@@ -67,7 +67,8 @@ changes.
 
 - `review.js` — entry point. Globs `src/` for `.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`,
   `.css/.scss/.less`, `.html/.htm` files (case-insensitively), skipping `node_modules/`, `dist/`,
-  `vendor/`, `*.min.*`/`*.bundle.*` and `*.d.ts`, then dispatches each file to the matching linter.
+  `vendor/`, `*.min.*`/`*.bundle.*`, `*.d.ts` and test files (`*.test.*`, `*.spec.*`, `__tests__/`,
+  `__mocks__/` — not a plain `tests/`), then dispatches each file to the matching linter.
   TypeScript/JSX go through the same ESLint pass on the typescript-eslint parser (syntax only, no
   `tsconfig`); the shared config's TypeScript block swaps the core rules that misread type syntax.
 - `linters/eslint-linter.js`, `stylelint-linter.js`, `html-linter.js` — one per file type.

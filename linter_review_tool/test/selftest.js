@@ -577,6 +577,71 @@ if (
 }
 fs.rmSync(tsTmp, { recursive: true, force: true });
 
+// Test files never ship — the unambiguous jest/vitest conventions are skipped
+// visibly (CZ3TDR1-978). Names that only CONTAIN "test"/"spec", and a plain
+// `tests/` directory (a partner may name a feature folder that way), are
+// still linted. Matching is case-insensitive like the other conventions.
+const testFilesTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-tests-'));
+const TEST_SKIPPED = [
+  '__tests__/app.test.ts',
+  '__tests__/helper.ts',
+  '__mocks__/shoptet.ts',
+  'widget.spec.js',
+  'View.TEST.TSX',
+  'nested/__TESTS__/deep.js',
+];
+const TEST_LINTED = ['contest.ts', 'latest.js', 'spectacle.jsx', 'tests/feature.js'];
+for (const name of [...TEST_SKIPPED, ...TEST_LINTED]) {
+  fs.mkdirSync(path.dirname(path.join(testFilesTmp, name)), { recursive: true });
+  fs.writeFileSync(path.join(testFilesTmp, name), 'export const x = eval("1");\n');
+}
+const testRun = runRaw([testFilesTmp, '--rdjson']);
+let testJson = null;
+try {
+  testJson = JSON.parse(testRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+const testSkipped = ((testJson && testJson.skipped) || []).map((f) => f.split(path.sep).join('/'));
+const testDiags = (testJson && testJson.diagnostics) || [];
+const reportedFor = (name) =>
+  testDiags.some(
+    (d) => d.location.path.split(path.sep).join('/').endsWith(name) && d.code.value === 'no-eval',
+  );
+const allTestSkipped = TEST_SKIPPED.every(
+  (name) => testSkipped.some((f) => f.endsWith(name)) && !reportedFor(name),
+);
+const allOthersLinted = TEST_LINTED.every(
+  (name) => reportedFor(name) && !testSkipped.some((f) => f.endsWith(name)),
+);
+if (testRun.status === 0 && allTestSkipped && allOthersLinted) {
+  pass(
+    'test files (__tests__/, __mocks__/, *.test.*, *.spec.*) are skipped visibly; look-alikes are linted',
+  );
+} else {
+  fail(
+    `test-file contract broken: status ${testRun.status}, skipped=${JSON.stringify(testSkipped)}, reported=${JSON.stringify(testDiags.map((d) => d.location.path))}`,
+  );
+}
+// Single-file mode honours the same convention (CWD-relative, like dist/).
+const singleTest = runRaw([path.join(testFilesTmp, 'widget.spec.js'), '--rdjson']);
+let singleJson = null;
+try {
+  singleJson = JSON.parse(singleTest.stdout);
+} catch (e) {
+  /* handled below */
+}
+if (
+  singleTest.status !== 0 &&
+  singleJson &&
+  (singleJson.skipped || []).some((f) => f.endsWith('widget.spec.js'))
+) {
+  pass('single-file mode skips a test file and fails closed');
+} else {
+  fail(`single-file test-file contract broken: status ${singleTest.status}`);
+}
+fs.rmSync(testFilesTmp, { recursive: true, force: true });
+
 // Messages are bounded — a 70k-char identifier must not produce a comment-
 // killing 70k message (round 13).
 const longTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-long-'));
