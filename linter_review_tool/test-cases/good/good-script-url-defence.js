@@ -23,3 +23,27 @@ export function makeInert(link) {
   // eslint-disable-next-line no-script-url
   link.href = 'javascript:void(0)';
 }
+
+// Not URL sinks: a String#replace on a data record's `location` (two
+// arguments, unlike Location#replace), a shadowed `window`, expando
+// properties with the wrong case, and plain data objects.
+export function sanitizeRecord(record) {
+  return record.location.replace('javascript:', '');
+}
+
+export function withOwnWindow(window) {
+  window.location = 'javascript:void(0)';
+}
+
+export function expandos(link, button) {
+  link.HREF = 'javascript:void(0)';
+  button.formaction = 'javascript:void(0)';
+}
+
+export function dataOnly() {
+  const fixture = {};
+  fixture.href = 'javascript:void(0)';
+  const fake = { setAttribute() {} };
+  fake.setAttribute('href', 'javascript:void(0)');
+  return [fixture, fake];
+}

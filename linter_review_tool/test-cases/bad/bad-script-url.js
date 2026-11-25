@@ -11,4 +11,12 @@ export function wire(link, frame, form, button) {
   window.location.assign('javascript:void(0)');
   location.replace('javascript:void(0)');
   window.open('javascript:void(0)');
+  document.location = 'javascript:void(0)';
+}
+
+// jQuery — the everyday Shoptet spelling — in all three forms.
+export function wireJquery($link) {
+  $link.attr('href', 'javascript:void(0)');
+  $link.prop('href', 'javascript:void(0)');
+  $link.attr({ href: 'javascript:void(0)' });
 }

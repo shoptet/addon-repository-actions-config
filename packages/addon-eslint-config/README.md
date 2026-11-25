@@ -67,6 +67,12 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
 
+Core `no-script-url` is replaced by `shoptet/no-script-url` on every
+extension. An `eslint-disable … no-script-url` comment or an inline config
+naming the core id still applies; a consumer's own **config** override of
+`no-script-url` (`rules: { 'no-script-url': 'off' }`) does not — override
+`shoptet/no-script-url` instead.
+
 The config is meant to be used **on its own**. It registers the `shoptet`
 plugin and its own narrowed copy of the `@typescript-eslint` plugin, so do not
 pass either plugin to `ESLint` again, and do not combine it with
