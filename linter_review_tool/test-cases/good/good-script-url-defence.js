@@ -47,3 +47,11 @@ export function dataOnly() {
   fake.setAttribute('href', 'javascript:void(0)');
   return [fixture, fake];
 }
+
+// A plain data object's own attr(), and a shadowed `top`.
+export function moreData(top) {
+  const opts = { attr() {} };
+  opts.attr('href', 'javascript:void(0)');
+  top.location = 'javascript:void(0)';
+  return opts;
+}

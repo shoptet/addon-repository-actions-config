@@ -7,3 +7,10 @@ export function wire(link: HTMLAnchorElement): void {
 
 export const Link = () => <a href="javascript:void(0)">x</a>;
 export const Frame = () => <iframe src={'javascript:void(0)'} />;
+
+// React spells the SVG attribute xlinkHref.
+export const Icon = () => (
+  <svg>
+    <a xlinkHref="javascript:void(0)">x</a>
+  </svg>
+);

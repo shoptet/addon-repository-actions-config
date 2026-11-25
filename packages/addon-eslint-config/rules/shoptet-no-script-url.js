@@ -51,7 +51,11 @@ const { honoringCoreDirectives } = require('./core-id-directives');
 const URL_PROPERTIES = new Set(['href', 'src', 'action', 'formAction']);
 // HTML attribute names, matched case-insensitively (as HTML does) — for
 // setAttribute(NS), jQuery .attr() and intrinsic JSX elements.
-const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
+// `xlinkhref` is React's `xlinkHref` (SVG `<a>`), lower-cased.
+const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'xlinkhref']);
+// Globals of the browser that are (or hold) a window, whose `.location` is the
+// browser's Location: `top.location = …`, `parent.location = …`.
+const WINDOW_GLOBALS = new Set([...GLOBAL_OBJECTS, 'top', 'parent', 'opener', 'frames']);
 // jQuery .prop() takes PROPERTY names (case-sensitive, like the DOM).
 const URL_PROP_NAMES = URL_PROPERTIES;
 
@@ -79,9 +83,29 @@ function valuePosition(literal) {
 }
 
 /**
- * The BROWSER's location object: the global `location`, or `.location` of an
- * unshadowed global `window` / `self` / `globalThis` / `document`. Any other
- * object's `location` (a data record's address string) is not a URL sink.
+ * A browser window: an unshadowed global `window` / `self` / `globalThis` /
+ * `top` / `parent` / `opener` / `frames` / `document`, `window.top` (and the
+ * like), or `<frame>.contentWindow` — a DOM-specific name nothing else carries.
+ */
+function isBrowserWindow(rawNode, scope) {
+  const node = unwrapExpr(rawNode);
+  if (!node) return false;
+  if (node.type === 'Identifier') {
+    return (
+      (WINDOW_GLOBALS.has(node.name) || node.name === 'document') &&
+      isGlobalBinding(scope, node.name)
+    );
+  }
+  if (node.type !== 'MemberExpression') return false;
+  const name = memberName(node);
+  if (name === 'contentWindow') return true;
+  return Boolean(name && WINDOW_GLOBALS.has(name) && isBrowserWindow(node.object, scope));
+}
+
+/**
+ * The BROWSER's location object: the global `location`, or `.location` of a
+ * browser window (see isBrowserWindow). Any other object's `location` (a data
+ * record's address string) is not a URL sink.
  */
 function isBrowserLocation(rawNode, scope) {
   const node = unwrapExpr(rawNode);
@@ -90,12 +114,7 @@ function isBrowserLocation(rawNode, scope) {
     return node.name === 'location' && isGlobalBinding(scope, 'location');
   }
   if (node.type !== 'MemberExpression' || memberName(node) !== 'location') return false;
-  const base = unwrapExpr(node.object);
-  return (
-    base.type === 'Identifier' &&
-    (GLOBAL_OBJECTS.has(base.name) || base.name === 'document') &&
-    isGlobalBinding(scope, base.name)
-  );
+  return isBrowserWindow(node.object, scope);
 }
 
 /**
@@ -111,6 +130,9 @@ function isPlainDataObject(rawNode, scope) {
   if (node.type !== 'Identifier') return false;
   const variable = findVariable(scope, node);
   if (!variable || variable.defs.length !== 1) return false;
+  // Written only by its initializer: `let link = {}; link = createElement('a')`
+  // is no longer a plain data object.
+  if (variable.references.filter((reference) => reference.isWrite()).length > 1) return false;
   const def = variable.defs[0];
   return Boolean(
     def.type === 'Variable' &&
@@ -156,6 +178,7 @@ function callSink(call, value, scope) {
     if (method === 'attr' || method === 'prop') {
       return (
         index === 1 &&
+        !isPlainDataObject(callee.object, scope) &&
         namedIn(
           call.arguments[0],
           method === 'attr' ? URL_ATTRIBUTES : URL_PROP_NAMES,

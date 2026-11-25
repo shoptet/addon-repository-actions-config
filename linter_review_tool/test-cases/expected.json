@@ -123,10 +123,10 @@
     "no-setter-return@blocker"
   ],
   "bad/bad-script-url.js": [
-    "shoptet/no-script-url@blocker:15"
+    "shoptet/no-script-url@blocker:21"
   ],
   "bad/bad-script-url.tsx": [
-    "shoptet/no-script-url@blocker:5"
+    "shoptet/no-script-url@blocker:6"
   ],
   "bad/bad-security.js": [
     "no-eval@blocker",

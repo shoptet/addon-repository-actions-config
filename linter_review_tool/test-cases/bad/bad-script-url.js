@@ -20,3 +20,16 @@ export function wireJquery($link) {
   $link.prop('href', 'javascript:void(0)');
   $link.attr({ href: 'javascript:void(0)' });
 }
+
+// Every browser window's location, and a variable re-bound from a plain
+// object to a real element.
+export function wireWindows(iframe) {
+  top.location = 'javascript:void(0)';
+  parent.location = 'javascript:void(0)';
+  iframe.contentWindow.location = 'javascript:void(0)';
+  window.top.location = 'javascript:void(0)';
+  opener.location.replace('javascript:void(0)');
+  let link = {};
+  link = document.createElement('a');
+  link.href = 'javascript:void(0)';
+}

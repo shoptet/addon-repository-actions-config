@@ -109,7 +109,8 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   (it replaces core `no-script-url`, whose `eslint-disable` comments still
   apply) reports a static `javascript:` string only when it is assigned to a
   DOM URL property spelled exactly `href` / `src` / `action` / `formAction`
-  or to the browser's `location` (`window.location`, `document.location`),
+  or to the browser's `location` (`window.location`, `document.location`,
+  `top` / `parent` / `opener` / `frames`, `iframe.contentWindow.location`),
   passed as the value to `setAttribute` or jQuery `.attr()` / `.prop()` for
   one of those (also `.attr({ href: … })`), passed as the only argument to
   the browser's `location.assign` / `location.replace` or to `open()`, or used
