@@ -6,3 +6,11 @@ var shoptet = {};
 with (shoptet) {
   shoptet.ready = true;
 }
+
+// Comment-like text must not hide a redeclaration in code: `/* global`
+// inside a line comment (closed only by the JSDoc below) …
+// TODO: add /* global helper
+var jQuery = {};
+/** docs */
+// … and an identifier glued to the closing delimiter is code, not comment.
+var /* global Shoptet */Shoptet = {};

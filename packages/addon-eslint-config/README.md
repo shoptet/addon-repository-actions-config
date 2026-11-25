@@ -93,7 +93,9 @@ behaviours of `linter_review_tool/linters/eslint-linter.js`:
   the same reason;
 - drop `no-redeclare` reports with `messageId: redeclaredAsBuiltin`
   positioned inside a `/* global */` comment (a redundant comment, not a
-  redeclaration).
+  redeclaration). Locate those comments with the exported
+  `globalCommentLocations(source, filename)` — the parser's comments, not a
+  regex — and test a report with `isInsideComment(message, locations)`.
 
 ## SemVer policy
 

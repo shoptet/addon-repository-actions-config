@@ -55,11 +55,11 @@
     "shoptet/no-settimeout-hack@blocker:2"
   ],
   "bad/bad-global-comment-script.js": [
-    "no-implicit-globals@blocker",
-    "no-redeclare@blocker",
-    "no-var@blocker",
+    "no-implicit-globals@blocker:3",
+    "no-redeclare@blocker:3",
+    "no-var@blocker:3",
     "shoptet/es-module-required@blocker",
-    "shoptet/no-core-overwrite@blocker"
+    "shoptet/no-core-overwrite@blocker:2"
   ],
   "bad/bad-global-console.js": [
     "shoptet/no-global-console@blocker:3"

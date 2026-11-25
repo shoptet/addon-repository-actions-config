@@ -21,7 +21,12 @@
 const fs = require('fs');
 const path = require('path');
 const { ESLint } = require('eslint');
-const { configs, parsesAsScript } = require('@shoptet/addon-eslint-config');
+const {
+  configs,
+  parsesAsScript,
+  globalCommentLocations,
+  isInsideComment,
+} = require('@shoptet/addon-eslint-config');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -164,48 +169,28 @@ const UNKNOWN_RULE_DIRECTIVE = /^Definition for rule '[^']+' was not found\.$/;
 // are dropped (CZ3TDR1-979): a redeclaration in code is positioned in code, and
 // `builtinGlobals` stays on. The rule id stays `no-redeclare` (a wrapper would
 // have to rename it, changing every existing finding's fingerprint).
-const GLOBAL_COMMENT = /\/\*\s*globals?\s[\s\S]*?\*\//g;
-
-/** Start/end positions (1-based line and column) of each global comment. */
-function globalCommentRanges(filePath) {
-  let text;
+// The comments come from the parser (globalCommentLocations in the shared
+// package), not from a regex over the raw text — a `/* global` inside a string
+// or a line comment, or an identifier glued to the closing delimiter, must
+// never hide a redeclaration in code.
+function globalCommentsOf(filePath) {
   try {
-    text = fs.readFileSync(filePath, 'utf8');
+    return globalCommentLocations(fs.readFileSync(filePath, 'utf8'), filePath);
   } catch {
-    return [];
+    return null; // unreadable — filter nothing
   }
-  const lineStarts = [0];
-  for (let i = 0; i < text.length; i += 1) if (text[i] === '\n') lineStarts.push(i + 1);
-  const toPosition = (offset) => {
-    let line = lineStarts.length - 1;
-    while (lineStarts[line] > offset) line -= 1;
-    return { line: line + 1, column: offset - lineStarts[line] + 1 };
-  };
-  const ranges = [];
-  for (const match of text.matchAll(GLOBAL_COMMENT)) {
-    ranges.push([toPosition(match.index), toPosition(match.index + match[0].length)]);
-  }
-  return ranges;
-}
-
-function isInside(message, [start, end]) {
-  const afterStart =
-    message.line > start.line || (message.line === start.line && message.column >= start.column);
-  const beforeEnd =
-    message.line < end.line || (message.line === end.line && message.column <= end.column);
-  return afterStart && beforeEnd;
 }
 
 function pushMessages(findings, result) {
   const replacedCore = replacedCoreRules(result.filePath);
-  let globalComments = null; // read lazily, only when a candidate report exists
+  let globalComments; // read lazily, only when a candidate report exists
   for (const message of result.messages) {
     if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
     if (replacedCore && replacedCore.has(message.ruleId)) continue;
     if (CORE_RULES_REPLACED_EVERYWHERE.has(message.ruleId)) continue;
     if (message.ruleId === 'no-redeclare' && message.messageId === 'redeclaredAsBuiltin') {
-      if (!globalComments) globalComments = globalCommentRanges(result.filePath);
-      if (globalComments.some((range) => isInside(message, range))) continue;
+      if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
+      if (globalComments && isInsideComment(message, globalComments)) continue;
     }
     findings.push({
       file: result.filePath,
