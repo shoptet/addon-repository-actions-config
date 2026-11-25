@@ -90,7 +90,10 @@ behaviours of `linter_review_tool/linters/eslint-linter.js`:
   can switch back on;
 - on every file, drop reports from the core rules the config replaces on
   every extension (`CORE_RULES_REPLACED_EVERYWHERE`: `no-script-url`), for
-  the same reason.
+  the same reason;
+- drop `no-redeclare` reports with `messageId: redeclaredAsBuiltin`
+  positioned inside a `/* global */` comment (a redundant comment, not a
+  redeclaration).
 
 ## SemVer policy
 

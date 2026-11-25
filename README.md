@@ -130,6 +130,14 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   `Object.assign(el, { href: … })`, as a component's prop (`<Link to>`,
   `<Preview href>`), in `<object data>`, or with leading whitespace
   (`' javascript:…'`, which the core rule did not catch either).
+- *A `/* global */` comment for a known global is accepted.* Core
+  `no-redeclare` reports every name in `/* global $, shoptet */` that the
+  config already declares (or that the browser defines) as "already defined
+  as a built-in global variable". The comment is only redundant, so those
+  reports — and only those, positioned inside a `/* global */` /
+  `/* globals */` comment — are dropped. A redeclaration in code
+  (`var a; var a;`, a top-level `var shoptet = {}` in a classic script) is
+  still a blocker, under the same `no-redeclare` id.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see

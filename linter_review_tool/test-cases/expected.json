@@ -54,6 +54,13 @@
     "shoptet/no-core-overwrite@blocker",
     "shoptet/no-settimeout-hack@blocker:2"
   ],
+  "bad/bad-global-comment-script.js": [
+    "no-implicit-globals@blocker",
+    "no-redeclare@blocker",
+    "no-var@blocker",
+    "shoptet/es-module-required@blocker",
+    "shoptet/no-core-overwrite@blocker"
+  ],
   "bad/bad-global-console.js": [
     "shoptet/no-global-console@blocker:3"
   ],
