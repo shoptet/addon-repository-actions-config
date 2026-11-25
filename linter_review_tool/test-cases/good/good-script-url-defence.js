@@ -55,3 +55,16 @@ export function moreData(top) {
   top.location = 'javascript:void(0)';
   return opts;
 }
+
+// A parameter named `window` is the browser's only in the exact IIFE shape
+// that passes the global window in, and only while it is never re-assigned.
+const fakeWindow = { location: '' };
+(function (window) {
+  window.location = 'javascript:void(0)';
+})(fakeWindow);
+
+export function ownFrames() {
+  const data = { frames: [{}] };
+  data.frames[0].location = 'javascript:void(0)';
+  return data;
+}

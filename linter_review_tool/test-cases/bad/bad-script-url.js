@@ -33,3 +33,20 @@ export function wireWindows(iframe) {
   link = document.createElement('a');
   link.href = 'javascript:void(0)';
 }
+
+// open() on any browser window, indexed frames, logical assignments.
+export function wireMore(el) {
+  top.open('javascript:void(0)');
+  parent.open('javascript:void(0)');
+  opener.open('javascript:void(0)');
+  window.frames[0].location = 'javascript:void(0)';
+  el.href ||= 'javascript:void(0)';
+  el.src ??= 'javascript:void(0)';
+}
+
+// The classic jQuery-plugin wrapper passes the real globals in.
+(function ($, window, document) {
+  window.location = 'javascript:void(0)';
+  window.open('javascript:void(0)');
+  document.location = 'javascript:void(0)';
+})(jQuery, window, document);

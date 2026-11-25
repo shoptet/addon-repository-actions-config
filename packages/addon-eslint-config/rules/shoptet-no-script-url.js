@@ -91,15 +91,53 @@ function isBrowserWindow(rawNode, scope) {
   const node = unwrapExpr(rawNode);
   if (!node) return false;
   if (node.type === 'Identifier') {
-    return (
-      (WINDOW_GLOBALS.has(node.name) || node.name === 'document') &&
-      isGlobalBinding(scope, node.name)
-    );
+    if (!WINDOW_GLOBALS.has(node.name) && node.name !== 'document') return false;
+    return isGlobalBinding(scope, node.name) || isIifeAliasOfGlobal(node, scope);
   }
   if (node.type !== 'MemberExpression') return false;
+  // window.frames[0] / frames[1] — an indexed frame is a window
+  if (node.computed && memberName(node) === null && isFramesRef(node.object, scope)) return true;
   const name = memberName(node);
   if (name === 'contentWindow') return true;
   return Boolean(name && WINDOW_GLOBALS.has(name) && isBrowserWindow(node.object, scope));
+}
+
+/** `frames` (the global) or `<window>.frames`. */
+function isFramesRef(rawNode, scope) {
+  const node = unwrapExpr(rawNode);
+  if (!node) return false;
+  if (node.type === 'Identifier') return node.name === 'frames' && isGlobalBinding(scope, 'frames');
+  return (
+    node.type === 'MemberExpression' &&
+    memberName(node) === 'frames' &&
+    isBrowserWindow(node.object, scope)
+  );
+}
+
+/**
+ * The classic jQuery-plugin wrapper, `(function ($, window, document) { … })(jQuery,
+ * window, document)`: a parameter named `window` / `document` / … that the
+ * IIFE is called with the GLOBAL of that same name, and that is never
+ * re-assigned, is that global. Only this exact shape counts — a parameter
+ * named `window` that receives anything else stays a local (zero-FP).
+ */
+function isIifeAliasOfGlobal(identifier, scope) {
+  const variable = findVariable(scope, identifier);
+  if (!variable || variable.defs.length !== 1) return false;
+  const def = variable.defs[0];
+  if (def.type !== 'Parameter' || variable.references.some((ref) => ref.isWrite())) return false;
+  const fn = def.node;
+  const index = fn.params.indexOf(def.name);
+  const call = fn.parent;
+  if (index < 0 || !call || call.type !== 'CallExpression' || call.callee !== fn) return false;
+  const argument = unwrapExpr(call.arguments[index]);
+  return Boolean(
+    argument &&
+    argument.type === 'Identifier' &&
+    argument.name === identifier.name &&
+    // the argument is resolved in the scope the IIFE is called from
+    isBrowserWindow(argument, variable.scope.upper),
+  );
 }
 
 /**
@@ -148,8 +186,11 @@ function namedIn(node, names, caseInsensitive) {
   return names.has(caseInsensitive ? name.toLowerCase() : name);
 }
 
+// `||=` / `&&=` / `??=` assign their right-hand side as-is.
+const ASSIGNING_OPERATORS = new Set(['=', '||=', '&&=', '??=']);
+
 function assignmentSink(assignment, value, scope) {
-  if (assignment.operator !== '=' || assignment.right !== value) return false;
+  if (!ASSIGNING_OPERATORS.has(assignment.operator) || assignment.right !== value) return false;
   const left = unwrapExpr(assignment.left);
   if (left.type === 'Identifier') {
     return left.name === 'location' && isGlobalBinding(scope, 'location');
@@ -193,7 +234,15 @@ function callSink(call, value, scope) {
       return call.arguments.length === 1 && isBrowserLocation(callee.object, scope);
     }
   }
-  return index === 0 && globalCalleeName(call.callee, scope) === 'open';
+  if (index !== 0) return false;
+  if (globalCalleeName(call.callee, scope) === 'open') return true;
+  // top.open(…), parent.open(…), opener.open(…), frames[0].open(…), and
+  // window.open(…) where `window` is the jQuery-plugin IIFE alias
+  return Boolean(
+    callee.type === 'MemberExpression' &&
+    memberName(callee) === 'open' &&
+    isBrowserWindow(callee.object, scope),
+  );
 }
 
 /** jQuery's object form: `$link.attr({ href: 'javascript:…' })` / `.prop({ … })`. */

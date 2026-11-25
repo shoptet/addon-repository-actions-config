@@ -80,13 +80,17 @@ typescript-eslint's configs in one array
 (`[...tseslint.configs.recommended, ...configs.recommended]`): ESLint throws
 `Cannot redefine plugin "@typescript-eslint"`.
 
-A runner that consumes the config also has to mirror two runner-side
-behaviours of `linter_review_tool/linters/eslint-linter.js`. It drops
-"Definition for rule … was not found" reports (a directive naming an
-unknown rule is never a code defect). On TypeScript/JSX files it also drops
-reports from the core rules the config replaces there
-(`CORE_RULES_REPLACED_ON`), which an inline config comment can switch back
-on.
+A runner that consumes the config also has to mirror these runner-side
+behaviours of `linter_review_tool/linters/eslint-linter.js`:
+
+- drop "Definition for rule … was not found" reports (a directive naming an
+  unknown rule is never a code defect);
+- on TypeScript/JSX files, drop reports from the core rules the config
+  replaces there (`CORE_RULES_REPLACED_ON`), which an inline config comment
+  can switch back on;
+- on every file, drop reports from the core rules the config replaces on
+  every extension (`CORE_RULES_REPLACED_EVERYWHERE`: `no-script-url`), for
+  the same reason.
 
 ## SemVer policy
 

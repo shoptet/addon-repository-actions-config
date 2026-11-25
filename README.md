@@ -110,10 +110,14 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   apply) reports a static `javascript:` string only when it is assigned to a
   DOM URL property spelled exactly `href` / `src` / `action` / `formAction`
   or to the browser's `location` (`window.location`, `document.location`,
-  `top` / `parent` / `opener` / `frames`, `iframe.contentWindow.location`),
+  `top` / `parent` / `opener`, an indexed `frames[0]`,
+  `iframe.contentWindow.location`, and `window` / `document` passed into the
+  classic jQuery-plugin IIFE `(function ($, window, document) {…})(jQuery,
+  window, document)`) — with `=`, `||=`, `&&=` or `??=`,
   passed as the value to `setAttribute` or jQuery `.attr()` / `.prop()` for
   one of those (also `.attr({ href: … })`), passed as the only argument to
-  the browser's `location.assign` / `location.replace` or to `open()`, or used
+  the browser's `location.assign` / `location.replace` or to `open()` on a
+  browser window (`window` / `top` / `parent` / `opener` / a frame), or used
   as a `href` / `src` / `action` attribute of an intrinsic JSX element
   (`<a>`, `<iframe>`). Code that compares with, filters or documents
   `javascript:` (a sanitizer, a blocklist, a type, `record.location.replace(…,
