@@ -135,7 +135,11 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   config already declares (or that the browser defines) as "already defined
   as a built-in global variable". The comment is only redundant, so those
   reports — and only those, positioned inside a `/* global */` /
-  `/* globals */` comment — are dropped. A redeclaration in code
+  `/* globals */` comment, for a name the comment keeps read-only (no value,
+  `readonly`, `readable` or `false`) — are dropped. `/* global shoptet:
+  writable */` (also `writeable`, `true`, `off`) is not redundant: it makes
+  the global assignable and switches off `no-global-assign` /
+  `no-implicit-globals` for it, so that comment's report still blocks. A redeclaration in code
   (`var a; var a;`, a top-level `var shoptet = {}` in a classic script) is
   still a blocker, under the same `no-redeclare` id.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files

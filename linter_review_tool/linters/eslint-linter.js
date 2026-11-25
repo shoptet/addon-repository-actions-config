@@ -25,7 +25,7 @@ const {
   configs,
   parsesAsScript,
   globalCommentLocations,
-  isInsideComment,
+  isRedundantGlobalReport,
 } = require('@shoptet/addon-eslint-config');
 
 const ROOT = path.join(__dirname, '..');
@@ -190,7 +190,7 @@ function pushMessages(findings, result) {
     if (CORE_RULES_REPLACED_EVERYWHERE.has(message.ruleId)) continue;
     if (message.ruleId === 'no-redeclare' && message.messageId === 'redeclaredAsBuiltin') {
       if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
-      if (globalComments && isInsideComment(message, globalComments)) continue;
+      if (globalComments && isRedundantGlobalReport(message, globalComments)) continue;
     }
     findings.push({
       file: result.filePath,

@@ -64,6 +64,9 @@
   "bad/bad-global-console.js": [
     "shoptet/no-global-console@blocker:3"
   ],
+  "bad/bad-global-writable.js": [
+    "no-redeclare@blocker:2"
+  ],
   "bad/bad-html-deprecated-extra.html": [
     "html/deprecated-tag@recommend:3"
   ],

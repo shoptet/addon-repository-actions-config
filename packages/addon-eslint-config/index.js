@@ -14,7 +14,11 @@
 const flatConfig = require('./eslint.flat.config');
 const plugin = require('./rules');
 const { parsesAsScript } = require('./rules/script-detect');
-const { globalCommentLocations, isInsideComment } = require('./rules/global-comments');
+const {
+  globalCommentLocations,
+  isInsideComment,
+  isRedundantGlobalReport,
+} = require('./rules/global-comments');
 const { RELIABLE_RULES, RUNNER_RULES } = require('./reliable-rules');
 
 module.exports = {
@@ -25,6 +29,7 @@ module.exports = {
   parsesAsScript,
   globalCommentLocations,
   isInsideComment,
+  isRedundantGlobalReport,
   RELIABLE_RULES,
   RUNNER_RULES,
 };

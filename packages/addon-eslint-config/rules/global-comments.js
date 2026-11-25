@@ -54,12 +54,62 @@ function parserComments(sourceText, filename) {
   return null;
 }
 
+/**
+ * `name → value` of a global directive's entries, parsed the way ESLint does
+ * (@eslint/plugin-kit ConfigCommentParser#parseStringConfig): whitespace around
+ * `:` and `,` collapsed, items split on whitespace or commas, `name[:value]`.
+ * A name without a value maps to null (= readonly).
+ */
+function directiveEntries(commentValue) {
+  const body = commentValue.replace(GLOBAL_DIRECTIVE, '');
+  const separator = /\s-{2,}\s/u.exec(body);
+  const list = (separator ? body.slice(0, separator.index) : body)
+    .trim()
+    .replace(/(?<!\s)\s*([:,])\s*/gu, '$1');
+  const entries = new Map();
+  for (const item of list.split(/\s|,+/u)) {
+    if (!item) continue;
+    const [name, value = null] = item.split(':');
+    entries.set(name, value);
+  }
+  return entries;
+}
+
 function globalCommentLocations(sourceText, filename) {
   const comments = parserComments(sourceText, filename);
   if (!comments) return null;
   return comments
     .filter((comment) => comment.type === 'Block' && GLOBAL_DIRECTIVE.test(comment.value))
-    .map((comment) => ({ start: comment.loc.start, end: comment.loc.end }));
+    .map((comment) => ({
+      start: comment.loc.start,
+      end: comment.loc.end,
+      entries: directiveEntries(comment.value),
+    }));
+}
+
+// Values that keep a global read-only — the only case where repeating it in
+// a comment is redundant. `writable` / `writeable` / `true` make it
+// assignable and `off` removes it: both switch off no-global-assign /
+// no-implicit-globals protection for that name, so the comment is an opt-out,
+// not a no-op, and its no-redeclare report must stay.
+const READONLY_VALUES = new Set([null, 'readonly', 'readable', 'false']);
+
+/**
+ * Is a `redeclaredAsBuiltin` report (`'shoptet' is already defined as a
+ * built-in global variable.`) one of a merely redundant global comment: inside
+ * such a comment, for a name the comment keeps read-only?
+ */
+function isRedundantGlobalReport(message, locations) {
+  const match = /^'(.+)' is already defined as a built-in global variable\.$/u.exec(
+    message.message,
+  );
+  if (!match) return false;
+  return locations.some(
+    (location) =>
+      isInsideComment(message, [location]) &&
+      location.entries.has(match[1]) &&
+      READONLY_VALUES.has(location.entries.get(match[1])),
+  );
 }
 
 /**
@@ -77,4 +127,4 @@ function isInsideComment(message, locations) {
   });
 }
 
-module.exports = { globalCommentLocations, isInsideComment };
+module.exports = { globalCommentLocations, isInsideComment, isRedundantGlobalReport };

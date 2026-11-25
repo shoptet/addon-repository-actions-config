@@ -4,9 +4,10 @@
 /* global $, shoptet */
 /*global jQuery, dataLayer*/
 /* globals Shoptet */
+/* global getShoptetDataLayer: readonly, screen: readable -- read-only is still redundant */
 // A name the config does not know is a plain declaration, not a redeclaration.
 /* global myAddonRuntime */
 
 export function run() {
-  return $('.x').length + jQuery('.y').length + shoptet.config.x + dataLayer.length + Shoptet.a + myAddonRuntime.v;
+  return $('.x').length + jQuery('.y').length + shoptet.config.x + dataLayer.length + Shoptet.a + myAddonRuntime.v + getShoptetDataLayer() + screen.width;
 }
