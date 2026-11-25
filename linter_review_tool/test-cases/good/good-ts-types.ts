@@ -142,3 +142,18 @@ declare var addonRuntime: { version: string };
 declare module 'legacy-widget' {
   var widgetVersion: string;
 }
+
+// Ambient declarations used above their declaration: no code, so no TDZ.
+export const shopCurrency = SHOP_CFG.currency;
+export const legacyLib = new LegacyLib();
+export const nsVersion = AddonNs.version;
+declare const SHOP_CFG: { currency: string };
+declare class LegacyLib {}
+declare namespace AddonNs {
+  const version: string;
+}
+
+// A decorated class is registered by its decorator at runtime.
+declare function customElement(tag: string): ClassDecorator;
+@customElement('shoptet-widget')
+class ShoptetWidget {}

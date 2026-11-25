@@ -134,8 +134,14 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   re-enable the replacement on TypeScript — name the
   `@typescript-eslint/…` id there. A directive naming a rule the file does not
   run (another plugin's, or a typescript-eslint id in a `.js` file) is
-  ignored, never a finding. Deliberate gaps, all false negatives rather than false
-  positives:
+  ignored, never a finding. An inline config comment that turns the core id
+  off (`/* eslint no-unused-vars: "off" */`) turns the replacement off for the
+  file too; one that changes the core id's severity to `"warn"` or overrides
+  its options does not reach the replacement, which keeps the profile's
+  severity and options. A core rule switched back on by an inline config on a
+  TypeScript/JSX file is not reported (it would misread the syntax; the
+  replacement covers that code). Deliberate gaps, all false negatives rather
+  than false positives:
   - `no-redeclare` does not run on `.ts/.tsx/.mts/.cts` at all: both the core
     rule and its typescript-eslint extension report legitimate code
     (overloads, declaration merging, the `const Mode = {…} as const; type
@@ -150,7 +156,9 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
     `using` / `await using` binding (it exists for its disposal) and an
     unused type parameter (`type Tagged<T, Tag>` — tsc reports it only under
     `--noUnusedParameters`, like the unused arguments this profile already
-    exempts) are not reported.
+    exempts) are not reported; nor is an unused decorated class (the
+    decorator registers it at runtime). `no-use-before-define` does not report
+    a use of an ambient declaration above it (no code, no TDZ).
   - In `.tsx/.jsx`, an unused **import** that may be the JSX factory is not
     reported: one named by a `/** @jsx … */` or `@jsxFrag` pragma in the
     file, or one named `h`, `Fragment`, `jsx` or `createElement` (a factory
@@ -160,8 +168,6 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   - Strings in type positions (literal types, interface keys, type
     arguments) and in ambient declarations are not checked by
     `shoptet/no-testid-selector`: they are erased at compile time.
-  - JSX in a `.js` file is still a parse error (`CodeQuality`): only `.jsx`
-    and `.tsx` are parsed with JSX enabled.
   - `shoptet/es-module-required` does not apply: TypeScript is compiled before
     it ships, so a TypeScript file that fails to parse is reported as the parse
     error itself (`CodeQuality`).
@@ -169,6 +175,10 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
     `source/` directory compiled into `src/`) are not seen — the gate then
     lints the compiled bundle in `src/`, which reports build output rather
     than the partner's code.
+
+  One known false positive remains, and it predates TypeScript support: JSX
+  in a `.js` file is a parse error (`CodeQuality` blocker), because only
+  `.jsx` and `.tsx` are parsed with JSX enabled (tracked as CZ3TDR1-968).
 - *Templating placeholders in attribute position weaken the HTML checks.* A
   Mustache/Handlebars-style placeholder standing where an attribute would be
   (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`

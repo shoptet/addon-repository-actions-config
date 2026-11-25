@@ -28,12 +28,20 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 // module by convention and is exempt. (round 12)
 function shipsAsClassicScript(context) {
   const filename = context.filename;
-  if (/\.m[jt]s$/i.test(filename)) return false;
+  if (/\.m[jt]s$/i.test(filename) || isCommonJsFile(filename)) return false;
   // Script-parseability IS the question: import/export, import.meta and
   // top-level await all fail it, so this cannot diverge from the linter's
   // usesModuleSyntax again (round 13, shared helper). The filename selects the
   // TypeScript/JSX-aware check for .ts/.tsx/.cts/.jsx.
   return parsesAsScript(context.sourceCode.text, filename);
+}
+
+// .cjs / .cts are CommonJS by convention: the loader wraps the file in a
+// module function, so its top-level bindings (`const shoptet = require(...)`)
+// are function-scoped and never reach the global — even when the file has to
+// be linted in script mode.
+function isCommonJsFile(filename) {
+  return /\.c[jt]s$/i.test(filename);
 }
 
 // Both casings are Shoptet core globals (both are declared readonly in eslint.flat.config.js).
@@ -125,6 +133,7 @@ module.exports = {
     // at runtime? Script-mode top level always; module-parse top level only
     // when the file ships as a classic script.
     function topLevelLeaksToGlobal(scopeType) {
+      if (isCommonJsFile(context.filename)) return false;
       return scopeType === 'global' || (scopeType === 'module' && shipsAsClassicScript(context));
     }
 

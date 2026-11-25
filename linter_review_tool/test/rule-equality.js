@@ -200,6 +200,27 @@ function assertSameRulesPerExtension(perExtension) {
       'every JS extension runs the .js rules; every TS/JSX extension those rules with the documented swaps',
     );
   }
+
+  // The runner drops a replaced core rule's reports on TS/JSX (an inline
+  // config comment can switch it back on). Its sets must be exactly the core
+  // rules the config turns off there — no more (that would hide a real rule),
+  // no less (a re-enabled core rule would misread TypeScript).
+  const { CORE_RULES_REPLACED_ON } = require('../linters/eslint-linter');
+  const beforeReplaced = failures;
+  for (const ext of TS_PROBE_EXTENSIONS) {
+    const offHere = Object.keys(jsRules)
+      .filter((id) => !(id in perExtension[ext]))
+      .sort();
+    const runnerSet = [...CORE_RULES_REPLACED_ON[ext === 'jsx' ? 'jsx' : 'ts']].sort();
+    if (offHere.join(',') !== runnerSet.join(',')) {
+      fail(
+        `[eslint] .${ext}: config turns off [${offHere.join(', ')}] but the runner drops [${runnerSet.join(', ')}]`,
+      );
+    }
+  }
+  if (failures === beforeReplaced) {
+    pass('the runner drops exactly the core rules the config replaces on each TS/JSX extension');
+  }
 }
 
 /**

@@ -201,7 +201,7 @@ async function main() {
     // Fail closed either way — but say WHY: "all candidates skipped" is a very
     // different situation from "nothing matched at all".
     const message = files.skipped.length
-      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/hidden/symlinked) — nothing lintable.`
+      ? `${files.skipped.length} candidate file(s) found in ${targetPath}, but all were skipped (minified/vendored/declaration/foreign-source/hidden/symlinked) — nothing lintable.`
       : `No reviewable files (.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts/.css/.scss/.less/.html) found in ${targetPath}`;
     fail(
       rdjson,
@@ -251,7 +251,7 @@ async function main() {
 
   if (skipped.length) {
     info(
-      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/hidden/symlinked): ${skipped.join(', ')}`,
+      `⏭️  ${skipped.length} file(s) skipped (minified/vendored/declaration/foreign-source/hidden/symlinked): ${skipped.join(', ')}`,
     );
   }
   const { blockerCount } = report(findings);

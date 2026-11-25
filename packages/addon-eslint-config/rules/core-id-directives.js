@@ -26,6 +26,10 @@
  *     comment spanning lines is rejected by ESLint;
  *   - `eslint-disable-next-line` in either comment type, counted from the
  *     line the comment ends on.
+ *
+ * An inline config comment that turns the core id OFF
+ * (`/* eslint no-unused-vars: "off" *\/`, also `0` / `["off"]`) switches the
+ * replacement off for the whole file, as ESLint does for the core rule.
  */
 
 // Parsing mirrors ESLint's own (@eslint/plugin-kit ConfigCommentParser,
@@ -36,6 +40,33 @@
 // `--- kept` is a justification.
 const JUSTIFICATION = /\s-{2,}\s/u;
 const DIRECTIVE = /^eslint-(disable-next-line|disable-line|disable|enable)(?:\s|$)/u;
+
+const INLINE_CONFIG = /^eslint(?:\s|$)/u;
+
+/** Escape a rule id for use inside a RegExp. */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+/**
+ * The severity an inline config comment (`/* eslint no-unused-vars: "off" *\/`)
+ * gives `ruleId`, as `'off'` / `'on'`, or null when the comment does not name
+ * it. Only block comments count, and ESLint applies the FIRST configuration of
+ * a rule in the file to the whole file, wherever the comment sits (measured on
+ * ESLint 9.39). Only "off" can be mirrored by a wrapper that drops reports;
+ * a `"warn"` downgrade or an options override cannot (README).
+ */
+function inlineSeverity(commentValue, ruleId) {
+  const separator = JUSTIFICATION.exec(commentValue);
+  const directivePart = (separator ? commentValue.slice(0, separator.index) : commentValue).trim();
+  if (!INLINE_CONFIG.test(directivePart) || DIRECTIVE.test(directivePart)) return null;
+  const entry = new RegExp(
+    `(?:^|[\\s,{])(["']?)${escapeRegExp(ruleId)}\\1\\s*:\\s*\\[?\\s*(["']?)(off|warn|error|0|1|2)\\2(?![\\w-])`,
+    'u',
+  ).exec(directivePart.slice('eslint'.length));
+  if (!entry) return null;
+  return entry[3] === 'off' || entry[3] === '0' ? 'off' : 'on';
+}
 
 /** `{ kind, ids }` for a directive comment, or null for any other comment. */
 function parseDirective(commentValue) {
@@ -60,7 +91,11 @@ function coreDirectiveMatcher(sourceCode, ruleId) {
   const lines = new Set();
   const ranges = [];
   let openStart = null;
+  let inlineConfig = null; // first `/* eslint <ruleId>: … */` wins, file-wide
   for (const comment of sourceCode.getAllComments()) {
+    if (inlineConfig === null && comment.type === 'Block') {
+      inlineConfig = inlineSeverity(comment.value, ruleId);
+    }
     const directive = parseDirective(comment.value);
     if (!directive) continue;
     const { kind, ids } = directive;
@@ -82,6 +117,7 @@ function coreDirectiveMatcher(sourceCode, ruleId) {
     }
   }
   if (openStart !== null) ranges.push([openStart, null]);
+  if (inlineConfig === 'off') return () => true;
 
   return (position) =>
     lines.has(position.line) ||

@@ -455,7 +455,7 @@ jobs:
               const list = skippedFiles.slice(0, 20).map((f) => `\`${f}\``).join(', ');
               const more = skippedFiles.length > 20 ? ` … and ${skippedFiles.length - 20} more` : '';
               core.summary.addRaw(
-                `\n⏭️ **${skippedFiles.length} file(s) skipped** (minified/vendored/hidden/symlinked — not linted): ${list}${more}`,
+                `\n⏭️ **${skippedFiles.length} file(s) skipped** (minified/vendored/declaration/foreign-source/hidden/symlinked — not linted): ${list}${more}`,
                 true
               );
             }

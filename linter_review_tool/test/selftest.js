@@ -626,12 +626,16 @@ console.log('eslint-disable parity (core id, .js vs .ts):');
   const { Linter } = require('eslint');
   const { configs } = require('@shoptet/addon-eslint-config');
   const linter = new Linter({ configType: 'flat' });
+  const { CORE_RULES_REPLACED_ON } = require('../linters/eslint-linter');
+  // On .ts, a core rule the config replaced only runs when an inline config
+  // switched it back on — the runner drops its reports, so this does too.
   const unusedLines = (source, filename) =>
     linter
       .verify(source, configs.recommended, { filename })
       .filter(
         (m) => m.ruleId === 'no-unused-vars' || m.ruleId === '@typescript-eslint/no-unused-vars',
       )
+      .filter((m) => !(filename.endsWith('.ts') && CORE_RULES_REPLACED_ON.ts.has(m.ruleId)))
       .map((m) => m.line)
       .join(',');
   const DIRECTIVE_CASES = {
@@ -668,6 +672,24 @@ console.log('eslint-disable parity (core id, .js vs .ts):');
       '// eslint-disable-next-line no-console,no-unused-vars\nconst a = 1;\nexport {};\n',
     'dashes without spaces':
       '// eslint-disable-next-line no-unused-vars--x\nconst a = 1;\nexport {};\n',
+    // Inline config comments: the FIRST configuration of the core id in a
+    // block comment applies to the whole file.
+    'inline off': '/* eslint no-unused-vars: "off" */\nconst a = 1;\nexport {};\n',
+    'inline 0': '/* eslint no-unused-vars: 0 */\nconst a = 1;\nexport {};\n',
+    'inline ["off"]': '/* eslint no-unused-vars: ["off"] */\nconst a = 1;\nexport {};\n',
+    'inline unquoted off': '/* eslint no-unused-vars: off */\nconst a = 1;\nexport {};\n',
+    'inline quoted key': '/* eslint "no-unused-vars": "off" */\nconst a = 1;\nexport {};\n',
+    'inline off after the code': 'const a = 1;\n/* eslint no-unused-vars: "off" */\nexport {};\n',
+    'inline off among other rules':
+      '/* eslint no-console: "off", no-unused-vars: "off" */\nconst a = 1;\nexport {};\n',
+    'inline off with justification':
+      '/* eslint no-unused-vars: "off" -- legacy */\nconst a = 1;\nexport {};\n',
+    'inline off in a line comment (ignored)':
+      '// eslint no-unused-vars: "off"\nconst a = 1;\nexport {};\n',
+    'inline off of another rule': '/* eslint no-console: "off" */\nconst a = 1;\nexport {};\n',
+    'inline off of a longer id': '/* eslint no-unused-vars-x: "off" */\nconst a = 1;\nexport {};\n',
+    'inline error, then off (first wins)':
+      '/* eslint no-unused-vars: "error" */\n/* eslint no-unused-vars: "off" */\nconst a = 1;\nexport {};\n',
   };
   for (const [name, source] of Object.entries(DIRECTIVE_CASES)) {
     const js = unusedLines(source, 'probe.js');
@@ -685,6 +707,20 @@ console.log('eslint-disable parity (core id, .js vs .ts):');
     '/* eslint-disable */\nconst a = 1;\n/* eslint-enable no-unused-vars */\nconst b = 2;\nexport {};\n';
   const js = unusedLines(bareThenCore, 'probe.js');
   const ts = unusedLines(bareThenCore, 'probe.ts');
+  // Second documented divergence: an inline config that overrides the core
+  // id's OPTIONS cannot be applied to the replacement (it keeps the profile's
+  // options), so it may still report what the override would have allowed.
+  const optionsOverride =
+    '/* eslint no-unused-vars: ["error", { varsIgnorePattern: "^_" }] */\nconst _a = 1;\nexport {};\n';
+  const optJs = unusedLines(optionsOverride, 'probe.js');
+  const optTs = unusedLines(optionsOverride, 'probe.ts');
+  if (optJs === '' && optTs === '2') {
+    pass('documented divergence: an inline options override of the core id applies to .js only');
+  } else {
+    fail(
+      `inline options override changed: .js [${optJs}], .ts [${optTs}] — update README and this pin`,
+    );
+  }
   if (js === '4' && ts === '') {
     pass('documented divergence: bare disable + core-id enable re-enables .js only');
   } else {

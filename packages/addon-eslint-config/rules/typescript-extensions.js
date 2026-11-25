@@ -19,6 +19,8 @@
  *     a global — leftover from a refactor, never dead runtime code;
  *   - an unused TYPE PARAMETER (`type Branded<T, Tag>`): tsc reports it only
  *     under --noUnusedParameters, like an unused argument (`args: 'none'`);
+ *   - an unused DECORATED class: the decorator registers it at runtime
+ *     (`@customElement('x')`), so it is not dead code;
  *   - in `.tsx/.jsx`, an unused IMPORT that may be the JSX factory compiled
  *     JSX calls: one named by a `@jsx` / `@jsxFrag` pragma TypeScript or
  *     Babel would read (see LEADING_PRAGMA / LINE_PRAGMA), or one of the
@@ -26,6 +28,9 @@
  *     a factory set in tsconfig/babel is invisible here. Only import
  *     bindings — `const h = 5` is still reported. The default `React`
  *     factory is already counted as used by the parser.
+ *
+ * `no-use-before-define` drops a reference to an AMBIENT declaration
+ * (`declare const SHOP_CFG`, `declare class Lib`): no emitted code, no TDZ.
  */
 
 const { findVariable } = require('@eslint-community/eslint-utils');
@@ -57,6 +62,28 @@ function jsxFactoryNames(sourceCode, cache) {
   return names;
 }
 
+function isDecoratedClassDef(def) {
+  return (
+    def.node &&
+    (def.node.type === 'ClassDeclaration' || def.node.type === 'ClassExpression') &&
+    Array.isArray(def.node.decorators) &&
+    def.node.decorators.length > 0
+  );
+}
+
+/**
+ * no-use-before-define: a reference to an AMBIENT declaration
+ * (`declare const SHOP_CFG`, `declare class Lib`, `declare namespace`)
+ * cannot hit the TDZ — the declaration emits no code, the value already
+ * exists at runtime. A real enum used early is still reported.
+ */
+function useBeforeDefineSkip(descriptor, context) {
+  const node = descriptor.node;
+  if (!node || node.type !== 'Identifier') return false;
+  const variable = findVariable(context.sourceCode.getScope(node), node);
+  return Boolean(variable && variable.defs.length && variable.defs.every(isAmbientDef));
+}
+
 function unusedVarsSkip() {
   const cache = {};
   return (descriptor, context) => {
@@ -72,6 +99,9 @@ function unusedVarsSkip() {
     if (variable.defs.every((def) => def.node && def.node.type === 'TSTypeParameter')) {
       return true;
     }
+    // A decorated class is registered by its decorator at runtime
+    // (`@customElement('x') class Widget …`) — used even if nothing names it.
+    if (variable.defs.every(isDecoratedClassDef)) return true;
     return (
       JSX_FILE.test(context.filename) &&
       variable.defs.every((def) => def.type === 'ImportBinding') &&
@@ -96,6 +126,7 @@ function typescriptExtensionRules(upstreamRules) {
     'no-use-before-define': honoringCoreDirectives(
       upstreamRules['no-use-before-define'],
       'no-use-before-define',
+      useBeforeDefineSkip,
     ),
     'no-unused-expressions': honoringCoreDirectives(
       upstreamRules['no-unused-expressions'],
