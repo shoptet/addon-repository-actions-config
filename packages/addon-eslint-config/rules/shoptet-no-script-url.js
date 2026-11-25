@@ -238,10 +238,18 @@ function callSink(call, value, scope) {
   if (globalCalleeName(call.callee, scope) === 'open') return true;
   // top.open(…), parent.open(…), opener.open(…), frames[0].open(…), and
   // window.open(…) where `window` is the jQuery-plugin IIFE alias
-  return Boolean(
-    callee.type === 'MemberExpression' &&
-    memberName(callee) === 'open' &&
-    isBrowserWindow(callee.object, scope),
+  if (
+    callee.type !== 'MemberExpression' ||
+    memberName(callee) !== 'open' ||
+    !isBrowserWindow(callee.object, scope)
+  ) {
+    return false;
+  }
+  // document.open(type) / document.open(type, replace) only reopens the
+  // document stream; only the three-argument form navigates, as window.open.
+  const receiver = unwrapExpr(callee.object);
+  return (
+    !(receiver.type === 'Identifier' && receiver.name === 'document') || call.arguments.length === 3
   );
 }
 

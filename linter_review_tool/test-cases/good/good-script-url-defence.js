@@ -68,3 +68,10 @@ export function ownFrames() {
   data.frames[0].location = 'javascript:void(0)';
   return data;
 }
+
+// document.open(type) / document.open(type, replace) only reopens the document
+// stream; it navigates nowhere.
+export function reopenDocument() {
+  document.open('javascript:void(0)');
+  document.open('javascript:void(0)', 'replace');
+}

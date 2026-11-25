@@ -39,6 +39,8 @@ export function wireMore(el) {
   top.open('javascript:void(0)');
   parent.open('javascript:void(0)');
   opener.open('javascript:void(0)');
+  // the three-argument document.open() opens a window, as window.open()
+  document.open('javascript:void(0)', '_blank', '');
   window.frames[0].location = 'javascript:void(0)';
   el.href ||= 'javascript:void(0)';
   el.src ??= 'javascript:void(0)';
@@ -49,4 +51,5 @@ export function wireMore(el) {
   window.location = 'javascript:void(0)';
   window.open('javascript:void(0)');
   document.location = 'javascript:void(0)';
+  document.open('javascript:void(0)', '_blank', '');
 })(jQuery, window, document);
