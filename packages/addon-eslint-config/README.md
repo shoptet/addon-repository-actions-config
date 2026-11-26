@@ -90,7 +90,14 @@ behaviours of `linter_review_tool/linters/eslint-linter.js`:
   can switch back on;
 - on every file, drop reports from the core rules the config replaces on
   every extension (`CORE_RULES_REPLACED_EVERYWHERE`: `no-script-url`), for
-  the same reason.
+  the same reason;
+- drop `no-redeclare` reports with `messageId: redeclaredAsBuiltin`
+  positioned inside a `/* global */` comment for a name the comment keeps
+  read-only (a redundant comment, not a redeclaration; `writable` / `true` /
+  `off` is an opt-out and stays reported). Locate those comments with the
+  exported `globalCommentLocations(source, filename)` — the parser's
+  comments, not a regex — and test a report with
+  `isRedundantGlobalReport(message, locations)`.
 
 ## SemVer policy
 

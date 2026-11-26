@@ -21,7 +21,12 @@
 const fs = require('fs');
 const path = require('path');
 const { ESLint } = require('eslint');
-const { configs, parsesAsScript } = require('@shoptet/addon-eslint-config');
+const {
+  configs,
+  parsesAsScript,
+  globalCommentLocations,
+  isRedundantGlobalReport,
+} = require('@shoptet/addon-eslint-config');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -157,12 +162,36 @@ function usesModuleSyntax(filePath) {
 // defect in the code, only in a comment ESLint could not apply — dropped.
 const UNKNOWN_RULE_DIRECTIVE = /^Definition for rule '[^']+' was not found\.$/;
 
+// `/* global $, shoptet */` naming a global the config already declares is
+// only redundant — no runtime effect, nothing wrong in the code — yet core
+// no-redeclare (builtinGlobals, ESLint 9 default) reports each name as
+// `redeclaredAsBuiltin`, positioned INSIDE that comment. Exactly those reports
+// are dropped (CZ3TDR1-979): a redeclaration in code is positioned in code, and
+// `builtinGlobals` stays on. The rule id stays `no-redeclare` (a wrapper would
+// have to rename it, changing every existing finding's fingerprint).
+// The comments come from the parser (globalCommentLocations in the shared
+// package), not from a regex over the raw text — a `/* global` inside a string
+// or a line comment, or an identifier glued to the closing delimiter, must
+// never hide a redeclaration in code.
+function globalCommentsOf(filePath) {
+  try {
+    return globalCommentLocations(fs.readFileSync(filePath, 'utf8'), filePath);
+  } catch {
+    return null; // unreadable — filter nothing
+  }
+}
+
 function pushMessages(findings, result) {
   const replacedCore = replacedCoreRules(result.filePath);
+  let globalComments; // read lazily, only when a candidate report exists
   for (const message of result.messages) {
     if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
     if (replacedCore && replacedCore.has(message.ruleId)) continue;
     if (CORE_RULES_REPLACED_EVERYWHERE.has(message.ruleId)) continue;
+    if (message.ruleId === 'no-redeclare' && message.messageId === 'redeclaredAsBuiltin') {
+      if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
+      if (globalComments && isRedundantGlobalReport(message, globalComments)) continue;
+    }
     findings.push({
       file: result.filePath,
       line: message.line || 1,
