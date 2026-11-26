@@ -26,6 +26,7 @@ const {
   parsesAsScript,
   globalCommentLocations,
   isRedundantGlobalReport,
+  isUnusedGlobalReport,
 } = require('@shoptet/addon-eslint-config');
 
 const ROOT = path.join(__dirname, '..');
@@ -191,6 +192,12 @@ function pushMessages(findings, result) {
     if (message.ruleId === 'no-redeclare' && message.messageId === 'redeclaredAsBuiltin') {
       if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
       if (globalComments && isRedundantGlobalReport(message, globalComments)) continue;
+    }
+    // A name a `/* global */` comment declares and the file never reads: the
+    // comment is redundant, the code has nothing to fix (CZ3TDR1-982).
+    if (UNUSED_VARS_RULES.has(message.ruleId)) {
+      if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
+      if (globalComments && isUnusedGlobalReport(message, globalComments)) continue;
     }
     findings.push({
       file: result.filePath,

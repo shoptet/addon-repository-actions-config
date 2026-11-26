@@ -152,9 +152,15 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   `readonly`, `readable` or `false`) — are dropped. `/* global shoptet:
   writable */` (also `writeable`, `true`, `off`) is not redundant: it makes
   the global assignable and switches off `no-global-assign` /
-  `no-implicit-globals` for it, so that comment's report still blocks. A redeclaration in code
-  (`var a; var a;`, a top-level `var shoptet = {}` in a classic script) is
-  still a blocker, under the same `no-redeclare` id.
+  `no-implicit-globals` for it, so that comment's report still blocks. A
+  redeclaration in code (`var a; var a;`, a top-level `var shoptet = {}` in a
+  classic script) is still a blocker, under the same `no-redeclare` id.
+- *An unused name in a `/* global */` comment is accepted.* `no-unused-vars`
+  (`@typescript-eslint/no-unused-vars` on TypeScript/JSX) reports a name the
+  comment declares but the file never reads, positioned inside the comment.
+  The comment is only redundant, so those reports are dropped, whatever the
+  entry's value. An unused variable, import or parameter in code is still a
+  blocker, under the same rule id.
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see

@@ -4,7 +4,9 @@
  *
  * Shared helper, not a rule. The runner uses it to drop core no-redeclare's
  * `redeclaredAsBuiltin` reports that sit inside such a comment — a redundant
- * comment, not a redeclaration (CZ3TDR1-979). The comments come from the
+ * comment, not a redeclaration (CZ3TDR1-979) — and the no-unused-vars reports
+ * for a name the comment declares but the file never reads (CZ3TDR1-982). The
+ * comments come from the
  * parser's tokenizer, not from a regex over the raw text, so `/* global`
  * inside a string or a line comment is not mistaken for a directive, the end
  * of the comment is exact, and line numbers follow the parser (CR, CRLF,
@@ -112,6 +114,26 @@ function isRedundantGlobalReport(message, locations) {
   );
 }
 
+// The two messages no-unused-vars / @typescript-eslint/no-unused-vars give a
+// comment-declared global: never read at all, or only assigned.
+const UNUSED_MESSAGE = /^'(.+)' is (?:defined|assigned a value) but never used\.$/u;
+
+/**
+ * Is a no-unused-vars report one of a global comment's own entries — a name
+ * the comment declares and the file never reads? Such a comment is only
+ * redundant: the code has nothing to fix, so the report is never a defect.
+ * Whatever the entry's value: a `writable` opt-out keeps its own no-redeclare
+ * report (isRedundantGlobalReport), and an assignment to the global is
+ * reported in code by no-global-assign / no-implicit-globals, not here.
+ */
+function isUnusedGlobalReport(message, locations) {
+  const match = UNUSED_MESSAGE.exec(message.message);
+  if (!match) return false;
+  return locations.some(
+    (location) => isInsideComment(message, [location]) && location.entries.has(match[1]),
+  );
+}
+
 /**
  * Is an ESLint message (1-based line and column) inside one of the comments?
  * The end is exclusive: an identifier glued to the closing delimiter
@@ -127,4 +149,9 @@ function isInsideComment(message, locations) {
   });
 }
 
-module.exports = { globalCommentLocations, isInsideComment, isRedundantGlobalReport };
+module.exports = {
+  globalCommentLocations,
+  isInsideComment,
+  isRedundantGlobalReport,
+  isUnusedGlobalReport,
+};
