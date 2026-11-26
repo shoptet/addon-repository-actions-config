@@ -5,7 +5,8 @@
  * the plugin object standalone (for consumers that need it separately),
  * `parsesAsScript` (used independently of the plugin by
  * `linter_review_tool/linters/eslint-linter.js` to detect script-vs-module
- * files), `globalCommentLocations` / `isInsideComment` (the parser-located
+ * files), `parsesAsJsxModule` (whether a `.js` file that fails the plain
+ * parses is JavaScript with JSX), `globalCommentLocations` / `isInsideComment` (the parser-located
  * `/* global *\/` comments the runner drops redundant no-redeclare reports
  * in), the ESLint slice of `RELIABLE_RULES`, and `RUNNER_RULES` (the
  * subset of that slice the runner — not this package — has to emit).
@@ -13,7 +14,7 @@
 
 const flatConfig = require('./eslint.flat.config');
 const plugin = require('./rules');
-const { parsesAsScript } = require('./rules/script-detect');
+const { parsesAsScript, parsesAsJsxModule } = require('./rules/script-detect');
 const {
   globalCommentLocations,
   isInsideComment,
@@ -27,6 +28,7 @@ module.exports = {
   },
   plugin,
   parsesAsScript,
+  parsesAsJsxModule,
   globalCommentLocations,
   isInsideComment,
   isRedundantGlobalReport,

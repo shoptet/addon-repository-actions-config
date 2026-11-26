@@ -122,4 +122,24 @@ function parsesAsScript(sourceText, filename) {
   return lastResult;
 }
 
-module.exports = { parsesAsScript };
+/**
+ * Is a JavaScript source a valid ES module once JSX is allowed — and only
+ * then (CZ3TDR1-968)? The runner asks this for a `.js` / `.mjs` file that
+ * failed both plain espree parses, before linting it as JSX. espree, not
+ * typescript-estree: the latter also accepts TypeScript syntax, so a `.js`
+ * file with a type annotation would stop being a parse error.
+ */
+function parsesAsJsxModule(sourceText) {
+  try {
+    espree.parse(sourceText, {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      ecmaFeatures: { jsx: true },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { parsesAsScript, parsesAsJsxModule };

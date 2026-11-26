@@ -240,9 +240,13 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
     lints the compiled bundle in `src/`, which reports build output rather
     than the partner's code.
 
-  One known false positive remains, and it predates TypeScript support: JSX
-  in a `.js` file is a parse error (`CodeQuality` blocker), because only
-  `.jsx` and `.tsx` are parsed with JSX enabled (tracked as CZ3TDR1-968).
+  JSX in a `.js` / `.mjs` file (Vite and CRA templates) is linted exactly
+  like the same code in a `.jsx` file. JSX is not turned on up front: only a
+  file that fails both plain parses (module, then script) and that espree
+  accepts as an ES module with JSX gets the `.jsx` treatment, so every other
+  `.js` file is linted as before. TypeScript syntax in a `.js` file stays a
+  parse error (`CodeQuality`), and so does JSX in a `.cjs` file or in code
+  that is valid only as a classic script (sloppy-mode syntax such as `with`).
 - *Templating placeholders in attribute position weaken the HTML checks.* A
   Mustache/Handlebars-style placeholder standing where an attribute would be
   (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`
