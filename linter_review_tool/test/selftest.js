@@ -654,7 +654,8 @@ fs.rmSync(testFilesTmp, { recursive: true, force: true });
 // A test file that production code imports ships with it, so it is linted
 // after all and leaves `skipped` (CZ3TDR1-980) — through a static import with
 // no extension, a TypeScript-style `.js` specifier for a `.ts` file, a
-// top-level require(), `import x = require()`, a `.js` file with JSX and a
+// top-level require() (also in `export default` and a top-level IIFE),
+// `import x = require()`, a `.js` file with JSX and a
 // chain through another imported test file. What may not ship stays skipped:
 // a type-only import (also `import type x = require()`), a dynamic import(),
 // a require() inside a condition or a function, a `?raw` query, and require()
@@ -683,6 +684,10 @@ const IMPORT_FILES = {
   'lib/View.js':
     "import { stub } from '../__mocks__/jsx-stub.js';\nexport const View = () => <p>{stub}</p>;\n",
   '__mocks__/jsx-stub.js': "export const stub = eval('5e');\n",
+  'lib/wrap.js':
+    "(function () {\n  require('../__mocks__/iife.js');\n})();\nexport default require('../__mocks__/def.js');\n",
+  '__mocks__/iife.js': "export const ii = eval('5f');\n",
+  '__mocks__/def.js': "export const df = eval('5g');\n",
   '__tests__/untouched.test.ts': "export const u = eval('6');\n",
 };
 for (const [name, content] of Object.entries(IMPORT_FILES)) {
@@ -711,6 +716,8 @@ const PROMOTED = [
   'lib/data.spec.js',
   'lib/helper.min.test.js',
   '__mocks__/jsx-stub.js',
+  '__mocks__/iife.js',
+  '__mocks__/def.js',
 ];
 const STILL_SKIPPED = [
   '__mocks__/types.ts',

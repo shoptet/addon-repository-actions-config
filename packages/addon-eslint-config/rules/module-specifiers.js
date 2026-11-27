@@ -3,8 +3,9 @@
  * PARSER's AST (not a regex): `import … from 'x'`, `import 'x'`,
  * `export … from 'x'`, TypeScript's `import x = require('x')`, and a
  * `require('x')` that runs whenever the file runs — a top-level statement,
- * a top-level declaration's initializer or a top-level assignment
- * (`require('x').y` too). String literals only.
+ * a top-level declaration's initializer, a top-level assignment or
+ * `export default`, also directly inside a top-level IIFE (the classic-script
+ * wrapper), and `require('x').y` too. String literals only.
  *
  * Shared helper, not a rule. The runner uses it to lint a test file that
  * production code imports after all (CZ3TDR1-980): discovery skips
@@ -121,8 +122,11 @@ function boundNames(program) {
   while (stack.length) {
     const node = stack.pop();
     switch (node.type) {
-      case 'VariableDeclarator':
-        patternNames(node.id, names);
+      case 'VariableDeclaration':
+        // `declare const require: NodeRequire` only types the real loader
+        if (!node.declare) {
+          for (const declarator of node.declarations) patternNames(declarator.id, names);
+        }
         break;
       case 'FunctionDeclaration':
       case 'FunctionExpression':
@@ -175,12 +179,36 @@ function requireCallOf(node) {
     : null;
 }
 
+/**
+ * The body of an immediately invoked function expression —
+ * `(function () { … })()`, `(() => { … })()`, `!function () { … }()` — which
+ * runs whenever the statement runs (the classic-script wrapper), or null.
+ */
+function iifeBody(expression) {
+  let node = expression;
+  if (node.type === 'UnaryExpression') node = node.argument;
+  if (node.type !== 'CallExpression') return null;
+  const callee = node.callee;
+  if (
+    (callee.type === 'FunctionExpression' || callee.type === 'ArrowFunctionExpression') &&
+    !callee.async &&
+    !callee.generator &&
+    callee.body.type === 'BlockStatement'
+  ) {
+    return callee.body.body;
+  }
+  return null;
+}
+
 /** The expressions of a top-level statement that run whenever the file runs. */
 function unconditionalExpressions(statement) {
   let node = statement;
   if (node.type === 'ExportNamedDeclaration' && node.declaration) node = node.declaration;
+  if (node.type === 'ExportDefaultDeclaration') return [node.declaration];
   if (node.type === 'ExpressionStatement') {
     const { expression } = node;
+    const body = iifeBody(expression);
+    if (body) return body.flatMap(unconditionalExpressions);
     return expression.type === 'AssignmentExpression' ? [expression.right] : [expression];
   }
   if (node.type === 'VariableDeclaration') {

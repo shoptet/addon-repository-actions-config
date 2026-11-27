@@ -161,10 +161,11 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   file **imports** ships with it and is linted after all (it leaves `skipped`,
   and plain output lists it as linted because production code imports it):
   a relative static `import` / `export … from`, `import x = require('…')`,
-  or a `require('…')` that always runs (a top-level statement, declaration
-  or assignment), with a string literal, resolved like a bundler (exact
-  path, the JS/TS extensions, a TypeScript `.js` → `.ts` twin, `index.*`),
-  also through a chain of imported test files. Only what certainly ships
+  or a `require('…')` that always runs (a top-level statement, declaration,
+  assignment or `export default`, also directly inside a top-level IIFE),
+  with a string literal, resolved like a bundler (exact path, the JS/TS
+  extensions, a TypeScript `.js` → `.ts` twin, `index.*`), also through a
+  chain of imported test files. Only what certainly ships
   counts, so these are not followed (false negatives by design): a dynamic
   `import('…')` and a `require()` inside a condition or a function (a
   dev-only mock behind `if (import.meta.env.DEV)` never ships); a type-only
