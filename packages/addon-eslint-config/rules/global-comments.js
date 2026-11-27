@@ -124,9 +124,14 @@ const UNUSED_MESSAGE = /^'(.+)' is (?:defined|assigned a value) but never used\b
  * Is a no-unused-vars report one of a global comment's own entries — a name
  * the comment declares and the file never reads? Such a comment is only
  * redundant: the code has nothing to fix, so the report is never a defect.
- * Whatever the entry's value: a `writable` opt-out keeps its own no-redeclare
- * report (isRedundantGlobalReport), and an assignment to the global is
- * reported in code by no-global-assign / no-implicit-globals, not here.
+ * Whatever the entry's value: a `writable` opt-out for a configured global
+ * keeps its own no-redeclare report (isRedundantGlobalReport), and an
+ * assignment to a read-only global is reported in code by no-global-assign /
+ * no-implicit-globals, not here. A `writable` entry for a name the config does
+ * not declare is a plain declaration: `/* global myFlag: writable *\/` +
+ * `myFlag = true;` in a module is clean (on main it blocked only by accident,
+ * through this very report). Writing a global the file itself declares
+ * writable is not a defect.
  */
 function isUnusedGlobalReport(message, locations) {
   const match = UNUSED_MESSAGE.exec(message.message);

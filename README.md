@@ -159,8 +159,12 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   (`@typescript-eslint/no-unused-vars` on TypeScript/JSX) reports a name the
   comment declares but the file never reads, positioned inside the comment.
   The comment is only redundant, so those reports are dropped, whatever the
-  entry's value. An unused variable or import in code is still a blocker,
-  under the same rule id (parameters are never reported: `args: 'none'`).
+  entry's value. A write to a global is reported in code only when the entry
+  is read-only (`no-global-assign` / `no-implicit-globals`): `/* global
+  myFlag: writable */` + `myFlag = true;` for a name the config does not
+  declare passes clean, as a file declaring its own writable global should.
+  An unused variable or import in code is still a blocker, under the same
+  rule id (parameters are never reported: `args: 'none'`).
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see
