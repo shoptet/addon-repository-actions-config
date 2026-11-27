@@ -655,11 +655,12 @@ fs.rmSync(testFilesTmp, { recursive: true, force: true });
 // after all and leaves `skipped` (CZ3TDR1-980) — through a static import with
 // no extension, a TypeScript-style `.js` specifier for a `.ts` file, a
 // top-level require() (also in `export default` and a top-level IIFE),
-// `import x = require()`, a `.js` file with JSX and a
-// chain through another imported test file. What may not ship stays skipped:
-// a type-only import (also `import type x = require()`), a dynamic import(),
-// a require() inside a condition or a function, a `?raw` query, and require()
-// in a file that binds its own `require`. So does a file nothing imports.
+// `import x = require()`, a `.js` file with JSX and a chain through another
+// imported test file. What may not ship stays skipped: a type-only import
+// (also `import type x = require()`), a dynamic import(), a require() inside
+// a condition or a function or after an early return / throw in an IIFE, a
+// `?raw` query, and require() in a file that binds its own `require`. So does
+// a file nothing imports.
 const importTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-imports-'));
 const IMPORT_FILES = {
   'main.ts':
@@ -687,6 +688,10 @@ const IMPORT_FILES = {
   'lib/wrap.js':
     "(function () {\n  require('../__mocks__/iife.js');\n})();\nexport default require('../__mocks__/def.js');\n",
   '__mocks__/iife.js': "export const ii = eval('5f');\n",
+  'lib/early.js':
+    "(function () {\n  if (process.env.NODE_ENV !== 'test') return;\n  require('../__mocks__/early.js');\n})();\n(function () {\n  throw new Error('x');\n  require('../__mocks__/after-throw.js');\n})();\n",
+  '__mocks__/early.js': "export const ea = eval('5h');\n",
+  '__mocks__/after-throw.js': "export const at = eval('5i');\n",
   '__mocks__/def.js': "export const df = eval('5g');\n",
   '__tests__/untouched.test.ts': "export const u = eval('6');\n",
 };
@@ -727,6 +732,8 @@ const STILL_SKIPPED = [
   '__mocks__/later.js',
   '__fixtures__/snippet.js',
   '__mocks__/shadowed.js',
+  '__mocks__/early.js',
+  '__mocks__/after-throw.js',
   '__tests__/untouched.test.ts',
 ];
 const promotedOk = PROMOTED.every(

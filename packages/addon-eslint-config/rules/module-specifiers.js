@@ -4,8 +4,8 @@
  * `export … from 'x'`, TypeScript's `import x = require('x')`, and a
  * `require('x')` that runs whenever the file runs — a top-level statement,
  * a top-level declaration's initializer, a top-level assignment or
- * `export default`, also directly inside a top-level IIFE (the classic-script
- * wrapper), and `require('x').y` too. String literals only.
+ * `export default`, also in the leading straight-line part of a top-level
+ * IIFE (the classic-script wrapper), and `require('x').y` too. String literals only.
  *
  * Shared helper, not a rule. The runner uses it to lint a test file that
  * production code imports after all (CZ3TDR1-980): discovery skips
@@ -200,6 +200,23 @@ function iifeBody(expression) {
   return null;
 }
 
+/**
+ * The leading run of an IIFE body that certainly executes: expression
+ * statements and declarations up to the first statement that may leave the
+ * function or steer control flow (`if`, `return`, `throw`, `try`, a loop …).
+ * A `require()` after `if (process.env.NODE_ENV !== 'test') return;` runs
+ * only in tests, so nothing after such a statement counts — a false negative
+ * for a `require()` after a harmless `if`, never a false positive.
+ */
+function leadingStraightLine(body) {
+  const prefix = [];
+  for (const statement of body) {
+    if (statement.type !== 'ExpressionStatement' && statement.type !== 'VariableDeclaration') break;
+    prefix.push(statement);
+  }
+  return prefix;
+}
+
 /** The expressions of a top-level statement that run whenever the file runs. */
 function unconditionalExpressions(statement) {
   let node = statement;
@@ -208,7 +225,7 @@ function unconditionalExpressions(statement) {
   if (node.type === 'ExpressionStatement') {
     const { expression } = node;
     const body = iifeBody(expression);
-    if (body) return body.flatMap(unconditionalExpressions);
+    if (body) return leadingStraightLine(body).flatMap(unconditionalExpressions);
     return expression.type === 'AssignmentExpression' ? [expression.right] : [expression];
   }
   if (node.type === 'VariableDeclaration') {
