@@ -28,10 +28,17 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 // module by convention and is exempt. (round 12)
 // So is a JSX file (.jsx / .tsx, and a .js file with JSX, which the runner
 // lints as .jsx): JSX does not run without a build, and the bundler wraps
-// every file in its own module scope, so a top-level function stays local
-// (CZ3TDR1-986). In-browser Babel (`<script type="text/babel">`) or a tsc
-// build to a classic script would make it global — an accepted false
-// negative, not a false positive.
+// every file in its own module scope, so a top-level declaration
+// (`function initColorBox`, `var shoptet = {}`, `class …`) stays local
+// (CZ3TDR1-986). Writes (`shoptet.x = …`, `window.initColorBox = …`) are not
+// scope-dependent and still report. In-browser Babel
+// (`<script type="text/babel">`) or a tsc build to a classic script would
+// make the declaration global — an accepted false negative, not a false
+// positive.
+// Plain .ts is deliberately NOT exempt, although it does not run without a
+// compiler either: an addon compiled with bare `tsc --outFile` into a classic
+// script is a realistic setup, the same with JSX is not, and exempting .ts
+// would add a false negative in the more realistic case.
 const JSX_FILE = /\.[jt]sx$/i;
 function shipsAsClassicScript(context) {
   const filename = context.filename;
