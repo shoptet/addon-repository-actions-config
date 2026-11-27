@@ -247,8 +247,8 @@ async function lintJsxInJs(eslint, mjsEslint, filePath, findings) {
   return true;
 }
 
-// A `.js` / `.mjs` file that fails every parse: when the JSX parse got
-// further than the plain module parse, the file is JSX broken elsewhere (a
+// A `.js` / `.mjs` file that fails every parse: when the JSX parse got to a
+// later line than the plain module parse, the file is JSX broken elsewhere (a
 // duplicate declaration after the JSX, say), and the plain error — on the
 // first `<` — points the partner at the wrong line. Report the JSX parse's
 // error instead; otherwise keep the original. The finding stays a CodeQuality
@@ -264,9 +264,11 @@ function preferJsxParseError(moduleResult) {
     return;
   }
   if (!jsxError || !jsxError.line) return;
-  const further =
-    jsxError.line > fatal.line || (jsxError.line === fatal.line && jsxError.column > fatal.column);
-  if (!further) return;
+  // A LATER LINE only: TypeScript syntax in a `.js` file (`<any>foo`,
+  // `<T,>(x) => x`) lets the JSX parse get a few columns further on the same
+  // line, and its message ("Unterminated JSX contents") would talk about JSX
+  // the partner never wrote.
+  if (jsxError.line <= fatal.line) return;
   fatal.message = `Parsing error: ${jsxError.message}`;
   fatal.line = jsxError.line;
   fatal.column = jsxError.column;

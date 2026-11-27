@@ -653,13 +653,17 @@ fs.rmSync(testFilesTmp, { recursive: true, force: true });
 
 // A `.js` file with JSX that is broken elsewhere reports the JSX parse's
 // error, on the real line — not the plain parse's `Unexpected token <` on the
-// JSX (CZ3TDR1-968, Roman on #30). A plain syntax error keeps its own.
+// JSX (CZ3TDR1-968, Roman on #30). A plain syntax error keeps its own, and so
+// does TypeScript syntax, where the JSX parse gets further only on the same
+// line.
 const jsxErrTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-jsx-error-'));
 fs.writeFileSync(
   path.join(jsxErrTmp, 'dup.js'),
   'export const V = () => <i />;\nfunction dup2() {}\nfunction dup2() {}\n',
 );
 fs.writeFileSync(path.join(jsxErrTmp, 'plain.js'), 'const x = ;\n');
+fs.writeFileSync(path.join(jsxErrTmp, 'cast.js'), 'export const x = <any>foo;\n');
+fs.writeFileSync(path.join(jsxErrTmp, 'generic.js'), 'export const id = <T,>(x) => x;\n');
 const jsxErrRun = runRaw([jsxErrTmp, '--rdjson']);
 let jsxErrDiags = [];
 try {
@@ -677,10 +681,14 @@ if (
   /already been declared/.test(dupError.message) &&
   plainError &&
   plainError.location.range.start.line === 1 &&
-  /Unexpected token ;/.test(plainError.message)
+  /Unexpected token ;/.test(plainError.message) &&
+  ['cast.js', 'generic.js'].every((name) => {
+    const error = parseErrorOf(name);
+    return error && /Unexpected token </.test(error.message);
+  })
 ) {
   pass(
-    'a .js file with JSX broken elsewhere reports the real parse error, a plain one keeps its own',
+    'a .js file with JSX broken on a later line reports the real parse error; a plain one and TS syntax keep their own',
   );
 } else {
   fail(

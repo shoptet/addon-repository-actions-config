@@ -95,8 +95,9 @@ behaviours of `linter_review_tool/linters/eslint-linter.js`:
   name with the config's JSX blocks retargeted to it (`files`, plus
   `parserOptions.ecmaFeatures.jsx`), so rules still see a module. When such a
   file fails the JSX parse too, report `jsxModuleParseError`'s error instead
-  of the plain module one if it lies further into the file (the JSX parse
-  got past the JSX, so that error is the real one);
+  of the plain module one if it is on a later line (the JSX parse got past
+  the JSX, so that error is the real one; on the same line it is TypeScript
+  syntax, and the plain error stays);
 - drop "Definition for rule … was not found" reports (a directive naming an
   unknown rule is never a code defect);
 - on TypeScript/JSX files, drop reports from the core rules the config

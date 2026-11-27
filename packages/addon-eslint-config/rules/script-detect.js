@@ -137,9 +137,8 @@ function parsesAsJsxModule(sourceText) {
  * The error espree reports for a source parsed as an ES module with JSX, in
  * ESLint's shape (`{ message, line, column }`, message without a leading
  * "line N:"), or null when it parses. The runner reports it instead of the
- * plain module parse error when it lies further into the file: then the JSX
- * parse got past the plain one's error (the JSX), and this one is the real
- * problem.
+ * plain module parse error when it is on a later line: then the JSX parse got
+ * past the plain one's error (the JSX), and this one is the real problem.
  */
 function jsxModuleParseError(sourceText) {
   try {
