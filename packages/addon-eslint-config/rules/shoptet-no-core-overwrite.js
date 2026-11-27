@@ -26,9 +26,17 @@ const CORE_FUNCTIONS = new Set(['initColorBox']);
 // to the shared global scope and DO overwrite the core, even though ESLint
 // parses the file as a module and reports them at module scope. .mjs is a real
 // module by convention and is exempt. (round 12)
+// So is a JSX file (.jsx / .tsx, and a .js file with JSX, which the runner
+// lints as .jsx): JSX does not run without a build, and the bundler wraps
+// every file in its own module scope, so a top-level function stays local
+// (CZ3TDR1-986). In-browser Babel (`<script type="text/babel">`) or a tsc
+// build to a classic script would make it global — an accepted false
+// negative, not a false positive.
+const JSX_FILE = /\.[jt]sx$/i;
 function shipsAsClassicScript(context) {
   const filename = context.filename;
   if (/\.m[jt]s$/i.test(filename) || isCommonJsFile(filename)) return false;
+  if (JSX_FILE.test(filename)) return false;
   // Script-parseability IS the question: import/export, import.meta and
   // top-level await all fail it, so this cannot diverge from the linter's
   // usesModuleSyntax again (round 13, shared helper). The filename selects the

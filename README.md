@@ -89,6 +89,16 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   `Object.setPrototypeOf(...)`, `Object.defineProperty(window, 'shoptet', …)`
   or multi-hop global chains (`window.window.shoptet…`). Accepted false
   negatives for a reliable-rules gate; the AI review covers the intent.
+- *A top-level function in a JSX file is module-local.* A file without
+  `import` / `export` ships as a classic script, so a top-level
+  `function initColorBox() {}` there overwrites the core and blocks — except
+  in a JSX file (`.jsx`, `.tsx`). JSX does not run without a build, and the
+  bundler wraps every file in its own module scope, so the declaration stays
+  local and is not reported. Property writes (`shoptet.x = …`) are still
+  reported in every file. Accepted false negative: JSX compiled in the
+  browser (`<script type="text/babel">`) or by `tsc` into a classic script
+  does make it global. `no-unused-vars` keeps treating such a file as a
+  script, so it still stays silent there (fewer findings, never more).
 - *Files with more than ~20,000 changed lines cannot receive inline comments
   at all.* GitHub's review API rejects comment anchors in such files ("diff
   entry is too large"), and a single such anchor voids the whole comment chunk.
