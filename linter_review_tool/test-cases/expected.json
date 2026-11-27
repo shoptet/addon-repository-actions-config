@@ -87,6 +87,9 @@
     "prefer-template@recommend",
     "radix@recommend"
   ],
+  "bad/bad-jsx-core-overwrite.jsx": [
+    "shoptet/no-core-overwrite@blocker:3"
+  ],
   "bad/bad-jsx-practices.jsx": [
     "@typescript-eslint/no-unused-vars@blocker",
     "getter-return@blocker",
