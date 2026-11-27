@@ -87,9 +87,11 @@ A runner that consumes the config also has to mirror these runner-side
 behaviours of `linter_review_tool/linters/eslint-linter.js`:
 
 - lint a `.js` / `.mjs` file that fails both plain parses (module, then
-  script) but passes `parsesAsJsxModule` under its `.jsx` name (ESLint
-  `lintText` with that `filePath`), applying the `.jsx` filters below, and
-  report it under its real path;
+  script) but passes `parsesAsJsxModule` as JSX, applying the `.jsx` filters
+  below, and report it under its real path: a `.js` file under its `.jsx`
+  name (ESLint `lintText` with that `filePath`), an `.mjs` file under its own
+  name with the config's JSX blocks retargeted to it (`files`, plus
+  `parserOptions.ecmaFeatures.jsx`), so rules still see a module;
 - drop "Definition for rule … was not found" reports (a directive naming an
   unknown rule is never a code defect);
 - on TypeScript/JSX files, drop reports from the core rules the config

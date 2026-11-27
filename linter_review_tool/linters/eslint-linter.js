@@ -216,7 +216,7 @@ function pushMessages(findings, result, lintedAs = result.filePath) {
 // JSX is never turned on up front, so every other `.js` file is linted
 // exactly as before. `.cjs` (CommonJS has no JSX build) and a classic script
 // with JSX keep the parse error. Returns false when the retry does not apply.
-async function lintJsxInJs(eslint, filePath, findings) {
+async function lintJsxInJs(eslint, mjsEslint, filePath, findings) {
   if (!/\.m?js$/i.test(filePath)) return false;
   let source;
   try {
@@ -226,7 +226,14 @@ async function lintJsxInJs(eslint, filePath, findings) {
   }
   if (!parsesAsJsxModule(source)) return false;
   const lintedAs = filePath.replace(/\.m?js$/i, '.jsx');
-  const [result] = await eslint.lintText(source, { filePath: lintedAs });
+  // `.mjs` is a module by its extension, and rules read that from the
+  // filename (shoptet/no-core-overwrite exempts `.mjs`), so it keeps its own
+  // name and gets the JSX blocks retargeted to it; a `.js` file is linted
+  // under its `.jsx` name, exactly as a `.jsx` file.
+  const isMjs = /\.mjs$/i.test(filePath);
+  const [result] = isMjs
+    ? await mjsEslint().lintText(source, { filePath })
+    : await eslint.lintText(source, { filePath: lintedAs });
   if (!result || result.messages.some((m) => m.fatal)) return false;
   result.filePath = filePath;
   if (
@@ -237,6 +244,29 @@ async function lintJsxInJs(eslint, filePath, findings) {
   }
   pushMessages(findings, result, lintedAs);
   return true;
+}
+
+// The config's JSX blocks (the TypeScript/JSX block and the `.jsx` block),
+// retargeted to `.mjs` with JSX parsing on — for an `.mjs` file with JSX only
+// (see lintJsxInJs). Appended to the shared array, never mutating it.
+const JSX_GLOB = '**/*.[jJ][sS][xX]';
+function mjsAsJsxConfig() {
+  const retargeted = configs.recommended
+    .filter((block) => Array.isArray(block.files) && block.files.includes(JSX_GLOB))
+    .map((block) => {
+      const copy = { ...block, files: ['**/*.[mM][jJ][sS]'] };
+      if (block.languageOptions) {
+        copy.languageOptions = {
+          ...block.languageOptions,
+          parserOptions: {
+            ...(block.languageOptions.parserOptions || {}),
+            ecmaFeatures: { jsx: true },
+          },
+        };
+      }
+      return copy;
+    });
+  return [...configs.recommended, ...retargeted];
 }
 
 async function lintJavaScript(files) {
@@ -272,6 +302,13 @@ async function lintJavaScript(files) {
       overrideConfig: [...configs.recommended, { languageOptions: { sourceType: 'script' } }],
     });
 
+    let mjsInstance = null;
+    const mjsEslint = () => {
+      if (!mjsInstance) {
+        mjsInstance = new ESLint({ ...BASE_OPTIONS, cwd, overrideConfig: mjsAsJsxConfig() });
+      }
+      return mjsInstance;
+    };
     for (const moduleResult of moduleParseFailures) {
       const [scriptResult] = await scriptEslint.lintFiles([moduleResult.filePath]);
       const brokenEvenAsScript = !scriptResult || scriptResult.messages.some((m) => m.fatal);
@@ -279,7 +316,7 @@ async function lintJavaScript(files) {
       if (brokenEvenAsScript) {
         // JavaScript with JSX (common in Vite / CRA templates): lint it
         // exactly as the same code in a `.jsx` file (CZ3TDR1-968).
-        if (await lintJsxInJs(eslint, moduleResult.filePath, findings)) continue;
+        if (await lintJsxInJs(eslint, mjsEslint, moduleResult.filePath, findings)) continue;
         // Not a module-format issue — the file is genuinely broken JS.
         // Report the original parse error (surfaces as a CodeQuality blocker).
         pushMessages(findings, moduleResult);

@@ -244,9 +244,13 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   like the same code in a `.jsx` file. JSX is not turned on up front: only a
   file that fails both plain parses (module, then script) and that espree
   accepts as an ES module with JSX gets the `.jsx` treatment, so every other
-  `.js` file is linted as before. TypeScript syntax in a `.js` file stays a
-  parse error (`CodeQuality`), and so does JSX in a `.cjs` file or in code
-  that is valid only as a classic script (sloppy-mode syntax such as `with`).
+  `.js` file is linted as before. Findings in such a file carry the `.jsx`
+  rule ids (`@typescript-eslint/no-unused-vars`); directives naming the core
+  id still apply. An `.mjs` file keeps its module semantics (a top-level
+  declaration is module-local). TypeScript or Flow syntax in a `.js` file
+  stays a parse error (`CodeQuality`), and so does JSX in a `.cjs` file or in
+  code that is valid only as a classic script (sloppy-mode syntax such as
+  `with`).
 - *Templating placeholders in attribute position weaken the HTML checks.* A
   Mustache/Handlebars-style placeholder standing where an attribute would be
   (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`
