@@ -10,7 +10,9 @@ structure and how its packages/workflows reference each other (including a depen
 ### `checks.workflow.yml` — automated pull request review
 
 Runs the linter review tool (`linter_review_tool/`) over the addon source in `src/`
-and reports findings directly on the pull request.
+and reports findings directly on the pull request. Partner code elsewhere in the
+repository is linted too, as non-blocking recommendations for now (see *Code
+outside `src/`* below).
 
 **Linters:** ESLint (core rules + custom `shoptet/*` rules), stylelint
 (CSS/SCSS/LESS) and factual HTML checks. The exact set the linter **reports** is
@@ -76,6 +78,41 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   ones on lines the PR did not touch — but no inline comments are attempted for
   it (off-diff anchors would be rejected); such findings appear only in the run
   Summary.
+- *Code outside `src/` is linted, but does not block yet.* The PR gate also
+  lints the rest of the repository (`--repo-root=.`), minus what never ships:
+  everything the `src/` rules skip (`node_modules/`, `dist/`, `vendor/`,
+  minified, declarations, tests), plus `build/`, `coverage/`, `test/`,
+  `tests/`, `cypress/`, `e2e/`, `grunt/`, `scripts/`, `*.config.*`,
+  `Gruntfile.*` / `gulpfile.*`, Storybook stories, test setup files, every
+  JS/TS file at the repository root (where build scripts live —
+  `webpack.config.js`, a partner's own `proxySync.js`) and the review tool's
+  own checkout. During the rollout, findings there are recommendations (⚠️)
+  that appear **only in the run Summary** — no inline comments, so a PR that
+  touches a large vendored file is not flooded — and the Summary lists the
+  files linted outside `src/`. The PR gets one short review saying how many
+  there are, repeated only when they change. A PR that passes today is not
+  blocked, and a crash while linting outside `src/` is reported in the
+  Summary without affecting the `src/` verdict.
+  Accepted gaps: tooling in a subdirectory with a name the list does not know
+  is linted (non-blocking), and a backup copy of old code (`backup/`) is
+  linted like source.
+- *Verified third-party libraries outside `src/` are not linted.* A JS or CSS
+  file of at least 1 KiB **outside** `src/` whose **content** (SHA-256) is a
+  file published by a library on jsDelivr (npm or GitHub) with at least
+  1 million jsDelivr hits in the last month is skipped and listed in the
+  Summary as "third-party, verified: <library>@<version>". By content, not by
+  name: a renamed file still verifies, and a modified copy — a changed line,
+  an added banner, a wrapper — does not, so it is linted. The popularity bar
+  keeps a partner from publishing their own code to escape the gate, and a
+  match from the partner's own GitHub account (`GITHUB_REPOSITORY_OWNER`)
+  never verifies. **Inside `src/` nothing is verified**: the gate's verdict
+  never depends on this lookup or on an external service, so a vendored
+  library in `src/` is linted (and may block) exactly as before.
+  **Data flow:** the SHA-256 of each candidate file outside `src/` — never its
+  content — is sent from the CI runner to `data.jsdelivr.com`; set
+  `SHOPTET_LINT_THIRD_PARTY=off` to turn it off. Bounded: at most 300 lookups,
+  a 20 s budget per run and a stop after 3 failed requests in a row; anything
+  unanswered stays unverified and is linted (non-blocking).
 - *Non-PR callers gate on the whole `src/`, not changed lines.* When the
   workflow is triggered by something other than a pull_request event (push,
   schedule, dispatch), the fail-safe gate runs the linter over all of `src/` —
@@ -252,10 +289,10 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   - `shoptet/es-module-required` does not apply: TypeScript is compiled before
     it ships, so a TypeScript file that fails to parse is reported as the parse
     error itself (`CodeQuality`).
-  - The gate lints `src/` only. TypeScript sources kept outside it (e.g. a
-    `source/` directory compiled into `src/`) are not seen — the gate then
-    lints the compiled bundle in `src/`, which reports build output rather
-    than the partner's code.
+  - TypeScript sources kept outside `src/` (e.g. a `source/` directory
+    compiled into `src/`) are linted only as non-blocking recommendations
+    (see *Code outside `src/`*), while the gate blocks on the compiled bundle
+    in `src/`, which reports build output rather than the partner's code.
 
   One known false positive remains, and it predates TypeScript support: JSX
   in a `.js` file is a parse error (`CodeQuality` blocker), because only

@@ -16,6 +16,11 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Deterministic and offline: no third-party lookup over the network in the
+// review.js runs below (CZ3TDR1-937); the contract that needs one passes an
+// offline map explicitly.
+process.env.SHOPTET_LINT_THIRD_PARTY = 'off';
+
 const ROOT = path.join(__dirname, '..');
 const CASES = path.join(ROOT, 'test-cases');
 const spec = JSON.parse(fs.readFileSync(path.join(CASES, 'expected.json'), 'utf8'));
@@ -126,7 +131,41 @@ for (const file of goodFilesOnDisk) {
 // ── 4: reconcile-utils — the diff parser and fingerprint the CI workflow
 //       require()s from this tool (silent-failure territory, so unit-pinned) ──
 console.log('reconcile-utils:');
-const { parseAddedLines, findingFingerprint } = require('../lib/reconcile-utils');
+const {
+  parseAddedLines,
+  findingFingerprint,
+  formatFileList,
+  isSummaryOnly,
+} = require('../lib/reconcile-utils');
+// Summary file lists (CZ3TDR1-937): first 20 as code, then "… and N more".
+{
+  const many = Array.from({ length: 23 }, (_, i) => `f${i}.js`);
+  const listed = formatFileList(many);
+  const custom = formatFileList(
+    [{ file: 'a.js', library: 'x@1' }],
+    (t) => `${t.file} (${t.library})`,
+  );
+  if (
+    formatFileList(['a.js', 'b.css']) === '`a.js`, `b.css`' &&
+    listed.startsWith('`f0.js`, ') &&
+    listed.endsWith('`f19.js` … and 3 more') &&
+    custom === 'a.js (x@1)' &&
+    formatFileList([]) === ''
+  ) {
+    pass('formatFileList: first 20 entries, "… and N more", custom labels');
+  } else {
+    fail(`formatFileList broken: ${JSON.stringify([listed, custom])}`);
+  }
+  const outsideSet = new Set(['libs/own.js']);
+  if (
+    isSummaryOnly({ location: { path: 'libs/own.js' } }, outsideSet) &&
+    !isSummaryOnly({ location: { path: 'src/app.js' } }, outsideSet)
+  ) {
+    pass('isSummaryOnly: findings outside src/ are Summary-only, src/ ones are not');
+  } else {
+    fail('isSummaryOnly broken');
+  }
+}
 const parserCases = [
   {
     // The round-9 regression pin: raw single-path `git diff` output carries
@@ -267,12 +306,13 @@ for (const rule of RELIABLE_RULES) {
 
 // ── 6: review.js fail-closed contract (what the workflow gate leans on) ──
 console.log('review.js contract:');
-function runRaw(args) {
+function runRaw(args, env = process.env) {
   try {
     const stdout = execFileSync(process.execPath, ['review.js', ...args], {
       cwd: ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      env,
     });
     return { status: 0, stdout };
   } catch (e) {
@@ -776,6 +816,264 @@ if (importRun.status === 0 && promotedOk && skippedOk && payloadOk) {
   );
 }
 fs.rmSync(importTmp, { recursive: true, force: true });
+
+// The live lookup's whole-run budget and circuit breaker (PR #32 review, P2):
+// three failures in a row, or 20 s in total, and no further request is made.
+{
+  const { createBreaker } = require('../lib/third-party');
+  let clock = 0;
+  const breaker = createBreaker(() => clock);
+  breaker.failed();
+  breaker.failed();
+  const stillClosed = !breaker.open();
+  breaker.answered(); // an answer (also a 404) resets the streak
+  breaker.failed();
+  breaker.failed();
+  const resetWorked = !breaker.open();
+  breaker.failed();
+  const tripped = breaker.open();
+  breaker.answered(); // a late in-flight success must not re-open it (latched)
+  const latched = breaker.open();
+  clock = 0;
+  const timed = createBreaker(() => clock);
+  clock = 19000;
+  const capped = timed.remaining() === 1000; // each request's timeout is capped by it
+  clock = 20001;
+  if (stillClosed && resetWorked && tripped && latched && capped && timed.open()) {
+    pass(
+      'third-party lookup: latched circuit breaker after 3 failures in a row, 20 s budget caps timeouts',
+    );
+  } else {
+    fail(
+      `third-party breaker broken: ${JSON.stringify([stillClosed, resetWorked, tripped, timed.open()])}`,
+    );
+  }
+}
+
+// One statistics request per library, also with lookups in flight at once
+// (the promise is cached, not the result — Copilot on #32). Run in a child
+// process: the check is asynchronous and this script is synchronous.
+{
+  const probe = `
+    const { networkLookup } = require(${JSON.stringify(path.join(ROOT, 'lib', 'third-party.js'))});
+    let statsCalls = 0;
+    const fakeFetch = async (url) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (url.includes('/lookup/hash/')) {
+        return { status: 200, ok: true, json: async () => ({ type: 'npm', name: 'lib', version: '1' }) };
+      }
+      statsCalls += 1;
+      return { status: 200, ok: true, json: async () => ({ hits: { total: 5000000 } }) };
+    };
+    const lookup = networkLookup(fakeFetch);
+    Promise.all(['a', 'b', 'c'].map((hash) => lookup(hash))).then((hits) => {
+      process.stdout.write(JSON.stringify({ statsCalls, hits: hits.map((hit) => hit && hit.hits) }));
+    });
+  `;
+  let result = null;
+  try {
+    result = JSON.parse(execFileSync(process.execPath, ['-e', probe], { encoding: 'utf8' }));
+  } catch (e) {
+    /* handled below */
+  }
+  if (result && result.statsCalls === 1 && result.hits.every((hits) => hits === 5000000)) {
+    pass('third-party lookup: one statistics request per library, even in parallel');
+  } else {
+    fail(`third-party stats cache broken: ${JSON.stringify(result)}`);
+  }
+}
+{
+  const { summaryOnlyDigest } = require('../lib/reconcile-utils');
+  if (
+    summaryOnlyDigest(new Set(['b', 'a'])) === summaryOnlyDigest(['a', 'b']) &&
+    summaryOnlyDigest(['a']) !== summaryOnlyDigest(['a', 'b'])
+  ) {
+    pass('summaryOnlyDigest: order-free identity of a set of Summary-only findings');
+  } else {
+    fail('summaryOnlyDigest broken');
+  }
+}
+
+// Partner code outside src/ (CZ3TDR1-937): with --repo-root, the repository
+// around the target is linted too, NON-BLOCKING (recommendations), minus what
+// never ships: build output, tooling (root-level JS, *.config.*, grunt/,
+// scripts/), tests, stories, setup files and --exclude'd directories. Outside
+// src/ only, a file whose content is a popular published library (offline map
+// here, jsDelivr in CI) is not linted and is listed in `thirdParty`; a
+// modified copy, an unpopular package and a match from the partner's own
+// GitHub account are linted. In src/ nothing is verified.
+const scopeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-outside-'));
+const LIB = `export const big = '${'x'.repeat(1100)}';\neval('lib');\n`;
+const MODIFIED = LIB.replace("'lib'", "'lib2'");
+const UNPOPULAR = `export const other = '${'y'.repeat(1100)}';\neval('other');\n`;
+const OWN_GH = `export const mine = '${'z'.repeat(1100)}';\neval('mine');\n`;
+const FOREIGN_GH = `export const slick = '${'w'.repeat(1100)}';\neval('slick');\n`;
+const SCOPE_FILES = {
+  'src/a.js': 'export const a = 1;\n',
+  'src/vendor-lib.js': LIB,
+  'libs/own.js': "export function own() { eval('1'); }\n",
+  'libs/lib.js': LIB,
+  'libs/lib-modified.js': MODIFIED,
+  'libs/unpopular.js': UNPOPULAR,
+  'libs/own-addon.js': OWN_GH,
+  'libs/slick.js': FOREIGN_GH,
+  'custom/page.html': '<img src="a.png">\n',
+  'proxySync.js': "eval('root tooling');\n",
+  'webpack.factory.config.js': "eval('config');\n",
+  'grunt/copy.js': "eval('grunt');\n",
+  'scripts/build.js': "eval('scripts');\n",
+  'tests/helper.js': "eval('tests');\n",
+  'dist/out.js': "eval('dist');\n",
+  'custom/x.stories.js': "eval('story');\n",
+  'custom/vitest.setup.js': "eval('setup');\n",
+  'excluded/e.js': "eval('excluded');\n",
+};
+for (const [name, content] of Object.entries(SCOPE_FILES)) {
+  fs.mkdirSync(path.dirname(path.join(scopeTmp, name)), { recursive: true });
+  fs.writeFileSync(path.join(scopeTmp, name), content);
+}
+const { sha256: sha256Of } = require('../lib/third-party');
+const mapFile = path.join(scopeTmp, 'excluded', 'third-party-map.json');
+fs.writeFileSync(
+  mapFile,
+  JSON.stringify({
+    [sha256Of(path.join(scopeTmp, 'libs/lib.js'))]: {
+      type: 'npm',
+      name: 'some-lib',
+      version: '1.0.0',
+      hits: 5000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'libs/own-addon.js'))]: {
+      type: 'gh',
+      name: 'Partner-Co/addon',
+      version: '1.4.0',
+      hits: 3000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'libs/slick.js'))]: {
+      type: 'gh',
+      name: 'kenwheeler/slick',
+      version: '1.8.0',
+      hits: 368000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'src/vendor-lib.js'))]: {
+      type: 'npm',
+      name: 'some-lib',
+      version: '1.0.0',
+      hits: 5000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'libs/unpopular.js'))]: {
+      type: 'npm',
+      name: 'my-own-lib',
+      version: '0.0.1',
+      hits: 12,
+    },
+  }),
+);
+const mapEnv = {
+  ...process.env,
+  SHOPTET_LINT_THIRD_PARTY: '',
+  SHOPTET_LINT_THIRD_PARTY_MAP: mapFile,
+  GITHUB_REPOSITORY_OWNER: 'partner-co',
+};
+const scopeArgs = [
+  path.join(scopeTmp, 'src'),
+  `--repo-root=${scopeTmp}`,
+  `--exclude=${path.join(scopeTmp, 'excluded')}`,
+];
+const scopeRun = runRaw([...scopeArgs, '--rdjson'], mapEnv);
+const scopePlain = runRaw(scopeArgs, mapEnv);
+let scopeJson = null;
+try {
+  scopeJson = JSON.parse(scopeRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+const scopeDiags = (scopeJson && scopeJson.diagnostics) || [];
+const posixPath = (f) => f.split(path.sep).join('/');
+const scopeDiagsIn = (name) => scopeDiags.filter((d) => posixPath(d.location.path).endsWith(name));
+const NOT_LINTED = [
+  'libs/lib.js',
+  'libs/slick.js',
+  'proxySync.js',
+  'webpack.factory.config.js',
+  'grunt/copy.js',
+  'scripts/build.js',
+  'tests/helper.js',
+  'dist/out.js',
+  'custom/x.stories.js',
+  'custom/vitest.setup.js',
+  'excluded/e.js',
+];
+const LINTED_NON_BLOCKING = [
+  'libs/own.js',
+  'libs/lib-modified.js',
+  'libs/unpopular.js',
+  'libs/own-addon.js',
+  'custom/page.html',
+];
+const thirdPartyList = ((scopeJson && scopeJson.thirdParty) || []).map(
+  (t) => `${posixPath(t.file).split('/').slice(-2).join('/')}=${t.library}`,
+);
+// src/ is never verified (its verdict must not depend on an external
+// service): the library copy there is linted and blocks, as on main.
+const srcLibBlocks = scopeDiagsIn('src/vendor-lib.js').some((d) => d.severity === 'ERROR');
+const scopeOk =
+  scopeRun.status === 0 &&
+  scopePlain.status === 1 &&
+  srcLibBlocks &&
+  NOT_LINTED.every((name) => scopeDiagsIn(name).length === 0) &&
+  LINTED_NON_BLOCKING.every(
+    (name) =>
+      scopeDiagsIn(name).length > 0 && scopeDiagsIn(name).every((d) => d.severity === 'WARNING'),
+  ) &&
+  JSON.stringify(thirdPartyList.sort()) ===
+    JSON.stringify(['libs/lib.js=some-lib@1.0.0', 'libs/slick.js=kenwheeler/slick@1.8.0']);
+if (scopeOk) {
+  pass(
+    "code outside src/ is linted non-blocking; tooling, tests and excluded dirs are not; verified libraries are skipped outside src/ only, never the partner's own GitHub repo",
+  );
+} else {
+  fail(
+    `outside-src contract broken: status ${scopeRun.status}/${scopePlain.status}, thirdParty=${JSON.stringify(thirdPartyList)}, diags=${JSON.stringify(scopeDiags.map((d) => [posixPath(d.location.path).split('/').slice(-2).join('/'), d.code.value, d.severity]))}`,
+  );
+}
+// A crash while linting outside the target (here: an unreadable file) is
+// non-blocking: the run still succeeds, src/ is still gated, and the payload
+// says what failed (Copilot on #32). Skipped where chmod does not bite (root).
+{
+  const locked = path.join(scopeTmp, 'libs', 'locked.js');
+  fs.writeFileSync(locked, 'export const locked = 1;\n');
+  fs.chmodSync(locked, 0o000);
+  let readable = true;
+  try {
+    fs.readFileSync(locked);
+  } catch {
+    readable = false;
+  }
+  if (!readable) {
+    const crashRun = runRaw([...scopeArgs, '--rdjson'], mapEnv);
+    let crashJson = null;
+    try {
+      crashJson = JSON.parse(crashRun.stdout);
+    } catch (e) {
+      /* handled below */
+    }
+    const srcStillGated =
+      crashJson &&
+      crashJson.diagnostics.some(
+        (d) => posixPath(d.location.path).endsWith('src/vendor-lib.js') && d.severity === 'ERROR',
+      );
+    if (crashRun.status === 0 && srcStillGated && crashJson && crashJson.outsideError) {
+      pass('a crash outside src/ is non-blocking: src/ is still gated, outsideError says why');
+    } else {
+      fail(
+        `outside-src crash isolation broken: status ${crashRun.status}, ${crashRun.stdout.slice(0, 300)}`,
+      );
+    }
+  }
+  fs.chmodSync(locked, 0o644);
+}
+fs.rmSync(scopeTmp, { recursive: true, force: true });
 
 // Messages are bounded — a 70k-char identifier must not produce a comment-
 // killing 70k message (round 13).

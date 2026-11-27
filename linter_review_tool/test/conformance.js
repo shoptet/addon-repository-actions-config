@@ -25,6 +25,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+
+// Deterministic and offline: no third-party lookup over the network in the
+// review.js runs below (CZ3TDR1-937); the contract that needs one passes an
+// offline map explicitly.
+process.env.SHOPTET_LINT_THIRD_PARTY = 'off';
 const { corpus, materializeShape } = require('@shoptet/addon-lint-conformance');
 
 const ROOT = path.join(__dirname, '..');

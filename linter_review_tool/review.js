@@ -7,6 +7,7 @@ const { lintStyles } = require('./linters/stylelint-linter');
 const { lintHtml } = require('./linters/html-linter');
 const { isReliable } = require('./profiles');
 const { moduleSpecifiers } = require('@shoptet/addon-eslint-config');
+const { verifyThirdParty } = require('./lib/third-party');
 
 // TypeScript and JSX are linted by the same ESLint pass (the shared config's
 // typescript-eslint block); `.d.ts` declaration files carry no runtime code and
@@ -252,6 +253,75 @@ function includeImportedTestFiles(files, targetPath) {
   };
 }
 
+// Partner code outside `src/` (CZ3TDR1-937): with `--repo-root=<dir>`, the
+// repository around the target is linted too, minus what never ships —
+// everything IGNORE skips, plus build output and tooling, tests, Storybook and
+// test setup files, and EVERY JS/TS file at the repository root (where build
+// scripts live: webpack.config.js, Gruntfile.js, a partner's own
+// proxySync.js). Outside the target, findings are NON-BLOCKING during the
+// rollout (recommendations): a partner whose PR passes today is not blocked
+// overnight, and a false positive there can never fail the gate.
+const OUTSIDE_IGNORE = [
+  ...IGNORE,
+  '**/build/**',
+  '**/coverage/**',
+  '**/test/**',
+  '**/tests/**',
+  '**/cypress/**',
+  '**/e2e/**',
+  '**/grunt/**',
+  '**/scripts/**',
+  '**/*.config.*',
+  '**/gruntfile.*',
+  '**/gulpfile.*',
+  '**/*.stories.*',
+  '**/*.setup.*',
+  '**/setuptests.*',
+  '**/setup-tests.*',
+];
+
+// This tool's own checkout (the PR gate checks it out INTO the partner's
+// workspace, as `review-tool/`) is never partner code.
+const TOOL_ROOT = path.resolve(__dirname, '..');
+
+function isInside(child, parent) {
+  const relative = path.relative(parent, child);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+async function gatherOutside(repoRoot, targetPath, excludes) {
+  const ignore = [...OUTSIDE_IGNORE];
+  for (const dir of [targetPath, TOOL_ROOT, ...excludes]) {
+    if (isInside(dir, repoRoot) && path.resolve(dir) !== path.resolve(repoRoot)) {
+      const relative = path.relative(repoRoot, dir).split(path.sep).join('/');
+      ignore.push(`${relative}/**`);
+    }
+  }
+  if (isInside(repoRoot, targetPath)) return { js: [], styles: [], html: [] };
+  const collectOutside = (pattern) =>
+    glob(pattern, { nodir: true, cwd: repoRoot, absolute: true, ignore, nocase: true });
+  const [js, styles, html] = await Promise.all([
+    collectOutside(PATTERNS.js),
+    collectOutside(PATTERNS.styles),
+    collectOutside(PATTERNS.html),
+  ]);
+  const atRoot = (file) => path.dirname(file) === path.resolve(repoRoot);
+  return {
+    js: js.filter((file) => !atRoot(file)).sort(),
+    styles: styles.sort(),
+    html: html.sort(),
+  };
+}
+
+/** A file set without the verified third-party files. */
+function withoutThirdParty(files, verified) {
+  return {
+    ...files,
+    js: files.js.filter((file) => !verified.has(file)),
+    styles: files.styles.filter((file) => !verified.has(file)),
+  };
+}
+
 async function gatherFiles(targetPath, stats) {
   if (stats.isDirectory()) {
     const [js, styles, html, skipped] = await Promise.all([
@@ -297,6 +367,12 @@ async function main() {
   const rdjson = args.includes('--rdjson');
   const targetPathArg = args.find((arg) => !arg.startsWith('--')) || 'src';
   const targetPath = path.resolve(process.cwd(), targetPathArg);
+  // --repo-root=<dir>: also lint partner code outside the target, non-blocking
+  // (CZ3TDR1-937). --exclude=<dir> (repeatable): never part of that scope.
+  const valueOf = (flag) =>
+    args.filter((arg) => arg.startsWith(`${flag}=`)).map((arg) => arg.slice(flag.length + 1));
+  const repoRootArg = valueOf('--repo-root')[0];
+  const excludes = valueOf('--exclude').map((dir) => path.resolve(process.cwd(), dir));
 
   let stats;
   try {
@@ -305,10 +381,20 @@ async function main() {
     fail(rdjson, `Path not found: ${targetPath}`);
   }
 
-  const files = await gatherFiles(targetPath, stats);
-  if (!files) {
+  const gathered = await gatherFiles(targetPath, stats);
+  if (!gathered) {
     fail(rdjson, `Unsupported file type: ${targetPath}`);
   }
+  const outsideAll =
+    repoRootArg && stats.isDirectory()
+      ? await gatherOutside(path.resolve(process.cwd(), repoRootArg), targetPath, excludes)
+      : { js: [], styles: [], html: [] };
+  // Verified third-party files are skipped OUTSIDE the target only, and
+  // listed: the verdict on the target (src/) never depends on the lookup or on
+  // an external service (PR #32 review, P1/P2).
+  const verified = await verifyThirdParty([...outsideAll.js, ...outsideAll.styles]);
+  const files = gathered;
+  const outside = withoutThirdParty(outsideAll, verified);
 
   const total = files.js.length + files.styles.length + files.html.length;
   if (total === 0) {
@@ -347,11 +433,43 @@ async function main() {
     fail(rdjson, `Review execution failed: ${error.message}`);
   }
 
+  // Outside the target (CZ3TDR1-937): non-blocking, and so are its failures.
+  // A crash there (a pathological file, a linter bug) must never fail a run
+  // whose src/ is clean or skip the reconcile — the run reports what it could
+  // not lint instead (Copilot on #32).
+  let outsideError = null;
+  const outsideTotal = outside.js.length + outside.styles.length + outside.html.length;
+  if (outsideTotal) {
+    info(
+      `🔍 Also reviewing ${outsideTotal} file(s) outside ${path.relative(process.cwd(), targetPath) || '.'} (non-blocking) ` +
+        `(js: ${outside.js.length}, styles: ${outside.styles.length}, html: ${outside.html.length})`,
+    );
+    try {
+      const outsideGroups = await Promise.all([
+        outside.js.length ? lintJavaScript(outside.js) : [],
+        outside.styles.length ? lintStyles(outside.styles) : [],
+        outside.html.length ? lintHtml(outside.html) : [],
+      ]);
+      for (const group of outsideGroups) {
+        for (const finding of group) rawFindings.push({ ...finding, severity: 'recommend' });
+      }
+    } catch (error) {
+      outsideError = boundMessage(String(error && error.message ? error.message : error));
+      console.error(`::warning::Linting outside the target failed (non-blocking): ${outsideError}`);
+    }
+  }
+
   // Keep only reliable (near-zero-false-positive) rules — the linter is a
   // deterministic gate; heuristic/contextual checks are the AI skill's job.
   const findings = dedupe(rawFindings).filter((f) => isReliable(f.ruleId));
 
   const skipped = files.skipped.map((f) => path.relative(process.cwd(), f));
+  const thirdParty = [...verified]
+    .map(([file, library]) => ({ file: path.relative(process.cwd(), file), library }))
+    .sort((a, b) => a.file.localeCompare(b.file));
+  const outsideSrc = [...outside.js, ...outside.styles, ...outside.html]
+    .map((f) => path.relative(process.cwd(), f))
+    .sort();
 
   if (rdjson) {
     // A successful run: emit the diagnostics; the CI reconcile step decides the
@@ -361,7 +479,18 @@ async function main() {
     // importedTests: test files linted because production code imports them
     // (CZ3TDR1-980) — the PR gate's Summary says why they were linted.
     const importedTests = (files.importedTests || []).map((f) => path.relative(process.cwd(), f));
-    process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped, importedTests }));
+    // thirdParty: verified library files, not linted; outsideSrc: files linted
+    // outside the target, non-blocking (CZ3TDR1-937).
+    process.stdout.write(
+      JSON.stringify({
+        ...toRdjson(findings),
+        skipped,
+        importedTests,
+        thirdParty,
+        outsideSrc,
+        ...(outsideError ? { outsideError } : {}),
+      }),
+    );
     process.exitCode = 0;
     return;
   }
@@ -369,6 +498,11 @@ async function main() {
   if (files.importedTests && files.importedTests.length) {
     info(
       `ℹ️  ${files.importedTests.length} test file(s) linted because production code imports them: ${files.importedTests.map((f) => path.relative(process.cwd(), f)).join(', ')}`,
+    );
+  }
+  if (thirdParty.length) {
+    info(
+      `📦 ${thirdParty.length} third-party file(s) verified by content and not linted: ${thirdParty.map((t) => `${t.file} (${t.library})`).join(', ')}`,
     );
   }
   if (skipped.length) {

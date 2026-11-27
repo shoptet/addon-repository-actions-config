@@ -87,4 +87,43 @@ function findingFingerprint(d) {
     .digest('hex');
 }
 
-module.exports = { parseAddedLines, findingFingerprint };
+/**
+ * A Summary list of files: the first `max` entries as inline code, joined by
+ * ", ", plus " … and N more" for the rest. `label` renders one entry (a path
+ * string by default). Used by the checks workflow's Summary blocks.
+ */
+function formatFileList(entries, label = (entry) => `\`${entry}\``, max = 20) {
+  const list = entries.slice(0, max).map(label).join(', ');
+  const more = entries.length > max ? ` … and ${entries.length - max} more` : '';
+  return `${list}${more}`;
+}
+
+/**
+ * Findings in files linted outside the lint target (`outsideSrc` in the
+ * payload) are Summary-only during the rollout (CZ3TDR1-937): never posted
+ * inline, so a PR touching a large modified library copy is not flooded.
+ */
+function isSummaryOnly(diagnostic, outsideSrc) {
+  return outsideSrc.has(diagnostic.location.path);
+}
+
+/**
+ * Identity of a set of Summary-only findings (their fingerprints, order-free).
+ * The PR gate posts a body-only review announcing them once per distinct set
+ * and recognises an earlier announcement by this digest, so pushes that do
+ * not change those findings do not repeat it.
+ */
+function summaryOnlyDigest(keys) {
+  return crypto
+    .createHash('sha1')
+    .update(JSON.stringify([...keys].sort()))
+    .digest('hex');
+}
+
+module.exports = {
+  parseAddedLines,
+  findingFingerprint,
+  formatFileList,
+  isSummaryOnly,
+  summaryOnlyDigest,
+};

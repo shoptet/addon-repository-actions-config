@@ -28,7 +28,9 @@ function lintHtml(files) {
       });
       continue;
     }
-    findings.push(...lintHtmlSource(html, file));
+    // No spread into push(): V8's argument limit (~125k) would throw on a
+    // pathological file with six-figure findings (as in review.js, round 13).
+    for (const finding of lintHtmlSource(html, file)) findings.push(finding);
   }
   return findings;
 }
