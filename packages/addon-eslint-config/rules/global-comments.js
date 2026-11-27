@@ -115,8 +115,10 @@ function isRedundantGlobalReport(message, locations) {
 }
 
 // The two messages no-unused-vars / @typescript-eslint/no-unused-vars give a
-// comment-declared global: never read at all, or only assigned.
-const UNUSED_MESSAGE = /^'(.+)' is (?:defined|assigned a value) but never used\.$/u;
+// comment-declared global: never read at all, or only assigned. Not anchored
+// at the end: with a `varsIgnorePattern`, ESLint appends ". Allowed unused
+// vars must match …" before the final period.
+const UNUSED_MESSAGE = /^'(.+)' is (?:defined|assigned a value) but never used\b/u;
 
 /**
  * Is a no-unused-vars report one of a global comment's own entries — a name

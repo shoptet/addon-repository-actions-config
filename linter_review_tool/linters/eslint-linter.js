@@ -184,20 +184,26 @@ function globalCommentsOf(filePath) {
 
 function pushMessages(findings, result) {
   const replacedCore = replacedCoreRules(result.filePath);
-  let globalComments; // read lazily, only when a candidate report exists
+  // The file's `/* global */` comments, read lazily — once, and only when a
+  // candidate report exists — for both comment filters below.
+  let globalComments;
+  const commentsOfFile = () => {
+    if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
+    return globalComments;
+  };
   for (const message of result.messages) {
     if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
     if (replacedCore && replacedCore.has(message.ruleId)) continue;
     if (CORE_RULES_REPLACED_EVERYWHERE.has(message.ruleId)) continue;
     if (message.ruleId === 'no-redeclare' && message.messageId === 'redeclaredAsBuiltin') {
-      if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
-      if (globalComments && isRedundantGlobalReport(message, globalComments)) continue;
+      const comments = commentsOfFile();
+      if (comments && isRedundantGlobalReport(message, comments)) continue;
     }
     // A name a `/* global */` comment declares and the file never reads: the
     // comment is redundant, the code has nothing to fix (CZ3TDR1-982).
     if (UNUSED_VARS_RULES.has(message.ruleId)) {
-      if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
-      if (globalComments && isUnusedGlobalReport(message, globalComments)) continue;
+      const comments = commentsOfFile();
+      if (comments && isUnusedGlobalReport(message, comments)) continue;
     }
     findings.push({
       file: result.filePath,

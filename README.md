@@ -159,8 +159,8 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   (`@typescript-eslint/no-unused-vars` on TypeScript/JSX) reports a name the
   comment declares but the file never reads, positioned inside the comment.
   The comment is only redundant, so those reports are dropped, whatever the
-  entry's value. An unused variable, import or parameter in code is still a
-  blocker, under the same rule id.
+  entry's value. An unused variable or import in code is still a blocker,
+  under the same rule id (parameters are never reported: `args: 'none'`).
 - *Minified/vendored naming conventions are a deliberate blind spot.* Files
   matching `*.min.*` / `*.bundle.*` or under `node_modules/`, `dist/`, `vendor/`
   are never linted — a partner can place code there and the gate will not see
