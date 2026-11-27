@@ -1,17 +1,26 @@
 /**
- * The static module specifiers a source file imports, read from the PARSER's
- * AST (not a regex): `import … from 'x'`, `import 'x'`, `export … from 'x'`,
- * a dynamic `import('x')` and `require('x')` with a string literal, and
- * TypeScript's `import x = require('x')`. Type-only imports and exports
- * (`import type …`, every specifier `type`) are erased by the compiler, ship
- * nothing, and are not returned.
+ * The module specifiers a source file imports UNCONDITIONALLY, read from the
+ * PARSER's AST (not a regex): `import … from 'x'`, `import 'x'`,
+ * `export … from 'x'`, TypeScript's `import x = require('x')`, and a
+ * `require('x')` that runs whenever the file runs — a top-level statement,
+ * a top-level declaration's initializer or a top-level assignment
+ * (`require('x').y` too). String literals only.
  *
  * Shared helper, not a rule. The runner uses it to lint a test file that
  * production code imports after all (CZ3TDR1-980): discovery skips
  * `*.test.*` / `__mocks__/` …, but a skipped file that ships through an import
- * must still go through the gate. A specifier built at runtime
- * (`import(name)`, `require(path)`) is not a string literal and is not
- * returned — a false negative, never a false positive.
+ * must still go through the gate. Linting a file that does NOT ship would be a
+ * false positive — a dev-only mock overwriting `window.shoptet` is normal test
+ * code — so everything that may not run in production is left out, a false
+ * negative by design:
+ * - a dynamic `import('x')` and a `require()` inside a condition or a function
+ *   (`if (import.meta.env.DEV) await import('./__mocks__/shoptet.js')` is
+ *   dropped from the production build);
+ * - type-only imports and exports (`import type …`, every specifier `type`,
+ *   `import type X = require(…)`), which the compiler erases;
+ * - every `require()` when the file binds its own `require` (a local helper,
+ *   not the module loader);
+ * - a specifier built at runtime (`require(path)`).
  *
  * Returns an array of specifier strings, or [] when the source does not
  * parse (the lint itself reports the parse error).
@@ -30,11 +39,19 @@ function parse(sourceText, filename) {
       return null;
     }
   }
-  for (const sourceType of ['module', 'script']) {
+  // module, then script (a classic script), then module with JSX — a `.js`
+  // file with JSX is linted as JSX by the runner (CZ3TDR1-968), so its
+  // imports must be followed too.
+  const attempts = [
+    { sourceType: 'module' },
+    { sourceType: 'script' },
+    { sourceType: 'module', ecmaFeatures: { jsx: true } },
+  ];
+  for (const options of attempts) {
     try {
-      return espree.parse(sourceText, { ecmaVersion: 'latest', sourceType });
+      return espree.parse(sourceText, { ecmaVersion: 'latest', ...options });
     } catch {
-      // a classic script may fail the module parse — try script
+      // next attempt
     }
   }
   return null;
@@ -53,7 +70,9 @@ function stringValue(node) {
  * A TypeScript import/export the compiler erases, so nothing ships:
  * `import type { X } from …`, `export type { X } from …`, or one whose every
  * specifier is `type` (`import { type X } from …`). A side-effect import
- * (`import './x'`, no specifiers) always ships.
+ * (`import './x'`, no specifiers) always ships. Under `verbatimModuleSyntax`
+ * the all-inline-`type` form keeps a bare `import {} from …`; the gate cannot
+ * see the build's tsconfig, so it is treated as erased — a false negative.
  */
 function isTypeOnly(node) {
   if (node.importKind === 'type' || node.exportKind === 'type') return true;
@@ -66,37 +85,65 @@ function isTypeOnly(node) {
   );
 }
 
-function moduleSpecifiers(sourceText, filename) {
-  const program = parse(sourceText, filename);
-  if (!program) return [];
-  const found = [];
-  const add = (node) => {
-    const value = stringValue(node);
-    if (typeof value === 'string') found.push(value);
-  };
+/** Identifiers a binding pattern declares (`a`, `{ a, b: c }`, `[d, ...e]`). */
+function patternNames(pattern, names) {
+  if (!pattern) return;
+  switch (pattern.type) {
+    case 'Identifier':
+      names.add(pattern.name);
+      break;
+    case 'ObjectPattern':
+      for (const property of pattern.properties) {
+        patternNames(property.type === 'RestElement' ? property.argument : property.value, names);
+      }
+      break;
+    case 'ArrayPattern':
+      for (const element of pattern.elements) patternNames(element, names);
+      break;
+    case 'RestElement':
+      patternNames(pattern.argument, names);
+      break;
+    case 'AssignmentPattern':
+      patternNames(pattern.left, names);
+      break;
+    case 'TSParameterProperty':
+      patternNames(pattern.parameter, names);
+      break;
+    default:
+      break;
+  }
+}
+
+/** Every name the file binds anywhere (declarations, parameters, imports). */
+function boundNames(program) {
+  const names = new Set();
   const stack = [program];
   while (stack.length) {
     const node = stack.pop();
     switch (node.type) {
-      case 'ImportDeclaration':
-      case 'ExportNamedDeclaration':
-      case 'ExportAllDeclaration':
-        if (node.source && !isTypeOnly(node)) add(node.source);
+      case 'VariableDeclarator':
+        patternNames(node.id, names);
         break;
-      case 'ImportExpression':
-        add(node.source);
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        if (node.id) names.add(node.id.name);
+        for (const param of node.params) patternNames(param, names);
         break;
-      case 'CallExpression':
-        if (
-          node.callee.type === 'Identifier' &&
-          node.callee.name === 'require' &&
-          node.arguments.length === 1
-        ) {
-          add(node.arguments[0]);
-        }
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        if (node.id) names.add(node.id.name);
         break;
-      case 'TSExternalModuleReference': // import x = require('x')
-        add(node.expression);
+      case 'CatchClause':
+        patternNames(node.param, names);
+        break;
+      case 'ImportSpecifier':
+      case 'ImportDefaultSpecifier':
+      case 'ImportNamespaceSpecifier':
+        names.add(node.local.name);
+        break;
+      case 'TSImportEqualsDeclaration':
+        names.add(node.id.name);
         break;
       default:
         break;
@@ -109,6 +156,70 @@ function moduleSpecifiers(sourceText, filename) {
       } else if (value && typeof value.type === 'string') {
         stack.push(value);
       }
+    }
+  }
+  return names;
+}
+
+/** `require('x')`, also as the object of `require('x').y` / `require('x')[k]`. */
+function requireCallOf(node) {
+  let current = node;
+  while (current && current.type === 'MemberExpression') current = current.object;
+  if (current && current.type === 'ChainExpression') return requireCallOf(current.expression);
+  return current &&
+    current.type === 'CallExpression' &&
+    current.callee.type === 'Identifier' &&
+    current.callee.name === 'require' &&
+    current.arguments.length === 1
+    ? current
+    : null;
+}
+
+/** The expressions of a top-level statement that run whenever the file runs. */
+function unconditionalExpressions(statement) {
+  let node = statement;
+  if (node.type === 'ExportNamedDeclaration' && node.declaration) node = node.declaration;
+  if (node.type === 'ExpressionStatement') {
+    const { expression } = node;
+    return expression.type === 'AssignmentExpression' ? [expression.right] : [expression];
+  }
+  if (node.type === 'VariableDeclaration') {
+    return node.declarations.map((declarator) => declarator.init).filter(Boolean);
+  }
+  return [];
+}
+
+function moduleSpecifiers(sourceText, filename) {
+  const program = parse(sourceText, filename);
+  if (!program) return [];
+  const found = [];
+  const add = (node) => {
+    const value = stringValue(node);
+    if (typeof value === 'string') found.push(value);
+  };
+  const followRequire = !boundNames(program).has('require');
+  for (const statement of program.body) {
+    switch (statement.type) {
+      case 'ImportDeclaration':
+      case 'ExportNamedDeclaration':
+      case 'ExportAllDeclaration':
+        if (statement.source && !isTypeOnly(statement)) add(statement.source);
+        break;
+      case 'TSImportEqualsDeclaration': // import x = require('x'), not `import type`
+        if (
+          statement.importKind !== 'type' &&
+          statement.moduleReference.type === 'TSExternalModuleReference'
+        ) {
+          add(statement.moduleReference.expression);
+        }
+        break;
+      default:
+        break;
+    }
+    if (!followRequire) continue;
+    for (const expression of unconditionalExpressions(statement)) {
+      const call = requireCallOf(expression);
+      if (call) add(call.arguments[0]);
     }
   }
   return found;

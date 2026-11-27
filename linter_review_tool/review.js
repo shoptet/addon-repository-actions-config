@@ -158,8 +158,12 @@ function collectSymlinkedDirs(root) {
 // file that production code imports ships after all.
 const TEST_DIR = /(^|\/)(__tests__|__mocks__|__fixtures__)\//i;
 const TEST_FILE = /\.(test|spec|cy)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts)$/i;
-const OTHER_SKIP =
-  /(^|\/)(node_modules|dist|vendor)\/|\.(min|bundle)\.[^/]+$|\.d\.(ts|mts|cts)$|(^|\/)\.[^/]/i;
+// Minified/bundle exactly as IGNORE matches it (`*.min.<ext>`), so
+// `helper.min.test.js` — skipped as a test, not as minified — stays eligible.
+const OTHER_SKIP = new RegExp(
+  `(^|/)(node_modules|dist|vendor)/|\\.(min|bundle)\\.(${IGNORED_MIN_EXTENSIONS.split(',').join('|')})$|\\.d\\.(ts|mts|cts)$|(^|/)\\.[^/]`,
+  'i',
+);
 
 function isSkippedOnlyAsTest(relativePath) {
   const posix = relativePath.split(path.sep).join('/');
@@ -176,7 +180,11 @@ function isSkippedOnlyAsTest(relativePath) {
  */
 function resolveRelative(fromFile, specifier) {
   if (!specifier.startsWith('./') && !specifier.startsWith('../')) return null;
-  const base = path.resolve(path.dirname(fromFile), specifier.split(/[?#]/)[0]);
+  // A query or hash (`./snippet.js?raw`, `?url`, `?inline`) loads the file as
+  // text or a URL, not as code — not followed (a false negative for the rare
+  // `?worker`, never a false positive).
+  if (/[?#]/.test(specifier)) return null;
+  const base = path.resolve(path.dirname(fromFile), specifier);
   const candidates = [base];
   for (const ext of JS_EXTENSIONS) candidates.push(`${base}.${ext}`);
   const twin = /\.(js|jsx|mjs|cjs)$/i.exec(base);
@@ -231,6 +239,7 @@ function includeImportedTestFiles(files, targetPath) {
     ...files,
     js: [...files.js, ...promoted].sort(),
     skipped: files.skipped.filter((file) => !promoted.has(file)),
+    importedTests: [...promoted].sort(),
   };
 }
 
@@ -345,6 +354,11 @@ async function main() {
     return;
   }
 
+  if (files.importedTests && files.importedTests.length) {
+    info(
+      `ℹ️  ${files.importedTests.length} test file(s) linted because production code imports them: ${files.importedTests.map((f) => path.relative(process.cwd(), f)).join(', ')}`,
+    );
+  }
   if (skipped.length) {
     info(
       `⏭️  ${skipped.length} file(s) skipped (minified/vendored/declaration/test/foreign-source/hidden/symlinked): ${skipped.join(', ')}`,

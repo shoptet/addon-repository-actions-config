@@ -653,21 +653,36 @@ fs.rmSync(testFilesTmp, { recursive: true, force: true });
 
 // A test file that production code imports ships with it, so it is linted
 // after all and leaves `skipped` (CZ3TDR1-980) — through a static import with
-// no extension, a TypeScript-style `.js` specifier for a `.ts` file, require(),
-// a dynamic import() and a chain through another imported test file. A type-
-// only import ships nothing, and a test file nothing imports stays skipped.
+// no extension, a TypeScript-style `.js` specifier for a `.ts` file, a
+// top-level require(), `import x = require()`, a `.js` file with JSX and a
+// chain through another imported test file. What may not ship stays skipped:
+// a type-only import (also `import type x = require()`), a dynamic import(),
+// a require() inside a condition or a function, a `?raw` query, and require()
+// in a file that binds its own `require`. So does a file nothing imports.
 const importTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-imports-'));
 const IMPORT_FILES = {
   'main.ts':
-    "import { patch } from './__mocks__/patch';\nimport type { T } from './__mocks__/types';\nimport './lib/side.js';\nexport const run = (): T | void => patch();\n",
+    "import { patch } from './__mocks__/patch';\nimport type { T } from './__mocks__/types';\nimport type Kind = require('./__mocks__/kind');\nimport cfg = require('./__fixtures__/cfg');\nimport './lib/side.js';\nexport const run = (): T | Kind | void => patch() || cfg;\n",
   '__mocks__/patch.ts':
     "import { h } from '../__tests__/helper.test.js';\nexport function patch(): void { eval('1'); return h; }\n",
   '__tests__/helper.test.ts': "export const h = eval('2');\n",
   '__mocks__/types.ts': "export type T = number;\nexport const unused = eval('3');\n",
+  '__mocks__/kind.ts': "export const k = eval('3a');\n",
+  '__fixtures__/cfg.ts': "export const c = eval('3b');\n",
   'lib/side.js':
-    "const data = require('./data.spec.js');\nexport const lazy = () => import('../__fixtures__/lazy.js');\nexport default data;\n",
+    "const data = require('./data.spec.js');\nconst min = require('./helper.min.test.js').value;\nexport const lazy = () => import('../__fixtures__/lazy.js');\nif (import.meta.env.DEV) { require('../__mocks__/dev.js'); }\nexport function later() { return require('../__mocks__/later.js'); }\nimport text from '../__fixtures__/snippet.js?raw';\nexport default [data, min, text];\n",
   'lib/data.spec.js': "export const d = eval('4');\n",
+  'lib/helper.min.test.js': "export const value = eval('4a');\n",
   '__fixtures__/lazy.js': "export const l = eval('5');\n",
+  '__mocks__/dev.js': "export const dv = eval('5a');\n",
+  '__mocks__/later.js': "export const lt = eval('5b');\n",
+  '__fixtures__/snippet.js': "export const sn = eval('5c');\n",
+  'lib/shadow.js':
+    "const require = (value) => value;\nexport const label = require('../__mocks__/shadowed.js');\n",
+  '__mocks__/shadowed.js': "export const sh = eval('5d');\n",
+  'lib/View.js':
+    "import { stub } from '../__mocks__/jsx-stub.js';\nexport const View = () => <p>{stub}</p>;\n",
+  '__mocks__/jsx-stub.js': "export const stub = eval('5e');\n",
   '__tests__/untouched.test.ts': "export const u = eval('6');\n",
 };
 for (const [name, content] of Object.entries(IMPORT_FILES)) {
@@ -692,10 +707,21 @@ const evalIn = (name) =>
 const PROMOTED = [
   '__mocks__/patch.ts',
   '__tests__/helper.test.ts',
+  '__fixtures__/cfg.ts',
   'lib/data.spec.js',
-  '__fixtures__/lazy.js',
+  'lib/helper.min.test.js',
+  '__mocks__/jsx-stub.js',
 ];
-const STILL_SKIPPED = ['__mocks__/types.ts', '__tests__/untouched.test.ts'];
+const STILL_SKIPPED = [
+  '__mocks__/types.ts',
+  '__mocks__/kind.ts',
+  '__fixtures__/lazy.js',
+  '__mocks__/dev.js',
+  '__mocks__/later.js',
+  '__fixtures__/snippet.js',
+  '__mocks__/shadowed.js',
+  '__tests__/untouched.test.ts',
+];
 const promotedOk = PROMOTED.every(
   (name) => evalIn(name) && !importSkipped.some((f) => f.endsWith(name)),
 );
@@ -704,7 +730,7 @@ const skippedOk = STILL_SKIPPED.every(
 );
 if (importRun.status === 0 && promotedOk && skippedOk) {
   pass(
-    'test files imported by production code are linted; type-only imported and unimported ones stay skipped',
+    'test files imported by production code are linted; type-only, conditional, dynamic, ?raw, shadowed-require and unimported ones stay skipped',
   );
 } else {
   fail(
