@@ -162,6 +162,7 @@ jobs:
             }
             const diagnostics = payload.diagnostics || [];
             const skippedFiles = payload.skipped || [];
+            const importedTests = payload.importedTests || [];
 
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
@@ -456,6 +457,15 @@ jobs:
               const more = skippedFiles.length > 20 ? ` … and ${skippedFiles.length - 20} more` : '';
               core.summary.addRaw(
                 `\n⏭️ **${skippedFiles.length} file(s) skipped** (minified/vendored/declaration/test/foreign-source/hidden/symlinked — not linted): ${list}${more}`,
+                true
+              );
+            }
+            // Test files are normally skipped; say why one was linted after all.
+            if (importedTests.length) {
+              const list = importedTests.slice(0, 20).map((f) => `\`${f}\``).join(', ');
+              const more = importedTests.length > 20 ? ` … and ${importedTests.length - 20} more` : '';
+              core.summary.addRaw(
+                `\nℹ️ **${importedTests.length} test file(s) linted** because production code imports them (they ship with it): ${list}${more}`,
                 true
               );
             }

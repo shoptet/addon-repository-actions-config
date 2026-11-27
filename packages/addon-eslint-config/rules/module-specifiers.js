@@ -202,16 +202,26 @@ function iifeBody(expression) {
 
 /**
  * The leading run of an IIFE body that certainly executes: expression
- * statements and declarations up to the first statement that may leave the
+ * statements, variable and function declarations up to the first statement
+ * that may leave the
  * function or steer control flow (`if`, `return`, `throw`, `try`, a loop …).
  * A `require()` after `if (process.env.NODE_ENV !== 'test') return;` runs
  * only in tests, so nothing after such a statement counts — a false negative
  * for a `require()` after a harmless `if`, never a false positive.
  */
+// A function declaration (hoisted, runs nothing) and an empty statement do
+// not steer control flow either, so they do not end the run.
+const STRAIGHT_LINE = new Set([
+  'ExpressionStatement',
+  'VariableDeclaration',
+  'FunctionDeclaration',
+  'EmptyStatement',
+]);
+
 function leadingStraightLine(body) {
   const prefix = [];
   for (const statement of body) {
-    if (statement.type !== 'ExpressionStatement' && statement.type !== 'VariableDeclaration') break;
+    if (!STRAIGHT_LINE.has(statement.type)) break;
     prefix.push(statement);
   }
   return prefix;

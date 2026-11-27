@@ -211,13 +211,22 @@ function resolveRelative(fromFile, specifier) {
  * test files) is linted after all and leaves `skipped`: it ships with the
  * code that imports it. A test file nothing imports stays skipped.
  */
+// Linted files that do not ship either, so their imports must not promote a
+// test file: Storybook stories and test setup files (CRA's
+// `src/setupTests.js`, `vitest.setup.ts`, `jest.setup.js`). A mock that only
+// such a file imports is test code. A helper in a plain `tests/` directory
+// cannot be told apart from a feature folder, so it still counts (README).
+const DEV_ONLY_ROOT = /\.stories\.[^/]+$|(^|\/)setup-?tests\.[^/]+$|\.setup\.[^/]+$/i;
+
 function includeImportedTestFiles(files, targetPath) {
   const skippedTests = new Set(
     files.skipped.filter((file) => isSkippedOnlyAsTest(path.relative(targetPath, file))),
   );
   if (skippedTests.size === 0) return files;
   const promoted = new Set();
-  const queue = [...files.js];
+  const queue = files.js.filter(
+    (file) => !DEV_ONLY_ROOT.test(path.relative(targetPath, file).split(path.sep).join('/')),
+  );
   while (queue.length) {
     const file = queue.pop();
     let source;
@@ -349,7 +358,10 @@ async function main() {
     // PR verdict (blockers gate). process.exitCode + natural exit, NOT
     // process.exit(): exit() does not wait for a piped stdout to flush, so
     // payloads over 64 KiB would be truncated mid-JSON — with exit 0 (round 11).
-    process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped }));
+    // importedTests: test files linted because production code imports them
+    // (CZ3TDR1-980) — the PR gate's Summary says why they were linted.
+    const importedTests = (files.importedTests || []).map((f) => path.relative(process.cwd(), f));
+    process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped, importedTests }));
     process.exitCode = 0;
     return;
   }

@@ -659,8 +659,10 @@ fs.rmSync(testFilesTmp, { recursive: true, force: true });
 // imported test file. What may not ship stays skipped: a type-only import
 // (also `import type x = require()`), a dynamic import(), a require() inside
 // a condition or a function or after an early return / throw in an IIFE, a
-// `?raw` query, and require() in a file that binds its own `require`. So does
-// a file nothing imports.
+// `?raw` query, require() in a file that binds its own `require`, and an
+// import from a linted file that does not ship either (a story, a test setup
+// file). So does a file nothing imports. The rdjson payload lists the
+// promoted files (`importedTests`).
 const importTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-imports-'));
 const IMPORT_FILES = {
   'main.ts':
@@ -692,6 +694,16 @@ const IMPORT_FILES = {
     "(function () {\n  if (process.env.NODE_ENV !== 'test') return;\n  require('../__mocks__/early.js');\n})();\n(function () {\n  throw new Error('x');\n  require('../__mocks__/after-throw.js');\n})();\n",
   '__mocks__/early.js': "export const ea = eval('5h');\n",
   '__mocks__/after-throw.js': "export const at = eval('5i');\n",
+  'lib/fnfirst.js':
+    "(function () {\n  'use strict';\n  function helper() {}\n  require('../__mocks__/after-fn.js');\n  helper();\n})();\n",
+  '__mocks__/after-fn.js': "export const af = eval('5j');\n",
+  'components/Button.stories.jsx':
+    "import { story } from '../__mocks__/story-mock.js';\nexport const Primary = () => <button>{story}</button>;\n",
+  '__mocks__/story-mock.js': "export const story = eval('5k');\n",
+  'setupTests.js': "import './__mocks__/setup-mock.js';\n",
+  '__mocks__/setup-mock.js': "export const sm = eval('5l');\n",
+  'vitest.setup.ts': "import './__mocks__/vsetup.ts';\n",
+  '__mocks__/vsetup.ts': "export const vs = eval('5m');\n",
   '__mocks__/def.js': "export const df = eval('5g');\n",
   '__tests__/untouched.test.ts': "export const u = eval('6');\n",
 };
@@ -723,6 +735,7 @@ const PROMOTED = [
   '__mocks__/jsx-stub.js',
   '__mocks__/iife.js',
   '__mocks__/def.js',
+  '__mocks__/after-fn.js',
 ];
 const STILL_SKIPPED = [
   '__mocks__/types.ts',
@@ -734,6 +747,9 @@ const STILL_SKIPPED = [
   '__mocks__/shadowed.js',
   '__mocks__/early.js',
   '__mocks__/after-throw.js',
+  '__mocks__/story-mock.js',
+  '__mocks__/setup-mock.js',
+  '__mocks__/vsetup.ts',
   '__tests__/untouched.test.ts',
 ];
 const promotedOk = PROMOTED.every(
@@ -742,13 +758,21 @@ const promotedOk = PROMOTED.every(
 const skippedOk = STILL_SKIPPED.every(
   (name) => !evalIn(name) && importSkipped.some((f) => f.endsWith(name)),
 );
-if (importRun.status === 0 && promotedOk && skippedOk) {
+// The rdjson payload names the promoted files, so the PR gate's Summary can
+// say why a test file was linted.
+const importedTests = ((importJson && importJson.importedTests) || []).map((f) =>
+  f.split(path.sep).join('/'),
+);
+const payloadOk =
+  importedTests.length === PROMOTED.length &&
+  PROMOTED.every((name) => importedTests.some((f) => f.endsWith(name)));
+if (importRun.status === 0 && promotedOk && skippedOk && payloadOk) {
   pass(
-    'test files imported by production code are linted; type-only, conditional, dynamic, ?raw, shadowed-require and unimported ones stay skipped',
+    'test files imported by production code are linted and listed; type-only, conditional, dynamic, ?raw, shadowed-require, dev-only-imported and unimported ones stay skipped',
   );
 } else {
   fail(
-    `imported-test-file contract broken: status ${importRun.status}, skipped=${JSON.stringify(importSkipped)}, eval in=${JSON.stringify(importDiags.filter((d) => d.code.value === 'no-eval').map((d) => d.location.path))}`,
+    `imported-test-file contract broken: status ${importRun.status}, importedTests=${JSON.stringify(importedTests)}, skipped=${JSON.stringify(importSkipped)}, eval in=${JSON.stringify(importDiags.filter((d) => d.code.value === 'no-eval').map((d) => d.location.path))}`,
   );
 }
 fs.rmSync(importTmp, { recursive: true, force: true });
