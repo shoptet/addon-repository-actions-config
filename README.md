@@ -250,7 +250,8 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   declaration is module-local). TypeScript or Flow syntax in a `.js` file
   stays a parse error (`CodeQuality`), and so does JSX in a `.cjs` file or in
   code that is valid only as a classic script (sloppy-mode syntax such as
-  `with`).
+  `with`). A `.js` file with JSX that is broken elsewhere reports the error
+  where it really is, not `Unexpected token <` on the JSX.
 - *Templating placeholders in attribute position weaken the HTML checks.* A
   Mustache/Handlebars-style placeholder standing where an attribute would be
   (`<img src="x.png" {{alt_attr}}>`) breaks attribute tokenization; `img-alt`

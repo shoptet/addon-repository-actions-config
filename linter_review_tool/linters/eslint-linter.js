@@ -25,6 +25,7 @@ const {
   configs,
   parsesAsScript,
   parsesAsJsxModule,
+  jsxModuleParseError,
   globalCommentLocations,
   isRedundantGlobalReport,
 } = require('@shoptet/addon-eslint-config');
@@ -246,6 +247,31 @@ async function lintJsxInJs(eslint, mjsEslint, filePath, findings) {
   return true;
 }
 
+// A `.js` / `.mjs` file that fails every parse: when the JSX parse got
+// further than the plain module parse, the file is JSX broken elsewhere (a
+// duplicate declaration after the JSX, say), and the plain error — on the
+// first `<` — points the partner at the wrong line. Report the JSX parse's
+// error instead; otherwise keep the original. The finding stays a CodeQuality
+// blocker either way.
+function preferJsxParseError(moduleResult) {
+  if (!/\.m?js$/i.test(moduleResult.filePath)) return;
+  const fatal = moduleResult.messages.find((m) => m.fatal);
+  if (!fatal) return;
+  let jsxError;
+  try {
+    jsxError = jsxModuleParseError(fs.readFileSync(moduleResult.filePath, 'utf8'));
+  } catch {
+    return;
+  }
+  if (!jsxError || !jsxError.line) return;
+  const further =
+    jsxError.line > fatal.line || (jsxError.line === fatal.line && jsxError.column > fatal.column);
+  if (!further) return;
+  fatal.message = `Parsing error: ${jsxError.message}`;
+  fatal.line = jsxError.line;
+  fatal.column = jsxError.column;
+}
+
 // The config's JSX blocks (the TypeScript/JSX block and the `.jsx` block),
 // retargeted to `.mjs` with JSX parsing on — for an `.mjs` file with JSX only
 // (see lintJsxInJs). Appended to the shared array, never mutating it.
@@ -317,6 +343,7 @@ async function lintJavaScript(files) {
         // JavaScript with JSX (common in Vite / CRA templates): lint it
         // exactly as the same code in a `.jsx` file (CZ3TDR1-968).
         if (await lintJsxInJs(eslint, mjsEslint, moduleResult.filePath, findings)) continue;
+        preferJsxParseError(moduleResult);
         // Not a module-format issue — the file is genuinely broken JS.
         // Report the original parse error (surfaces as a CodeQuality blocker).
         pushMessages(findings, moduleResult);
