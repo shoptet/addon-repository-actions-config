@@ -6,6 +6,7 @@ const { lintJavaScript } = require('./linters/eslint-linter');
 const { lintStyles } = require('./linters/stylelint-linter');
 const { lintHtml } = require('./linters/html-linter');
 const { isReliable } = require('./profiles');
+const { moduleSpecifiers } = require('@shoptet/addon-eslint-config');
 
 // TypeScript and JSX are linted by the same ESLint pass (the shared config's
 // typescript-eslint block); `.d.ts` declaration files carry no runtime code and
@@ -151,6 +152,106 @@ function collectSymlinkedDirs(root) {
   return found;
 }
 
+// The test-file conventions of IGNORE, on their own (CZ3TDR1-980): a skipped
+// file that matches ONLY these — not node_modules/dist/vendor, minified,
+// declaration, hidden or foreign — is skipped because it is a test, and a test
+// file that production code imports ships after all.
+const TEST_DIR = /(^|\/)(__tests__|__mocks__|__fixtures__)\//i;
+const TEST_FILE = /\.(test|spec|cy)\.(js|mjs|cjs|jsx|ts|tsx|mts|cts)$/i;
+// Minified/bundle exactly as IGNORE matches it (`*.min.<ext>`), so
+// `helper.min.test.js` — skipped as a test, not as minified — stays eligible.
+const OTHER_SKIP = new RegExp(
+  `(^|/)(node_modules|dist|vendor)/|\\.(min|bundle)\\.(${IGNORED_MIN_EXTENSIONS.split(',').join('|')})$|\\.d\\.(ts|mts|cts)$|(^|/)\\.[^/]`,
+  'i',
+);
+
+function isSkippedOnlyAsTest(relativePath) {
+  const posix = relativePath.split(path.sep).join('/');
+  if (!JS_EXTENSIONS.includes(path.extname(posix).slice(1).toLowerCase())) return false;
+  return (TEST_DIR.test(posix) || TEST_FILE.test(posix)) && !OTHER_SKIP.test(posix);
+}
+
+/**
+ * Where a relative specifier resolves to, the way a bundler resolves it: the
+ * exact file, then each JS/TS extension, a TypeScript-style `.js` → `.ts`
+ * twin, then `index.*`. Returns an existing file path or null. Bare
+ * specifiers (`lodash`) and aliases (`@/x`) are not resolved — a false
+ * negative, documented.
+ */
+function resolveRelative(fromFile, specifier) {
+  if (!specifier.startsWith('./') && !specifier.startsWith('../')) return null;
+  // A query or hash (`./snippet.js?raw`, `?url`, `?inline`) loads the file as
+  // text or a URL, not as code — not followed (a false negative for the rare
+  // `?worker`, never a false positive).
+  if (/[?#]/.test(specifier)) return null;
+  const base = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [base];
+  for (const ext of JS_EXTENSIONS) candidates.push(`${base}.${ext}`);
+  const twin = /\.(js|jsx|mjs|cjs)$/i.exec(base);
+  if (twin) {
+    const stem = base.slice(0, -twin[0].length);
+    const tsExt = { js: ['ts', 'tsx'], jsx: ['tsx'], mjs: ['mts'], cjs: ['cts'] }[
+      twin[1].toLowerCase()
+    ];
+    for (const ext of tsExt) candidates.push(`${stem}.${ext}`);
+  }
+  for (const ext of JS_EXTENSIONS) candidates.push(path.join(base, `index.${ext}`));
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      // not there — next candidate
+    }
+  }
+  return null;
+}
+
+/**
+ * A test file that a linted file imports (directly or through other imported
+ * test files) is linted after all and leaves `skipped`: it ships with the
+ * code that imports it. A test file nothing imports stays skipped.
+ */
+// Linted files that do not ship either, so their imports must not promote a
+// test file: Storybook stories and test setup files (CRA's
+// `src/setupTests.js`, `vitest.setup.ts`, `jest.setup.js`). A mock that only
+// such a file imports is test code. A helper in a plain `tests/` directory
+// cannot be told apart from a feature folder, so it still counts (README).
+const DEV_ONLY_ROOT = /\.stories\.[^/]+$|(^|\/)setup-?tests\.[^/]+$|\.setup\.[^/]+$/i;
+
+function includeImportedTestFiles(files, targetPath) {
+  const skippedTests = new Set(
+    files.skipped.filter((file) => isSkippedOnlyAsTest(path.relative(targetPath, file))),
+  );
+  if (skippedTests.size === 0) return files;
+  const promoted = new Set();
+  const queue = files.js.filter(
+    (file) => !DEV_ONLY_ROOT.test(path.relative(targetPath, file).split(path.sep).join('/')),
+  );
+  while (queue.length) {
+    const file = queue.pop();
+    let source;
+    try {
+      source = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const specifier of moduleSpecifiers(source, file)) {
+      const target = resolveRelative(file, specifier);
+      if (target && skippedTests.has(target) && !promoted.has(target)) {
+        promoted.add(target);
+        queue.push(target); // an imported mock may import another test file
+      }
+    }
+  }
+  if (promoted.size === 0) return files;
+  return {
+    ...files,
+    js: [...files.js, ...promoted].sort(),
+    skipped: files.skipped.filter((file) => !promoted.has(file)),
+    importedTests: [...promoted].sort(),
+  };
+}
+
 async function gatherFiles(targetPath, stats) {
   if (stats.isDirectory()) {
     const [js, styles, html, skipped] = await Promise.all([
@@ -161,7 +262,7 @@ async function gatherFiles(targetPath, stats) {
     ]);
     for (const dir of collectSymlinkedDirs(targetPath)) skipped.push(dir);
     skipped.sort();
-    return { js, styles, html, skipped };
+    return includeImportedTestFiles({ js, styles, html, skipped }, targetPath);
   }
 
   const kind = classifyFile(targetPath);
@@ -257,11 +358,19 @@ async function main() {
     // PR verdict (blockers gate). process.exitCode + natural exit, NOT
     // process.exit(): exit() does not wait for a piped stdout to flush, so
     // payloads over 64 KiB would be truncated mid-JSON — with exit 0 (round 11).
-    process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped }));
+    // importedTests: test files linted because production code imports them
+    // (CZ3TDR1-980) — the PR gate's Summary says why they were linted.
+    const importedTests = (files.importedTests || []).map((f) => path.relative(process.cwd(), f));
+    process.stdout.write(JSON.stringify({ ...toRdjson(findings), skipped, importedTests }));
     process.exitCode = 0;
     return;
   }
 
+  if (files.importedTests && files.importedTests.length) {
+    info(
+      `ℹ️  ${files.importedTests.length} test file(s) linted because production code imports them: ${files.importedTests.map((f) => path.relative(process.cwd(), f)).join(', ')}`,
+    );
+  }
   if (skipped.length) {
     info(
       `⏭️  ${skipped.length} file(s) skipped (minified/vendored/declaration/test/foreign-source/hidden/symlinked): ${skipped.join(', ')}`,

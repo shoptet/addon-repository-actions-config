@@ -150,20 +150,37 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   skipped, the run fails closed with a message saying so (not a green pass).
 - *Test files are a deliberate blind spot too.* Files named `*.test.*`,
   `*.spec.*` or `*.cy.*` (Cypress; any JS/TS extension) and everything under
-  `__tests__/`, `__mocks__/` or `__fixtures__/` are never linted: tests do
-  not ship, and test code does on purpose what addon code must not (mocking
+  `__tests__/`, `__mocks__/` or `__fixtures__/` are never linted: tests do not
+  ship, and test code does on purpose what addon code must not (mocking
   `window.shoptet`, asserting on `javascript:` URLs, selecting fixtures by
-  `data-testid`). Only these unambiguous jest/vitest/Cypress conventions
-  count — a plain `test/` or `tests/`
-  directory is linted like any other source, since a partner may name a
-  feature folder that way. Storybook `*.stories.*` files are linted too
-  (they often import production components). Skipped test files are listed
-  in the Summary like the minified/vendored ones. Two consequences to know:
-  a skipped file is not linted **even when production code imports it**
-  (a helper kept in `__mocks__/`, or a `*.spec.js` the bundler includes),
-  the same as for `vendor/` (tracked as CZ3TDR1-980); and in a shop,
-  `product.spec.js` may mean a product specification rather than a test —
-  name such a file `product-spec.js` to keep it linted.
+  `data-testid`). Only these unambiguous jest/vitest/Cypress conventions count
+  — a plain `test/` or `tests/` directory is linted like any other source,
+  since a partner may name a feature folder that way. Storybook `*.stories.*`
+  files are linted too (they often import production components). Skipped test
+  files are listed in the Summary like the minified/vendored ones. A test file
+  that a linted file **imports** ships with it and is linted after all (it
+  leaves `skipped`, and the Summary and plain output list it as linted because
+  production code imports it): a relative static `import` / `export … from`,
+  `import x = require('…')`, or a `require('…')` that always runs (a top-level
+  statement, declaration, assignment or `export default`, also in a top-level
+  IIFE up to its first `if` / `return` / `try` / loop), with a string literal,
+  resolved like a bundler (exact path, the JS/TS extensions, a TypeScript
+  `.js` → `.ts` twin, `index.*`), also through a chain of imported test files.
+  Only what certainly ships counts, so these are not followed (false negatives
+  by design): a dynamic `import('…')` and a `require()` inside a condition or
+  a function (a dev-only mock behind `if (import.meta.env.DEV)` never ships);
+  a type-only import (`import type …`, every specifier `type` — also under
+  `verbatimModuleSyntax`, which the gate cannot see — and `import type x =
+  require(…)`); a specifier with a query (`./snippet.js?raw`, `?url`), which
+  loads the file as text or a URL; `require()` in a file that binds its own
+  `require`; bare or aliased specifiers (`lodash`, `@/mocks/x`); a specifier
+  built at runtime; an HTML `<script src>`; an import from a linted file that
+  does not ship either — a Storybook story or a test setup file
+  (`setupTests.*`, `setup-tests.*`, `*.setup.*`); and single-file mode, which
+  lints only the given file. Remaining risk: a helper in a plain `tests/`
+  directory is linted like a feature folder, so a mock it imports is promoted
+  and may block. In a shop, `product.spec.js` may mean a product specification
+  rather than a test — name such a file `product-spec.js` to keep it linted.
 - *Only JavaScript/TypeScript (`.js/.mjs/.cjs/.jsx/.ts/.tsx/.mts/.cts`),
   stylesheet and HTML extensions are linted.* Other source-looking files
   (`.vue`, `.svelte`, `.coffee`) are never linted — they surface in the

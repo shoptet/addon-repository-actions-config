@@ -54,6 +54,7 @@ const REQUIRED_SHAPE_IDS = [
   'known-blocker-parity',
   'typescript-linted-dts-skipped',
   'skip-test-files',
+  'imported-test-file-is-linted',
 ];
 
 /** Every `expect` key this runner knows how to act on (the README's schema). */
