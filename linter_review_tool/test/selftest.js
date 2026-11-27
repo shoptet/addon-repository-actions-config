@@ -131,7 +131,41 @@ for (const file of goodFilesOnDisk) {
 // ── 4: reconcile-utils — the diff parser and fingerprint the CI workflow
 //       require()s from this tool (silent-failure territory, so unit-pinned) ──
 console.log('reconcile-utils:');
-const { parseAddedLines, findingFingerprint } = require('../lib/reconcile-utils');
+const {
+  parseAddedLines,
+  findingFingerprint,
+  formatFileList,
+  isSummaryOnly,
+} = require('../lib/reconcile-utils');
+// Summary file lists (CZ3TDR1-937): first 20 as code, then "… and N more".
+{
+  const many = Array.from({ length: 23 }, (_, i) => `f${i}.js`);
+  const listed = formatFileList(many);
+  const custom = formatFileList(
+    [{ file: 'a.js', library: 'x@1' }],
+    (t) => `${t.file} (${t.library})`,
+  );
+  if (
+    formatFileList(['a.js', 'b.css']) === '`a.js`, `b.css`' &&
+    listed.startsWith('`f0.js`, ') &&
+    listed.endsWith('`f19.js` … and 3 more') &&
+    custom === 'a.js (x@1)' &&
+    formatFileList([]) === ''
+  ) {
+    pass('formatFileList: first 20 entries, "… and N more", custom labels');
+  } else {
+    fail(`formatFileList broken: ${JSON.stringify([listed, custom])}`);
+  }
+  const outsideSet = new Set(['libs/own.js']);
+  if (
+    isSummaryOnly({ location: { path: 'libs/own.js' } }, outsideSet) &&
+    !isSummaryOnly({ location: { path: 'src/app.js' } }, outsideSet)
+  ) {
+    pass('isSummaryOnly: findings outside src/ are Summary-only, src/ ones are not');
+  } else {
+    fail('isSummaryOnly broken');
+  }
+}
 const parserCases = [
   {
     // The round-9 regression pin: raw single-path `git diff` output carries
@@ -783,17 +817,46 @@ if (importRun.status === 0 && promotedOk && skippedOk && payloadOk) {
 }
 fs.rmSync(importTmp, { recursive: true, force: true });
 
+// The live lookup's whole-run budget and circuit breaker (PR #32 review, P2):
+// three failures in a row, or 20 s in total, and no further request is made.
+{
+  const { createBreaker } = require('../lib/third-party');
+  let clock = 0;
+  const breaker = createBreaker(() => clock);
+  breaker.failed();
+  breaker.failed();
+  const stillClosed = !breaker.open();
+  breaker.answered(); // an answer (also a 404) resets the streak
+  breaker.failed();
+  breaker.failed();
+  const resetWorked = !breaker.open();
+  breaker.failed();
+  const tripped = breaker.open();
+  const timed = createBreaker(() => clock);
+  clock = 20001;
+  if (stillClosed && resetWorked && tripped && timed.open()) {
+    pass('third-party lookup: circuit breaker after 3 failures in a row, 20 s budget');
+  } else {
+    fail(
+      `third-party breaker broken: ${JSON.stringify([stillClosed, resetWorked, tripped, timed.open()])}`,
+    );
+  }
+}
+
 // Partner code outside src/ (CZ3TDR1-937): with --repo-root, the repository
 // around the target is linted too, NON-BLOCKING (recommendations), minus what
 // never ships: build output, tooling (root-level JS, *.config.*, grunt/,
-// scripts/), tests, stories, setup files and --exclude'd directories. A file
-// whose content is a popular published library (offline map here, jsDelivr
-// in CI) is not linted in either scope and is listed in `thirdParty`; a
-// modified copy or an unpopular package is linted.
+// scripts/), tests, stories, setup files and --exclude'd directories. Outside
+// src/ only, a file whose content is a popular published library (offline map
+// here, jsDelivr in CI) is not linted and is listed in `thirdParty`; a
+// modified copy, an unpopular package and a match from the partner's own
+// GitHub account are linted. In src/ nothing is verified.
 const scopeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-outside-'));
 const LIB = `export const big = '${'x'.repeat(1100)}';\neval('lib');\n`;
 const MODIFIED = LIB.replace("'lib'", "'lib2'");
 const UNPOPULAR = `export const other = '${'y'.repeat(1100)}';\neval('other');\n`;
+const OWN_GH = `export const mine = '${'z'.repeat(1100)}';\neval('mine');\n`;
+const FOREIGN_GH = `export const slick = '${'w'.repeat(1100)}';\neval('slick');\n`;
 const SCOPE_FILES = {
   'src/a.js': 'export const a = 1;\n',
   'src/vendor-lib.js': LIB,
@@ -801,6 +864,8 @@ const SCOPE_FILES = {
   'libs/lib.js': LIB,
   'libs/lib-modified.js': MODIFIED,
   'libs/unpopular.js': UNPOPULAR,
+  'libs/own-addon.js': OWN_GH,
+  'libs/slick.js': FOREIGN_GH,
   'custom/page.html': '<img src="a.png">\n',
   'proxySync.js': "eval('root tooling');\n",
   'webpack.factory.config.js': "eval('config');\n",
@@ -817,11 +882,29 @@ for (const [name, content] of Object.entries(SCOPE_FILES)) {
   fs.writeFileSync(path.join(scopeTmp, name), content);
 }
 const { sha256: sha256Of } = require('../lib/third-party');
-const mapFile = path.join(scopeTmp, '..', `${path.basename(scopeTmp)}-map.json`);
+const mapFile = path.join(scopeTmp, 'excluded', 'third-party-map.json');
 fs.writeFileSync(
   mapFile,
   JSON.stringify({
     [sha256Of(path.join(scopeTmp, 'libs/lib.js'))]: {
+      type: 'npm',
+      name: 'some-lib',
+      version: '1.0.0',
+      hits: 5000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'libs/own-addon.js'))]: {
+      type: 'gh',
+      name: 'Partner-Co/addon',
+      version: '1.4.0',
+      hits: 3000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'libs/slick.js'))]: {
+      type: 'gh',
+      name: 'kenwheeler/slick',
+      version: '1.8.0',
+      hits: 368000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'src/vendor-lib.js'))]: {
       type: 'npm',
       name: 'some-lib',
       version: '1.0.0',
@@ -839,6 +922,7 @@ const mapEnv = {
   ...process.env,
   SHOPTET_LINT_THIRD_PARTY: '',
   SHOPTET_LINT_THIRD_PARTY_MAP: mapFile,
+  GITHUB_REPOSITORY_OWNER: 'partner-co',
 };
 const scopeArgs = [
   path.join(scopeTmp, 'src'),
@@ -857,8 +941,8 @@ const scopeDiags = (scopeJson && scopeJson.diagnostics) || [];
 const posixPath = (f) => f.split(path.sep).join('/');
 const scopeDiagsIn = (name) => scopeDiags.filter((d) => posixPath(d.location.path).endsWith(name));
 const NOT_LINTED = [
-  'src/vendor-lib.js',
   'libs/lib.js',
+  'libs/slick.js',
   'proxySync.js',
   'webpack.factory.config.js',
   'grunt/copy.js',
@@ -873,24 +957,29 @@ const LINTED_NON_BLOCKING = [
   'libs/own.js',
   'libs/lib-modified.js',
   'libs/unpopular.js',
+  'libs/own-addon.js',
   'custom/page.html',
 ];
 const thirdPartyList = ((scopeJson && scopeJson.thirdParty) || []).map(
   (t) => `${posixPath(t.file).split('/').slice(-2).join('/')}=${t.library}`,
 );
+// src/ is never verified (its verdict must not depend on an external
+// service): the library copy there is linted and blocks, as on main.
+const srcLibBlocks = scopeDiagsIn('src/vendor-lib.js').some((d) => d.severity === 'ERROR');
 const scopeOk =
   scopeRun.status === 0 &&
-  scopePlain.status === 0 &&
+  scopePlain.status === 1 &&
+  srcLibBlocks &&
   NOT_LINTED.every((name) => scopeDiagsIn(name).length === 0) &&
   LINTED_NON_BLOCKING.every(
     (name) =>
       scopeDiagsIn(name).length > 0 && scopeDiagsIn(name).every((d) => d.severity === 'WARNING'),
   ) &&
   JSON.stringify(thirdPartyList.sort()) ===
-    JSON.stringify(['libs/lib.js=some-lib@1.0.0', 'src/vendor-lib.js=some-lib@1.0.0']);
+    JSON.stringify(['libs/lib.js=some-lib@1.0.0', 'libs/slick.js=kenwheeler/slick@1.8.0']);
 if (scopeOk) {
   pass(
-    'code outside src/ is linted non-blocking; tooling, tests and excluded dirs are not; verified third-party files are skipped in both scopes',
+    "code outside src/ is linted non-blocking; tooling, tests and excluded dirs are not; verified libraries are skipped outside src/ only, never the partner's own GitHub repo",
   );
 } else {
   fail(
@@ -898,7 +987,6 @@ if (scopeOk) {
   );
 }
 fs.rmSync(scopeTmp, { recursive: true, force: true });
-fs.rmSync(mapFile, { force: true });
 
 // Messages are bounded — a 70k-char identifier must not produce a comment-
 // killing 70k message (round 13).

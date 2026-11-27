@@ -313,7 +313,7 @@ async function gatherOutside(repoRoot, targetPath, excludes) {
   };
 }
 
-/** Drop verified third-party files from a file set; returns the dropped ones. */
+/** A file set without the verified third-party files. */
 function withoutThirdParty(files, verified) {
   return {
     ...files,
@@ -389,14 +389,11 @@ async function main() {
     repoRootArg && stats.isDirectory()
       ? await gatherOutside(path.resolve(process.cwd(), repoRootArg), targetPath, excludes)
       : { js: [], styles: [], html: [] };
-  // Verified third-party files are skipped in both scopes, and listed.
-  const verified = await verifyThirdParty([
-    ...gathered.js,
-    ...gathered.styles,
-    ...outsideAll.js,
-    ...outsideAll.styles,
-  ]);
-  const files = withoutThirdParty(gathered, verified);
+  // Verified third-party files are skipped OUTSIDE the target only, and
+  // listed: the verdict on the target (src/) never depends on the lookup or on
+  // an external service (PR #32 review, P1/P2).
+  const verified = await verifyThirdParty([...outsideAll.js, ...outsideAll.styles]);
+  const files = gathered;
   const outside = withoutThirdParty(outsideAll, verified);
 
   const total = files.js.length + files.styles.length + files.html.length;

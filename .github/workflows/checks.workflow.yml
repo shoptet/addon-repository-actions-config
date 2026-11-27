@@ -146,7 +146,7 @@ jobs:
             const { execFileSync } = require('child_process');
             // Shared, self-tested logic (diff parsing + fingerprinting) lives in
             // the checked-out tool so it is covered by the linter self-test.
-            const { parseAddedLines, findingFingerprint: fp } = require(
+            const { parseAddedLines, findingFingerprint: fp, formatFileList, isSummaryOnly } = require(
               `${process.env.GITHUB_WORKSPACE}/review-tool/linter_review_tool/lib/reconcile-utils.js`
             );
             const MARKER = 'shoptet-review-fp';
@@ -167,6 +167,7 @@ jobs:
             const importedTests = payload.importedTests || [];
             const thirdParty = payload.thirdParty || [];
             const outsideSrc = payload.outsideSrc || [];
+            const outsideSet = new Set(outsideSrc);
 
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
@@ -254,6 +255,7 @@ jobs:
             const FILE_LEVEL_RULES = new Set(['CodeQuality', 'CssSyntaxError', 'stylelint/parse-error', 'shoptet/es-module-required']);
             const wanted = new Map();
             const unanchored = new Set();
+            const summaryOnly = new Set(); // outside src/: Summary only (CZ3TDR1-937)
             for (const d of diagnostics) {
               // Warnings are kept: the strict profile already limited findings to
               // 100%-reliable rules, so recommendations here are trustworthy too.
@@ -270,6 +272,9 @@ jobs:
                 wanted.set(key, d);
                 unanchored.add(key); // gate + Summary, no inline anchor
               }
+              // Outside src/ (CZ3TDR1-937): non-blocking and Summary-only
+              // during the rollout, never an inline comment.
+              if (wanted.has(key) && isSummaryOnly(d, outsideSet)) summaryOnly.add(key);
             }
 
             // Existing bot comments we manage (carry our marker).
@@ -304,14 +309,16 @@ jobs:
             // human reviewer anyway. The overflow count is surfaced in the body.
             const MAX_COMMENTS = 100;
             const fresh = [...wanted.entries()]
-              .filter(([key]) => !mine.has(key) && !unanchored.has(key))
+              .filter(([key]) => !mine.has(key) && !unanchored.has(key) && !summaryOnly.has(key))
               .sort((a, b) => (a[1].severity === 'ERROR' ? 0 : 1) - (b[1].severity === 'ERROR' ? 0 : 1));
             const unanchoredCount = [...unanchored].filter((key) => !mine.has(key)).length;
+            const summaryOnlyCount = [...summaryOnly].filter((key) => !unanchored.has(key)).length;
             const capped = fresh.slice(0, MAX_COMMENTS);
             const overflow = fresh.length - capped.length;
             // ONE definition of "shown" for both the verdict body and the
             // Summary header — the two must never disagree (round 9 nit).
-            const shown = total - overflow - unanchoredCount;
+            const shown = total - overflow - unanchoredCount - summaryOnlyCount;
+            const partial = overflow > 0 || unanchoredCount > 0 || summaryOnlyCount > 0;
             const comments = capped.map(([key, d]) => {
               const icon = d.severity === 'ERROR' ? '❌' : '⚠️';
               const rule = d.code?.value ? ` \`${d.code.value}\`` : '';
@@ -343,14 +350,17 @@ jobs:
                 + (recommendations > 0 ? ` and ${recommendations} recommendation(s)` : '');
               let body = blockers > 0
                 ? `🤖 Automated review: ${counts} on changed lines. `
-                  + (overflow > 0 || unanchoredCount > 0
+                  + (partial
                       ? `Showing **${shown} of ${total}** findings in comments (blockers first) — the full list is in the run's [Summary](${runUrl}). `
                       : `All are shown as inline comments on the relevant lines. `)
                   + `Once the blockers are fixed, this request is dismissed automatically.`
                 : `🤖 Automated review: no blockers, ${recommendations} recommendation(s) on changed lines`
-                  + (overflow > 0 || unanchoredCount > 0 ? ` (${shown} of ${total} shown in comments, full list in the run's [Summary](${runUrl}))` : '') + `.`;
+                  + (partial ? ` (${shown} of ${total} shown in comments, full list in the run's [Summary](${runUrl}))` : '') + `.`;
               if (unanchoredCount > 0) {
                 body += ` ${unanchoredCount} finding(s) are in files whose changed lines could not be resolved and appear only in the Summary.`;
+              }
+              if (summaryOnlyCount > 0) {
+                body += ` ${summaryOnlyCount} recommendation(s) in files outside \`src/\` appear only in the Summary.`;
               }
               // A single review with ~100 comments still trips GitHub's secondary
               // content-creation limit (~25-30 per review is safe), so post in
@@ -421,9 +431,10 @@ jobs:
             } else {
               core.summary.addRaw(
                 `Found **${blockers}** blocker(s) (❌) and **${recommendations}** recommendation(s) (⚠️) on changed lines` +
-                (overflow > 0 || unanchoredCount > 0
+                (partial
                   ? ` — ${shown} of ${total} shown as PR comments` +
                     (unanchoredCount > 0 ? ` (${unanchoredCount} unanchored — inline comments not possible for their files)` : '') +
+                    (summaryOnlyCount > 0 ? ` (${summaryOnlyCount} outside \`src/\` — Summary only during the rollout)` : '') +
                     `, full list below.`
                   : '.'),
                 true
@@ -466,28 +477,22 @@ jobs:
             }
             // Test files are normally skipped; say why one was linted after all.
             if (importedTests.length) {
-              const list = importedTests.slice(0, 20).map((f) => `\`${f}\``).join(', ');
-              const more = importedTests.length > 20 ? ` … and ${importedTests.length - 20} more` : '';
               core.summary.addRaw(
-                `\nℹ️ **${importedTests.length} test file(s) linted** because production code imports them (they ship with it): ${list}${more}`,
+                `\nℹ️ **${importedTests.length} test file(s) linted** because production code imports them (they ship with it): ${formatFileList(importedTests)}`,
                 true
               );
             }
             // Verified third-party libraries are not linted; say which and why.
             if (thirdParty.length) {
-              const list = thirdParty.slice(0, 20).map((t) => `\`${t.file}\` (${t.library})`).join(', ');
-              const more = thirdParty.length > 20 ? ` … and ${thirdParty.length - 20} more` : '';
               core.summary.addRaw(
-                `\n📦 **${thirdParty.length} third-party file(s) verified** by content and not linted: ${list}${more}`,
+                `\n📦 **${thirdParty.length} third-party file(s) verified** by content and not linted: ${formatFileList(thirdParty, (t) => `\`${t.file}\` (${t.library})`)}`,
                 true
               );
             }
             // Partner code outside src/ is linted non-blocking during the rollout.
             if (outsideSrc.length) {
-              const list = outsideSrc.slice(0, 20).map((f) => `\`${f}\``).join(', ');
-              const more = outsideSrc.length > 20 ? ` … and ${outsideSrc.length - 20} more` : '';
               core.summary.addRaw(
-                `\n🔎 **${outsideSrc.length} file(s) outside \`src/\` linted** — findings there are recommendations only, they do not block: ${list}${more}`,
+                `\n🔎 **${outsideSrc.length} file(s) outside \`src/\` linted** — findings there are recommendations shown only here (no inline comments), they do not block: ${formatFileList(outsideSrc)}`,
                 true
               );
             }

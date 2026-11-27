@@ -13,6 +13,14 @@
  * (`data.jsdelivr.com/v1/stats/packages/<type>/<name>`) — slick 368 M,
  * embla-carousel 18 M; a package nobody uses has next to none.
  *
+ * Scope: only files OUTSIDE the lint target (outside `src/`), where findings
+ * are non-blocking during the rollout — the gate's verdict on `src/` never
+ * depends on this lookup or on an external service (PR #32 review, P2).
+ *
+ * Data flow: the SHA-256 of each candidate file (never its content) is sent to
+ * `data.jsdelivr.com`, from the CI runner. Turn it off with
+ * SHOPTET_LINT_THIRD_PARTY=off.
+ *
  * Fail-safe direction: anything that goes wrong — no network, a timeout, a
  * rate limit, an unknown hash, a modified copy — leaves the file unverified,
  * and an unverified file is linted exactly as before. Verification can only
@@ -44,7 +52,30 @@ function sha256(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
-async function fetchJson(url) {
+// Whole-run budget and circuit breaker (PR #32 review, P2): when jsDelivr is
+// slow or down, the gate must not wait minutes — after TOTAL_BUDGET_MS, or
+// after MAX_CONSECUTIVE_FAILURES failed requests in a row (timeout, network
+// error, 429 / 5xx), no further lookup is made and the rest stays unverified,
+// i.e. linted. A 404 (unknown hash) is an answer, not a failure.
+const TOTAL_BUDGET_MS = 20000;
+const MAX_CONSECUTIVE_FAILURES = 3;
+
+function createBreaker(now = Date.now) {
+  const deadline = now() + TOTAL_BUDGET_MS;
+  let failures = 0;
+  return {
+    open: () => failures >= MAX_CONSECUTIVE_FAILURES || now() > deadline,
+    failed: () => {
+      failures += 1;
+    },
+    answered: () => {
+      failures = 0;
+    },
+  };
+}
+
+async function fetchJson(url, breaker) {
+  if (breaker.open()) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -52,19 +83,42 @@ async function fetchJson(url) {
       signal: controller.signal,
       headers: { 'user-agent': 'shoptet-addon-lint' },
     });
-    if (!response.ok) return null;
+    if (response.status === 404) {
+      breaker.answered();
+      return null;
+    }
+    if (!response.ok) {
+      breaker.failed();
+      return null;
+    }
+    breaker.answered();
     return await response.json();
   } catch {
+    breaker.failed();
     return null;
   } finally {
     clearTimeout(timer);
   }
 }
 
+// The owner of the repository under review (GitHub Actions sets it). A
+// GitHub match from that owner's own repository is the partner's own code
+// served by jsDelivr — popular because their addon is, not because it is a
+// third-party library (PR #32 review, P1) — and never verifies.
+function ownGithubOwner(env = process.env) {
+  const owner = env.GITHUB_REPOSITORY_OWNER || (env.GITHUB_REPOSITORY || '').split('/')[0];
+  return owner ? owner.toLowerCase() : null;
+}
+
+function isOwnRepository(hit, owner) {
+  return hit.type === 'gh' && owner !== null && hit.name.split('/')[0].toLowerCase() === owner;
+}
+
 function networkLookup() {
   const hits = new Map();
+  const breaker = createBreaker();
   return async (hash) => {
-    const hit = await fetchJson(`https://data.jsdelivr.com/v1/lookup/hash/${hash}`);
+    const hit = await fetchJson(`https://data.jsdelivr.com/v1/lookup/hash/${hash}`, breaker);
     if (!hit || (hit.type !== 'npm' && hit.type !== 'gh') || !hit.name || !hit.version) {
       return null;
     }
@@ -72,6 +126,7 @@ function networkLookup() {
     if (!hits.has(key)) {
       const stats = await fetchJson(
         `https://data.jsdelivr.com/v1/stats/packages/${key}?period=month`,
+        breaker,
       );
       const total = stats && stats.hits && stats.hits.total;
       hits.set(key, typeof total === 'number' ? total : 0);
@@ -115,7 +170,7 @@ function isCandidate(filePath) {
  * The verified third-party files among `files`: `Map(file → "name@version")`.
  * Never throws; an empty map when lookup is off or nothing verifies.
  */
-async function verifyThirdParty(files, lookup = lookupFromEnv()) {
+async function verifyThirdParty(files, lookup = lookupFromEnv(), owner = ownGithubOwner()) {
   const verified = new Map();
   if (!lookup) return verified;
   const candidates = files.filter(isCandidate).slice(0, MAX_LOOKUPS);
@@ -129,6 +184,7 @@ async function verifyThirdParty(files, lookup = lookupFromEnv()) {
           hit &&
           hit.name &&
           hit.version &&
+          !isOwnRepository(hit, owner) &&
           typeof hit.hits === 'number' &&
           hit.hits >= MIN_MONTHLY_HITS
         ) {
@@ -143,4 +199,4 @@ async function verifyThirdParty(files, lookup = lookupFromEnv()) {
   return verified;
 }
 
-module.exports = { verifyThirdParty, lookupFromEnv, sha256, MIN_MONTHLY_HITS };
+module.exports = { verifyThirdParty, lookupFromEnv, sha256, createBreaker, MIN_MONTHLY_HITS };
