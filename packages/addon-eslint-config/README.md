@@ -63,6 +63,11 @@ const eslintConfig = require('@shoptet/addon-eslint-config');
 // eslintConfig.parsesAsScript(source, filename?) — script-vs-module detection
 //   helper. Pass the filename for TypeScript/JSX: without it the source is
 //   parsed as plain JavaScript, as before.
+// eslintConfig.parsesAsJsxModule(source) — whether JavaScript that fails the
+//   plain parses is a valid ES module once JSX is allowed (espree, so
+//   TypeScript syntax still fails).
+// eslintConfig.jsxModuleParseError(source) — that parse's error in ESLint's
+//   shape ({ message, line, column }), or null when it parses.
 // eslintConfig.RELIABLE_RULES — the ESLint slice of the allowlist.
 // eslintConfig.RUNNER_RULES — the ids in that slice the runner must emit.
 ```
@@ -83,6 +88,16 @@ typescript-eslint's configs in one array
 A runner that consumes the config also has to mirror these runner-side
 behaviours of `linter_review_tool/linters/eslint-linter.js`:
 
+- lint a `.js` / `.mjs` file that fails both plain parses (module, then
+  script) but passes `parsesAsJsxModule` as JSX, applying the `.jsx` filters
+  below, and report it under its real path: a `.js` file under its `.jsx`
+  name (ESLint `lintText` with that `filePath`), an `.mjs` file under its own
+  name with the config's JSX blocks retargeted to it (`files`, plus
+  `parserOptions.ecmaFeatures.jsx`), so rules still see a module. When such a
+  file fails the JSX parse too, report `jsxModuleParseError`'s error instead
+  of the plain module one if it is on a later line (the JSX parse got past
+  the JSX, so that error is the real one; on the same line it is TypeScript
+  syntax, and the plain error stays);
 - drop "Definition for rule … was not found" reports (a directive naming an
   unknown rule is never a code defect);
 - on TypeScript/JSX files, drop reports from the core rules the config

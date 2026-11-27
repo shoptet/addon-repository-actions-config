@@ -24,6 +24,8 @@ const { ESLint } = require('eslint');
 const {
   configs,
   parsesAsScript,
+  parsesAsJsxModule,
+  jsxModuleParseError,
   globalCommentLocations,
   isRedundantGlobalReport,
 } = require('@shoptet/addon-eslint-config');
@@ -137,7 +139,7 @@ function commonAncestorDir(filePaths) {
 // count as module syntax). Filtering the WHOLE rule (not just top-level
 // declarations) is deliberate: hoisting makes "top-level" non-deterministic,
 // and accepted false negatives beat false positives in this profile.
-function usesModuleSyntax(filePath) {
+function usesModuleSyntax(filePath, filename = filePath) {
   // .mjs is a module by CONVENTION regardless of content. For everything else
   // a single script-parse decides: import/export, import.meta and top-level
   // await are all SyntaxErrors in script mode, so "cannot run as a classic
@@ -148,7 +150,7 @@ function usesModuleSyntax(filePath) {
   // annotation and call every .ts file a module.
   if (/\.m[jt]s$/i.test(filePath)) return true;
   try {
-    return !parsesAsScript(fs.readFileSync(filePath, 'utf8'), filePath);
+    return !parsesAsScript(fs.readFileSync(filePath, 'utf8'), filename);
   } catch {
     return false; // unreadable → the lint run itself will surface that
   }
@@ -173,23 +175,26 @@ const UNKNOWN_RULE_DIRECTIVE = /^Definition for rule '[^']+' was not found\.$/;
 // package), not from a regex over the raw text — a `/* global` inside a string
 // or a line comment, or an identifier glued to the closing delimiter, must
 // never hide a redeclaration in code.
-function globalCommentsOf(filePath) {
+function globalCommentsOf(filePath, filename = filePath) {
   try {
-    return globalCommentLocations(fs.readFileSync(filePath, 'utf8'), filePath);
+    return globalCommentLocations(fs.readFileSync(filePath, 'utf8'), filename);
   } catch {
     return null; // unreadable — filter nothing
   }
 }
 
-function pushMessages(findings, result) {
-  const replacedCore = replacedCoreRules(result.filePath);
+// `lintedAs` is the filename the file was linted under — the real path,
+// except for a `.js` file with JSX, linted as `.jsx` (see lintJsxInJs).
+function pushMessages(findings, result, lintedAs = result.filePath) {
+  const replacedCore = replacedCoreRules(lintedAs);
   let globalComments; // read lazily, only when a candidate report exists
   for (const message of result.messages) {
     if (!message.fatal && UNKNOWN_RULE_DIRECTIVE.test(message.message)) continue;
     if (replacedCore && replacedCore.has(message.ruleId)) continue;
     if (CORE_RULES_REPLACED_EVERYWHERE.has(message.ruleId)) continue;
     if (message.ruleId === 'no-redeclare' && message.messageId === 'redeclaredAsBuiltin') {
-      if (globalComments === undefined) globalComments = globalCommentsOf(result.filePath);
+      if (globalComments === undefined)
+        globalComments = globalCommentsOf(result.filePath, lintedAs);
       if (globalComments && isRedundantGlobalReport(message, globalComments)) continue;
     }
     findings.push({
@@ -201,6 +206,95 @@ function pushMessages(findings, result) {
       severity: message.severity === 2 ? 'blocker' : 'recommend',
     });
   }
+}
+
+// A `.js` / `.mjs` file that fails both plain parses (module, then script)
+// because it contains JSX is linted under its `.jsx` name, through the
+// config's JSX block — the same parser, rules and runner filters as a real
+// `.jsx` file — and reported under its own path. Only when espree accepts it
+// as a module with JSX (parsesAsJsxModule): typescript-estree would also
+// accept TypeScript syntax, which must stay a parse error in a `.js` file.
+// JSX is never turned on up front, so every other `.js` file is linted
+// exactly as before. `.cjs` (CommonJS has no JSX build) and a classic script
+// with JSX keep the parse error. Returns false when the retry does not apply.
+async function lintJsxInJs(eslint, mjsEslint, filePath, findings) {
+  if (!/\.m?js$/i.test(filePath)) return false;
+  let source;
+  try {
+    source = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return false;
+  }
+  if (!parsesAsJsxModule(source)) return false;
+  const lintedAs = filePath.replace(/\.m?js$/i, '.jsx');
+  // `.mjs` is a module by its extension, and rules read that from the
+  // filename (shoptet/no-core-overwrite exempts `.mjs`), so it keeps its own
+  // name and gets the JSX blocks retargeted to it; a `.js` file is linted
+  // under its `.jsx` name, exactly as a `.jsx` file.
+  const isMjs = /\.mjs$/i.test(filePath);
+  const [result] = isMjs
+    ? await mjsEslint().lintText(source, { filePath })
+    : await eslint.lintText(source, { filePath: lintedAs });
+  if (!result || result.messages.some((m) => m.fatal)) return false;
+  result.filePath = filePath;
+  if (
+    result.messages.some((m) => UNUSED_VARS_RULES.has(m.ruleId)) &&
+    !usesModuleSyntax(filePath, lintedAs)
+  ) {
+    result.messages = result.messages.filter((m) => !UNUSED_VARS_RULES.has(m.ruleId));
+  }
+  pushMessages(findings, result, lintedAs);
+  return true;
+}
+
+// A `.js` / `.mjs` file that fails every parse: when the JSX parse got to a
+// later line than the plain module parse, the file is JSX broken elsewhere (a
+// duplicate declaration after the JSX, say), and the plain error — on the
+// first `<` — points the partner at the wrong line. Report the JSX parse's
+// error instead; otherwise keep the original. The finding stays a CodeQuality
+// blocker either way.
+function preferJsxParseError(moduleResult) {
+  if (!/\.m?js$/i.test(moduleResult.filePath)) return;
+  const fatal = moduleResult.messages.find((m) => m.fatal);
+  if (!fatal) return;
+  let jsxError;
+  try {
+    jsxError = jsxModuleParseError(fs.readFileSync(moduleResult.filePath, 'utf8'));
+  } catch {
+    return;
+  }
+  if (!jsxError || !jsxError.line) return;
+  // A LATER LINE only: TypeScript syntax in a `.js` file (`<any>foo`,
+  // `<T,>(x) => x`) lets the JSX parse get a few columns further on the same
+  // line, and its message ("Unterminated JSX contents") would talk about JSX
+  // the partner never wrote.
+  if (jsxError.line <= fatal.line) return;
+  fatal.message = `Parsing error: ${jsxError.message}`;
+  fatal.line = jsxError.line;
+  fatal.column = jsxError.column;
+}
+
+// The config's JSX blocks (the TypeScript/JSX block and the `.jsx` block),
+// retargeted to `.mjs` with JSX parsing on — for an `.mjs` file with JSX only
+// (see lintJsxInJs). Appended to the shared array, never mutating it.
+const JSX_GLOB = '**/*.[jJ][sS][xX]';
+function mjsAsJsxConfig() {
+  const retargeted = configs.recommended
+    .filter((block) => Array.isArray(block.files) && block.files.includes(JSX_GLOB))
+    .map((block) => {
+      const copy = { ...block, files: ['**/*.[mM][jJ][sS]'] };
+      if (block.languageOptions) {
+        copy.languageOptions = {
+          ...block.languageOptions,
+          parserOptions: {
+            ...(block.languageOptions.parserOptions || {}),
+            ecmaFeatures: { jsx: true },
+          },
+        };
+      }
+      return copy;
+    });
+  return [...configs.recommended, ...retargeted];
 }
 
 async function lintJavaScript(files) {
@@ -236,11 +330,22 @@ async function lintJavaScript(files) {
       overrideConfig: [...configs.recommended, { languageOptions: { sourceType: 'script' } }],
     });
 
+    let mjsInstance = null;
+    const mjsEslint = () => {
+      if (!mjsInstance) {
+        mjsInstance = new ESLint({ ...BASE_OPTIONS, cwd, overrideConfig: mjsAsJsxConfig() });
+      }
+      return mjsInstance;
+    };
     for (const moduleResult of moduleParseFailures) {
       const [scriptResult] = await scriptEslint.lintFiles([moduleResult.filePath]);
       const brokenEvenAsScript = !scriptResult || scriptResult.messages.some((m) => m.fatal);
 
       if (brokenEvenAsScript) {
+        // JavaScript with JSX (common in Vite / CRA templates): lint it
+        // exactly as the same code in a `.jsx` file (CZ3TDR1-968).
+        if (await lintJsxInJs(eslint, mjsEslint, moduleResult.filePath, findings)) continue;
+        preferJsxParseError(moduleResult);
         // Not a module-format issue — the file is genuinely broken JS.
         // Report the original parse error (surfaces as a CodeQuality blocker).
         pushMessages(findings, moduleResult);

@@ -87,6 +87,12 @@
     "prefer-template@recommend",
     "radix@recommend"
   ],
+  "bad/bad-jsx-in-cjs.cjs": [
+    "CodeQuality@blocker"
+  ],
+  "bad/bad-jsx-in-js.js": [
+    "no-eval@blocker"
+  ],
   "bad/bad-jsx-practices.jsx": [
     "@typescript-eslint/no-unused-vars@blocker",
     "getter-return@blocker",
@@ -230,6 +236,9 @@
     "shoptet/no-global-console@blocker",
     "shoptet/no-settimeout-hack@blocker:3",
     "shoptet/prefer-fetch@recommend"
+  ],
+  "bad/bad-ts-in-js.js": [
+    "CodeQuality@blocker"
   ],
   "bad/bad-ts-naming.ts": [
     "shoptet/camelcase@recommend"
