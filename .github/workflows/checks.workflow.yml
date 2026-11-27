@@ -146,7 +146,7 @@ jobs:
             const { execFileSync } = require('child_process');
             // Shared, self-tested logic (diff parsing + fingerprinting) lives in
             // the checked-out tool so it is covered by the linter self-test.
-            const { parseAddedLines, findingFingerprint: fp, formatFileList, isSummaryOnly } = require(
+            const { parseAddedLines, findingFingerprint: fp, formatFileList, isSummaryOnly, summaryOnlyDigest } = require(
               `${process.env.GITHUB_WORKSPACE}/review-tool/linter_review_tool/lib/reconcile-utils.js`
             );
             const MARKER = 'shoptet-review-fp';
@@ -168,6 +168,7 @@ jobs:
             const thirdParty = payload.thirdParty || [];
             const outsideSrc = payload.outsideSrc || [];
             const outsideSet = new Set(outsideSrc);
+            const outsideError = payload.outsideError || null;
 
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
@@ -312,7 +313,7 @@ jobs:
               .filter(([key]) => !mine.has(key) && !unanchored.has(key) && !summaryOnly.has(key))
               .sort((a, b) => (a[1].severity === 'ERROR' ? 0 : 1) - (b[1].severity === 'ERROR' ? 0 : 1));
             const unanchoredCount = [...unanchored].filter((key) => !mine.has(key)).length;
-            const summaryOnlyCount = [...summaryOnly].filter((key) => !unanchored.has(key)).length;
+            const summaryOnlyCount = [...summaryOnly].filter((key) => !unanchored.has(key) && !mine.has(key)).length;
             const capped = fresh.slice(0, MAX_COMMENTS);
             const overflow = fresh.length - capped.length;
             // ONE definition of "shown" for both the verdict body and the
@@ -331,7 +332,8 @@ jobs:
             // Delete comments of resolved findings (usually few).
             let deleted = 0;
             for (const [key, id] of mine) {
-              if (!wanted.has(key)) {
+              // A Summary-only finding (outside src/) never keeps an inline comment.
+              if (!wanted.has(key) || summaryOnly.has(key)) {
                 try { await github.rest.pulls.deleteReviewComment({ owner, repo, comment_id: id }); deleted++; }
                 catch (error) { core.warning(`Could not delete comment ${id}: ${error.message}`); }
               }
@@ -344,7 +346,16 @@ jobs:
             // (REQUEST_CHANGES only if we don't already have one standing.)
             const event = blockers > 0 && !hasRequest ? 'REQUEST_CHANGES' : 'COMMENT';
             let created = 0;
-            if (comments.length || (blockers > 0 && !hasRequest)) {
+            // Summary-only findings (outside src/) get a body-only review once
+            // per distinct set of them, recognised by a digest marker — so a
+            // PR with nothing else still hears about them, and a push that does
+            // not change them does not repeat the announcement.
+            const SUMMARY_ONLY_MARKER = 'shoptet-review-summary-only';
+            const summaryOnlyMark = summaryOnlyCount > 0 ? `<!-- ${SUMMARY_ONLY_MARKER}:${summaryOnlyDigest(summaryOnly)} -->` : '';
+            const summaryOnlyAnnounced = summaryOnlyMark !== '' && reviews.some(
+              (r) => r.user && r.user.login === 'github-actions[bot]' && (r.body || '').includes(summaryOnlyMark)
+            );
+            if (comments.length || (blockers > 0 && !hasRequest) || (summaryOnlyCount > 0 && !summaryOnlyAnnounced)) {
               const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
               const counts = `**${blockers}** blocker(s)`
                 + (recommendations > 0 ? ` and ${recommendations} recommendation(s)` : '');
@@ -360,7 +371,7 @@ jobs:
                 body += ` ${unanchoredCount} finding(s) are in files whose changed lines could not be resolved and appear only in the Summary.`;
               }
               if (summaryOnlyCount > 0) {
-                body += ` ${summaryOnlyCount} recommendation(s) in files outside \`src/\` appear only in the Summary.`;
+                body += ` ${summaryOnlyCount} recommendation(s) in files outside \`src/\` appear only in the Summary.\n\n${summaryOnlyMark}`;
               }
               // A single review with ~100 comments still trips GitHub's secondary
               // content-creation limit (~25-30 per review is safe), so post in
@@ -486,6 +497,13 @@ jobs:
             if (thirdParty.length) {
               core.summary.addRaw(
                 `\n📦 **${thirdParty.length} third-party file(s) verified** by content and not linted: ${formatFileList(thirdParty, (t) => `\`${t.file}\` (${t.library})`)}`,
+                true
+              );
+            }
+            // Linting outside src/ failed (non-blocking): say so, src/ still gated.
+            if (outsideError) {
+              core.summary.addRaw(
+                `\n⚠️ **Linting outside \`src/\` failed** (non-blocking, \`src/\` was gated normally): ${outsideError}`,
                 true
               );
             }

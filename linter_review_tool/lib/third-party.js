@@ -63,23 +63,30 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 function createBreaker(now = Date.now) {
   const deadline = now() + TOTAL_BUDGET_MS;
   let failures = 0;
+  // Latched: with several workers in flight, a late success must not re-open
+  // requests once the breaker has tripped (Copilot on #32).
+  let tripped = false;
   return {
-    open: () => failures >= MAX_CONSECUTIVE_FAILURES || now() > deadline,
+    open: () => tripped || now() >= deadline,
+    // The time left in the run's budget — each request's timeout is capped by
+    // it, so the documented 20 s is a real upper bound.
+    remaining: () => Math.max(0, deadline - now()),
     failed: () => {
       failures += 1;
+      if (failures >= MAX_CONSECUTIVE_FAILURES) tripped = true;
     },
     answered: () => {
-      failures = 0;
+      if (!tripped) failures = 0;
     },
   };
 }
 
-async function fetchJson(url, breaker) {
+async function fetchJson(url, breaker, fetchImpl = fetch) {
   if (breaker.open()) return null;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Math.min(TIMEOUT_MS, breaker.remaining()));
   try {
-    const response = await fetch(url, {
+    const response = await fetchImpl(url, {
       signal: controller.signal,
       headers: { 'user-agent': 'shoptet-addon-lint' },
     });
@@ -114,29 +121,40 @@ function isOwnRepository(hit, owner) {
   return hit.type === 'gh' && owner !== null && hit.name.split('/')[0].toLowerCase() === owner;
 }
 
-function networkLookup() {
+function networkLookup(fetchImpl = fetch, now = Date.now) {
   const hits = new Map();
-  const breaker = createBreaker();
+  const breaker = createBreaker(now);
   return async (hash) => {
-    const hit = await fetchJson(`https://data.jsdelivr.com/v1/lookup/hash/${hash}`, breaker);
+    const hit = await fetchJson(
+      `https://data.jsdelivr.com/v1/lookup/hash/${hash}`,
+      breaker,
+      fetchImpl,
+    );
     if (!hit || (hit.type !== 'npm' && hit.type !== 'gh') || !hit.name || !hit.version) {
       return null;
     }
     const key = `${hit.type}/${hit.name}`;
+    // Cache the in-flight promise, not the result: with several workers, many
+    // files of one library must cost one statistics request (Copilot on #32).
     if (!hits.has(key)) {
-      const stats = await fetchJson(
-        `https://data.jsdelivr.com/v1/stats/packages/${key}?period=month`,
-        breaker,
+      hits.set(
+        key,
+        fetchJson(
+          `https://data.jsdelivr.com/v1/stats/packages/${key}?period=month`,
+          breaker,
+          fetchImpl,
+        ).then((stats) => {
+          const total = stats && stats.hits && stats.hits.total;
+          return typeof total === 'number' ? total : 0;
+        }),
       );
-      const total = stats && stats.hits && stats.hits.total;
-      hits.set(key, typeof total === 'number' ? total : 0);
     }
     return {
       type: hit.type,
       name: hit.name,
       version: hit.version,
       file: hit.file,
-      hits: hits.get(key),
+      hits: await hits.get(key),
     };
   };
 }
@@ -199,4 +217,11 @@ async function verifyThirdParty(files, lookup = lookupFromEnv(), owner = ownGith
   return verified;
 }
 
-module.exports = { verifyThirdParty, lookupFromEnv, sha256, createBreaker, MIN_MONTHLY_HITS };
+module.exports = {
+  verifyThirdParty,
+  lookupFromEnv,
+  sha256,
+  createBreaker,
+  networkLookup,
+  MIN_MONTHLY_HITS,
+};

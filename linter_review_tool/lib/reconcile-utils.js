@@ -107,4 +107,23 @@ function isSummaryOnly(diagnostic, outsideSrc) {
   return outsideSrc.has(diagnostic.location.path);
 }
 
-module.exports = { parseAddedLines, findingFingerprint, formatFileList, isSummaryOnly };
+/**
+ * Identity of a set of Summary-only findings (their fingerprints, order-free).
+ * The PR gate posts a body-only review announcing them once per distinct set
+ * and recognises an earlier announcement by this digest, so pushes that do
+ * not change those findings do not repeat it.
+ */
+function summaryOnlyDigest(keys) {
+  return crypto
+    .createHash('sha1')
+    .update(JSON.stringify([...keys].sort()))
+    .digest('hex');
+}
+
+module.exports = {
+  parseAddedLines,
+  findingFingerprint,
+  formatFileList,
+  isSummaryOnly,
+  summaryOnlyDigest,
+};

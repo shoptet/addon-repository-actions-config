@@ -89,7 +89,10 @@ assigned (submitted reviews count), and — post-merge — audits WHO merged
   own checkout. During the rollout, findings there are recommendations (⚠️)
   that appear **only in the run Summary** — no inline comments, so a PR that
   touches a large vendored file is not flooded — and the Summary lists the
-  files linted outside `src/`. A PR that passes today is not blocked.
+  files linted outside `src/`. The PR gets one short review saying how many
+  there are, repeated only when they change. A PR that passes today is not
+  blocked, and a crash while linting outside `src/` is reported in the
+  Summary without affecting the `src/` verdict.
   Accepted gaps: tooling in a subdirectory with a name the list does not know
   is linted (non-blocking), and a backup copy of old code (`backup/`) is
   linted like source.

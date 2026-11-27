@@ -429,12 +429,22 @@ async function main() {
     for (const group of [jsFindings, styleFindings, htmlFindings]) {
       for (const finding of group) rawFindings.push(finding);
     }
-    const outsideTotal = outside.js.length + outside.styles.length + outside.html.length;
-    if (outsideTotal) {
-      info(
-        `🔍 Also reviewing ${outsideTotal} file(s) outside ${path.relative(process.cwd(), targetPath) || '.'} (non-blocking) ` +
-          `(js: ${outside.js.length}, styles: ${outside.styles.length}, html: ${outside.html.length})`,
-      );
+  } catch (error) {
+    fail(rdjson, `Review execution failed: ${error.message}`);
+  }
+
+  // Outside the target (CZ3TDR1-937): non-blocking, and so are its failures.
+  // A crash there (a pathological file, a linter bug) must never fail a run
+  // whose src/ is clean or skip the reconcile — the run reports what it could
+  // not lint instead (Copilot on #32).
+  let outsideError = null;
+  const outsideTotal = outside.js.length + outside.styles.length + outside.html.length;
+  if (outsideTotal) {
+    info(
+      `🔍 Also reviewing ${outsideTotal} file(s) outside ${path.relative(process.cwd(), targetPath) || '.'} (non-blocking) ` +
+        `(js: ${outside.js.length}, styles: ${outside.styles.length}, html: ${outside.html.length})`,
+    );
+    try {
       const outsideGroups = await Promise.all([
         outside.js.length ? lintJavaScript(outside.js) : [],
         outside.styles.length ? lintStyles(outside.styles) : [],
@@ -443,9 +453,10 @@ async function main() {
       for (const group of outsideGroups) {
         for (const finding of group) rawFindings.push({ ...finding, severity: 'recommend' });
       }
+    } catch (error) {
+      outsideError = boundMessage(String(error && error.message ? error.message : error));
+      console.error(`::warning::Linting outside the target failed (non-blocking): ${outsideError}`);
     }
-  } catch (error) {
-    fail(rdjson, `Review execution failed: ${error.message}`);
   }
 
   // Keep only reliable (near-zero-false-positive) rules — the linter is a
@@ -477,6 +488,7 @@ async function main() {
         importedTests,
         thirdParty,
         outsideSrc,
+        ...(outsideError ? { outsideError } : {}),
       }),
     );
     process.exitCode = 0;
