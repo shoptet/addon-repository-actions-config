@@ -16,6 +16,11 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Deterministic and offline: no third-party lookup over the network in the
+// review.js runs below (CZ3TDR1-937); the contract that needs one passes an
+// offline map explicitly.
+process.env.SHOPTET_LINT_THIRD_PARTY = 'off';
+
 const ROOT = path.join(__dirname, '..');
 const CASES = path.join(ROOT, 'test-cases');
 const spec = JSON.parse(fs.readFileSync(path.join(CASES, 'expected.json'), 'utf8'));
@@ -267,12 +272,13 @@ for (const rule of RELIABLE_RULES) {
 
 // ── 6: review.js fail-closed contract (what the workflow gate leans on) ──
 console.log('review.js contract:');
-function runRaw(args) {
+function runRaw(args, env = process.env) {
   try {
     const stdout = execFileSync(process.execPath, ['review.js', ...args], {
       cwd: ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      env,
     });
     return { status: 0, stdout };
   } catch (e) {
@@ -776,6 +782,123 @@ if (importRun.status === 0 && promotedOk && skippedOk && payloadOk) {
   );
 }
 fs.rmSync(importTmp, { recursive: true, force: true });
+
+// Partner code outside src/ (CZ3TDR1-937): with --repo-root, the repository
+// around the target is linted too, NON-BLOCKING (recommendations), minus what
+// never ships: build output, tooling (root-level JS, *.config.*, grunt/,
+// scripts/), tests, stories, setup files and --exclude'd directories. A file
+// whose content is a popular published library (offline map here, jsDelivr
+// in CI) is not linted in either scope and is listed in `thirdParty`; a
+// modified copy or an unpopular package is linted.
+const scopeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrt-outside-'));
+const LIB = `export const big = '${'x'.repeat(1100)}';\neval('lib');\n`;
+const MODIFIED = LIB.replace("'lib'", "'lib2'");
+const UNPOPULAR = `export const other = '${'y'.repeat(1100)}';\neval('other');\n`;
+const SCOPE_FILES = {
+  'src/a.js': 'export const a = 1;\n',
+  'src/vendor-lib.js': LIB,
+  'libs/own.js': "export function own() { eval('1'); }\n",
+  'libs/lib.js': LIB,
+  'libs/lib-modified.js': MODIFIED,
+  'libs/unpopular.js': UNPOPULAR,
+  'custom/page.html': '<img src="a.png">\n',
+  'proxySync.js': "eval('root tooling');\n",
+  'webpack.factory.config.js': "eval('config');\n",
+  'grunt/copy.js': "eval('grunt');\n",
+  'scripts/build.js': "eval('scripts');\n",
+  'tests/helper.js': "eval('tests');\n",
+  'dist/out.js': "eval('dist');\n",
+  'custom/x.stories.js': "eval('story');\n",
+  'custom/vitest.setup.js': "eval('setup');\n",
+  'excluded/e.js': "eval('excluded');\n",
+};
+for (const [name, content] of Object.entries(SCOPE_FILES)) {
+  fs.mkdirSync(path.dirname(path.join(scopeTmp, name)), { recursive: true });
+  fs.writeFileSync(path.join(scopeTmp, name), content);
+}
+const { sha256: sha256Of } = require('../lib/third-party');
+const mapFile = path.join(scopeTmp, '..', `${path.basename(scopeTmp)}-map.json`);
+fs.writeFileSync(
+  mapFile,
+  JSON.stringify({
+    [sha256Of(path.join(scopeTmp, 'libs/lib.js'))]: {
+      type: 'npm',
+      name: 'some-lib',
+      version: '1.0.0',
+      hits: 5000000,
+    },
+    [sha256Of(path.join(scopeTmp, 'libs/unpopular.js'))]: {
+      type: 'npm',
+      name: 'my-own-lib',
+      version: '0.0.1',
+      hits: 12,
+    },
+  }),
+);
+const mapEnv = {
+  ...process.env,
+  SHOPTET_LINT_THIRD_PARTY: '',
+  SHOPTET_LINT_THIRD_PARTY_MAP: mapFile,
+};
+const scopeArgs = [
+  path.join(scopeTmp, 'src'),
+  `--repo-root=${scopeTmp}`,
+  `--exclude=${path.join(scopeTmp, 'excluded')}`,
+];
+const scopeRun = runRaw([...scopeArgs, '--rdjson'], mapEnv);
+const scopePlain = runRaw(scopeArgs, mapEnv);
+let scopeJson = null;
+try {
+  scopeJson = JSON.parse(scopeRun.stdout);
+} catch (e) {
+  /* handled below */
+}
+const scopeDiags = (scopeJson && scopeJson.diagnostics) || [];
+const posixPath = (f) => f.split(path.sep).join('/');
+const scopeDiagsIn = (name) => scopeDiags.filter((d) => posixPath(d.location.path).endsWith(name));
+const NOT_LINTED = [
+  'src/vendor-lib.js',
+  'libs/lib.js',
+  'proxySync.js',
+  'webpack.factory.config.js',
+  'grunt/copy.js',
+  'scripts/build.js',
+  'tests/helper.js',
+  'dist/out.js',
+  'custom/x.stories.js',
+  'custom/vitest.setup.js',
+  'excluded/e.js',
+];
+const LINTED_NON_BLOCKING = [
+  'libs/own.js',
+  'libs/lib-modified.js',
+  'libs/unpopular.js',
+  'custom/page.html',
+];
+const thirdPartyList = ((scopeJson && scopeJson.thirdParty) || []).map(
+  (t) => `${posixPath(t.file).split('/').slice(-2).join('/')}=${t.library}`,
+);
+const scopeOk =
+  scopeRun.status === 0 &&
+  scopePlain.status === 0 &&
+  NOT_LINTED.every((name) => scopeDiagsIn(name).length === 0) &&
+  LINTED_NON_BLOCKING.every(
+    (name) =>
+      scopeDiagsIn(name).length > 0 && scopeDiagsIn(name).every((d) => d.severity === 'WARNING'),
+  ) &&
+  JSON.stringify(thirdPartyList.sort()) ===
+    JSON.stringify(['libs/lib.js=some-lib@1.0.0', 'src/vendor-lib.js=some-lib@1.0.0']);
+if (scopeOk) {
+  pass(
+    'code outside src/ is linted non-blocking; tooling, tests and excluded dirs are not; verified third-party files are skipped in both scopes',
+  );
+} else {
+  fail(
+    `outside-src contract broken: status ${scopeRun.status}/${scopePlain.status}, thirdParty=${JSON.stringify(thirdPartyList)}, diags=${JSON.stringify(scopeDiags.map((d) => [posixPath(d.location.path).split('/').slice(-2).join('/'), d.code.value, d.severity]))}`,
+  );
+}
+fs.rmSync(scopeTmp, { recursive: true, force: true });
+fs.rmSync(mapFile, { force: true });
 
 // Messages are bounded — a 70k-char identifier must not produce a comment-
 // killing 70k message (round 13).

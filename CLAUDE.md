@@ -69,7 +69,12 @@ changes.
   `.css/.scss/.less`, `.html/.htm` files (case-insensitively), skipping `node_modules/`, `dist/`,
   `vendor/`, `*.min.*`/`*.bundle.*`, `*.d.ts` and test files (`*.test.*`, `*.spec.*`, `*.cy.*`, `__tests__/`,
   `__mocks__/`, `__fixtures__/` — not a plain `tests/`; a test file that a linted file imports is
-  linted after all), then dispatches each file to the matching linter.
+  linted after all), then dispatches each file to the matching linter. With `--repo-root=<dir>`
+  (the PR gate passes `.`), code outside the target is linted too, minus build output, tooling,
+  tests and root-level JS/TS, and its findings are downgraded to recommendations (CZ3TDR1-937).
+  `lib/third-party.js` skips files whose content is a popular published library (jsDelivr hash
+  lookup; `SHOPTET_LINT_THIRD_PARTY=off` / `SHOPTET_LINT_THIRD_PARTY_MAP` for offline runs — the
+  tests turn it off).
   TypeScript/JSX go through the same ESLint pass on the typescript-eslint parser (syntax only, no
   `tsconfig`); the shared config's TypeScript block swaps the core rules that misread type syntax.
 - `linters/eslint-linter.js`, `stylelint-linter.js`, `html-linter.js` — one per file type.

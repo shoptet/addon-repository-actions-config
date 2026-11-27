@@ -124,7 +124,9 @@ jobs:
         id: lint
         working-directory: ./
         # Runs the reliable rule set; emits Diagnostic JSON consumed by the next step.
-        run: node review-tool/linter_review_tool/review.js src --rdjson > review-findings.json
+        # --repo-root=.: partner code outside src/ is linted too, non-blocking
+        # during the rollout (CZ3TDR1-937); this tool's own checkout is excluded.
+        run: node review-tool/linter_review_tool/review.js src --rdjson --repo-root=. --exclude=review-tool > review-findings.json
 
       # Reconciled inline PR review comments + gate (GITHUB_TOKEN).
       # Posts findings as inline comments on changed lines, dedupes across pushes
@@ -163,6 +165,8 @@ jobs:
             const diagnostics = payload.diagnostics || [];
             const skippedFiles = payload.skipped || [];
             const importedTests = payload.importedTests || [];
+            const thirdParty = payload.thirdParty || [];
+            const outsideSrc = payload.outsideSrc || [];
 
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
@@ -466,6 +470,24 @@ jobs:
               const more = importedTests.length > 20 ? ` … and ${importedTests.length - 20} more` : '';
               core.summary.addRaw(
                 `\nℹ️ **${importedTests.length} test file(s) linted** because production code imports them (they ship with it): ${list}${more}`,
+                true
+              );
+            }
+            // Verified third-party libraries are not linted; say which and why.
+            if (thirdParty.length) {
+              const list = thirdParty.slice(0, 20).map((t) => `\`${t.file}\` (${t.library})`).join(', ');
+              const more = thirdParty.length > 20 ? ` … and ${thirdParty.length - 20} more` : '';
+              core.summary.addRaw(
+                `\n📦 **${thirdParty.length} third-party file(s) verified** by content and not linted: ${list}${more}`,
+                true
+              );
+            }
+            // Partner code outside src/ is linted non-blocking during the rollout.
+            if (outsideSrc.length) {
+              const list = outsideSrc.slice(0, 20).map((f) => `\`${f}\``).join(', ');
+              const more = outsideSrc.length > 20 ? ` … and ${outsideSrc.length - 20} more` : '';
+              core.summary.addRaw(
+                `\n🔎 **${outsideSrc.length} file(s) outside \`src/\` linted** — findings there are recommendations only, they do not block: ${list}${more}`,
                 true
               );
             }
