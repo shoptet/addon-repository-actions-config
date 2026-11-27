@@ -4,7 +4,9 @@
  *
  * Shared helper, not a rule. The runner uses it to drop core no-redeclare's
  * `redeclaredAsBuiltin` reports that sit inside such a comment — a redundant
- * comment, not a redeclaration (CZ3TDR1-979). The comments come from the
+ * comment, not a redeclaration (CZ3TDR1-979) — and the no-unused-vars reports
+ * for a name the comment declares but the file never reads (CZ3TDR1-982). The
+ * comments come from the
  * parser's tokenizer, not from a regex over the raw text, so `/* global`
  * inside a string or a line comment is not mistaken for a directive, the end
  * of the comment is exact, and line numbers follow the parser (CR, CRLF,
@@ -112,6 +114,33 @@ function isRedundantGlobalReport(message, locations) {
   );
 }
 
+// The two messages no-unused-vars / @typescript-eslint/no-unused-vars give a
+// comment-declared global: never read at all, or only assigned. Not anchored
+// at the end: with a `varsIgnorePattern`, ESLint appends ". Allowed unused
+// vars must match …" before the final period.
+const UNUSED_MESSAGE = /^'(.+)' is (?:defined|assigned a value) but never used\b/u;
+
+/**
+ * Is a no-unused-vars report one of a global comment's own entries — a name
+ * the comment declares and the file never reads? Such a comment is only
+ * redundant: the code has nothing to fix, so the report is never a defect.
+ * Whatever the entry's value: a `writable` opt-out for a configured global
+ * keeps its own no-redeclare report (isRedundantGlobalReport), and an
+ * assignment to a read-only global is reported in code by no-global-assign /
+ * no-implicit-globals, not here. A `writable` entry for a name the config does
+ * not declare is a plain declaration: `/* global myFlag: writable *\/` +
+ * `myFlag = true;` in a module is clean (on main it blocked only by accident,
+ * through this very report). Writing a global the file itself declares
+ * writable is not a defect.
+ */
+function isUnusedGlobalReport(message, locations) {
+  const match = UNUSED_MESSAGE.exec(message.message);
+  if (!match) return false;
+  return locations.some(
+    (location) => isInsideComment(message, [location]) && location.entries.has(match[1]),
+  );
+}
+
 /**
  * Is an ESLint message (1-based line and column) inside one of the comments?
  * The end is exclusive: an identifier glued to the closing delimiter
@@ -127,4 +156,9 @@ function isInsideComment(message, locations) {
   });
 }
 
-module.exports = { globalCommentLocations, isInsideComment, isRedundantGlobalReport };
+module.exports = {
+  globalCommentLocations,
+  isInsideComment,
+  isRedundantGlobalReport,
+  isUnusedGlobalReport,
+};

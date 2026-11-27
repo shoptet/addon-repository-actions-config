@@ -103,7 +103,11 @@ behaviours of `linter_review_tool/linters/eslint-linter.js`:
   `off` is an opt-out and stays reported). Locate those comments with the
   exported `globalCommentLocations(source, filename)` — the parser's
   comments, not a regex — and test a report with
-  `isRedundantGlobalReport(message, locations)`.
+  `isRedundantGlobalReport(message, locations)`;
+- drop `no-unused-vars` / `@typescript-eslint/no-unused-vars` reports for a
+  name a `/* global */` comment declares and the file never reads (positioned
+  inside that comment; a redundant comment, not an unused variable). Test a
+  report with `isUnusedGlobalReport(message, locations)`.
 
 ## SemVer policy
 
